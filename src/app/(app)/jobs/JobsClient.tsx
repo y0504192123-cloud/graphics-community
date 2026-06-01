@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import { Plus, X, Briefcase, Clock, CheckCircle2, Flame, MapPin, ChevronDown } from 'lucide-react'
 import type { Job, Profile } from '@/types'
 
@@ -33,6 +34,7 @@ const categoryIcons: Record<string, string> = {
 }
 
 export default function JobsClient({ jobs, currentUserId, categories, createJob, applyToJob }: Props) {
+  const router = useRouter()
   const [showCreate, setShowCreate] = useState(false)
   const [applyingTo, setApplyingTo] = useState<string | null>(null)
   const [filterCat, setFilterCat] = useState<string>('הכל')
@@ -88,6 +90,7 @@ export default function JobsClient({ jobs, currentUserId, categories, createJob,
               startTransition(async () => {
                 await createJob(formData)
                 setShowCreate(false)
+                router.refresh()
               })
             }}
           >
@@ -294,6 +297,7 @@ export default function JobsClient({ jobs, currentUserId, categories, createJob,
                           startTransition(async () => {
                             await applyToJob(job.id, formData)
                             setApplyingTo(null)
+                            router.refresh()
                           })
                         }}
                       >
