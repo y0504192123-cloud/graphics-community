@@ -7,6 +7,56 @@ import { Upload, MessageSquare, X, ImageIcon, Plus, Trash2 } from 'lucide-react'
 import { createClient as createSupabaseClient } from '@/lib/supabase/client'
 import type { InspirationPost } from '@/types'
 
+async function compressImage(file: File, maxMB = 4.5): Promise<File> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    const objectUrl = URL.createObjectURL(file)
+
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl)
+
+      // Scale down if either dimension exceeds 2500px
+      const MAX_DIM = 2500
+      let { width, height } = img
+      if (width > MAX_DIM || height > MAX_DIM) {
+        if (width >= height) { height = Math.round(height * MAX_DIM / width); width = MAX_DIM }
+        else                 { width = Math.round(width  * MAX_DIM / height); height = MAX_DIM }
+      }
+
+      const canvas = document.createElement('canvas')
+      canvas.width  = width
+      canvas.height = height
+      const ctx = canvas.getContext('2d')!
+      ctx.drawImage(img, 0, 0, width, height)
+
+      const maxBytes   = maxMB * 1024 * 1024
+      const qualities  = [0.9, 0.8, 0.7, 0.6, 0.5, 0.4]
+
+      const tryQuality = (i: number) => {
+        const q = qualities[i] ?? 0.35
+        canvas.toBlob((blob) => {
+          if (!blob) { reject(new Error('Canvas toBlob failed')); return }
+          console.log(`[compress] quality=${q} → ${(blob.size / 1024 / 1024).toFixed(2)}MB`)
+
+          if (blob.size <= maxBytes || i >= qualities.length - 1) {
+            resolve(new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), {
+              type: 'image/jpeg',
+              lastModified: Date.now(),
+            }))
+          } else {
+            tryQuality(i + 1)
+          }
+        }, 'image/jpeg', q)
+      }
+
+      tryQuality(0)
+    }
+
+    img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error('Image load failed')) }
+    img.src = objectUrl
+  })
+}
+
 const CATEGORIES = [
   'לוגו', 'מיתוג', 'סושיאל מדיה', 'פרסום', 'אינפוגרפיקה',
   'אילוסטרציה', 'עיצוב אתרים', 'הדפסה', 'מוצרי פרמיום', 'וידאו ומושן', 'אחר',
@@ -27,6 +77,7 @@ export default function InspirationClient({ posts, currentUserId, createPost, de
   const [showModal, setShowModal] = useState(false)
   const [preview, setPreview] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [uploadStatus, setUploadStatus] = useState('')
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
   const formRef = useRef<HTMLFormElement>(null)
@@ -44,25 +95,38 @@ export default function InspirationClient({ posts, currentUserId, createPost, de
     setUploadError(null)
 
     const fd = new FormData(e.currentTarget)
-    const file = fd.get('image') as File
+    const rawFile = fd.get('image') as File
 
-    console.log('[handleSubmit] file:', file?.name ?? 'null', 'size:', file?.size ?? 0)
+    console.log('[handleSubmit] file:', rawFile?.name ?? 'null', 'size:', rawFile?.size ?? 0)
 
-    if (!file || file.size === 0) {
+    if (!rawFile || rawFile.size === 0) {
       setUploadError('נא לבחור תמונה')
       setUploading(false)
       return
     }
 
-    // Step 1: upload directly from browser to Supabase Storage (bypasses Vercel 4.5MB limit)
+    // Step 1: compress image client-side before uploading
+    let file: File
+    try {
+      setUploadStatus('מכווץ תמונה...')
+      file = await compressImage(rawFile, 4.5)
+      console.log('[handleSubmit] compressed:', (file.size / 1024 / 1024).toFixed(2), 'MB')
+    } catch (err) {
+      console.error('[handleSubmit] compression failed:', err)
+      setUploadError('שגיאה בעיבוד התמונה: ' + String(err))
+      setUploading(false)
+      return
+    }
+
+    // Step 2: upload directly from browser to Supabase Storage (bypasses Vercel 4.5MB limit)
+    setUploadStatus('מעלה תמונה...')
     const supabase = createSupabaseClient()
-    const ext = file.name.split('.').pop()?.toLowerCase() ?? 'jpg'
-    const fileName = `${currentUserId}/${Date.now()}.${ext}`
+    const fileName = `${currentUserId}/${Date.now()}.jpg`
 
     console.log('[handleSubmit] uploading to Supabase Storage, path:', fileName)
     const { data: uploadData, error: storageError } = await supabase.storage
       .from('portfolio')
-      .upload(fileName, file, { contentType: file.type, upsert: false })
+      .upload(fileName, file, { contentType: 'image/jpeg', upsert: false })
 
     console.log('[handleSubmit] storage result — path:', uploadData?.path ?? null, 'error:', storageError?.message ?? null)
     if (storageError) {
@@ -75,7 +139,8 @@ export default function InspirationClient({ posts, currentUserId, createPost, de
     console.log('[handleSubmit] publicUrl:', publicUrl)
     const imageUrl = publicUrl
 
-    // Step 2: save post record via server action
+    // Step 3: save post record via server action
+    setUploadStatus('שומר...')
     const postFd = new FormData()
     postFd.set('image_url', imageUrl)
     postFd.set('title', (fd.get('title') as string) || '')
@@ -99,6 +164,7 @@ export default function InspirationClient({ posts, currentUserId, createPost, de
     }
 
     setUploading(false)
+    setUploadStatus('')
   }
 
   return (
@@ -268,7 +334,7 @@ export default function InspirationClient({ posts, currentUserId, createPost, de
                   className="w-full rounded-xl py-3 text-sm font-bold text-white transition hover:opacity-90 disabled:opacity-50"
                   style={{ background: 'linear-gradient(135deg, #7c3aed, #6d28d9)' }}
                 >
-                  {uploading ? 'מעלה...' : 'העלה עיצוב'}
+                  {uploading ? uploadStatus || 'מעלה...' : 'העלה עיצוב'}
                 </button>
               </div>
             </form>
