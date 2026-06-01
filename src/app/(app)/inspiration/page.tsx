@@ -1,7 +1,6 @@
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
 import InspirationClient from './InspirationClient'
 import type { InspirationPost } from '@/types'
 
@@ -25,7 +24,7 @@ export default async function InspirationPage() {
     comment_count: countMap[p.id] ?? 0,
   }))
 
-  async function uploadPost(
+  async function createPost(
     _prev: { error?: string } | null,
     formData: FormData,
   ): Promise<{ error?: string } | null> {
@@ -34,37 +33,24 @@ export default async function InspirationPage() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return { error: 'לא מחובר' }
 
-    const file = formData.get('image') as File
-    if (!file || file.size === 0) return { error: 'נא לבחור תמונה' }
-    if (file.size > 10 * 1024 * 1024) return { error: 'הקובץ גדול מדי (מקסימום 10MB)' }
-
-    const admin = createAdminClient()
-    const ext = file.name.split('.').pop() ?? 'jpg'
-    const fileName = `${user.id}/${Date.now()}.${ext}`
-    const bytes = await file.arrayBuffer()
-
-    const { data: uploadData, error: uploadError } = await admin.storage
-      .from('portfolio')
-      .upload(fileName, bytes, { contentType: file.type, upsert: false })
-    if (uploadError) return { error: uploadError.message }
-
-    const { data: { publicUrl } } = admin.storage.from('portfolio').getPublicUrl(uploadData.path)
-
-    const tagsRaw = (formData.get('tags') as string)?.trim()
-    const tags = tagsRaw ? tagsRaw.split(',').map((t) => t.trim()).filter(Boolean) : []
+    const imageUrl = (formData.get('image_url') as string)?.trim()
+    if (!imageUrl) return { error: 'תמונה חסרה' }
 
     const title = (formData.get('title') as string)?.trim()
     if (!title) return { error: 'כותרת חובה' }
 
-    const { error: insertError } = await supabase.from('inspiration_posts').insert({
+    const tagsRaw = (formData.get('tags') as string)?.trim()
+    const tags = tagsRaw ? tagsRaw.split(',').map((t) => t.trim()).filter(Boolean) : []
+
+    const { error } = await supabase.from('inspiration_posts').insert({
       user_id: user.id,
       title,
       description: (formData.get('description') as string)?.trim() || null,
-      image_url: publicUrl,
+      image_url: imageUrl,
       category: (formData.get('category') as string) || null,
       tags,
     })
-    if (insertError) return { error: insertError.message }
+    if (error) return { error: error.message }
 
     revalidatePath('/inspiration')
     return null
@@ -83,7 +69,7 @@ export default async function InspirationPage() {
     <InspirationClient
       posts={posts}
       currentUserId={user.id}
-      uploadPost={uploadPost}
+      createPost={createPost}
       deletePost={deletePost}
     />
   )

@@ -23,23 +23,25 @@ html { scroll-behavior: smooth; }
   --tx3:   #475569;
   --cover: linear-gradient(135deg, #1a0533 0%, #0c0c20 40%, #0f0620 100%);
   --card:  rgba(15,15,26,.95);
+  --hero:  linear-gradient(135deg, #1a0533 0%, var(--bg) 70%);
 }
 
 [data-theme="light"] {
-  --bg:    #f8f7ff;
+  --bg:    #f4f2ff;
   --s1:    #ffffff;
-  --s2:    #f3f0ff;
+  --s2:    #ede9fe;
   --s2a:   rgba(255,255,255,.97);
   --hdr:   rgba(255,255,255,.96);
-  --inp:   rgba(124,58,237,.05);
-  --inph:  rgba(124,58,237,.09);
-  --bd:    rgba(124,58,237,.12);
-  --bdh:   rgba(124,58,237,.2);
+  --inp:   rgba(124,58,237,.06);
+  --inph:  rgba(124,58,237,.10);
+  --bd:    rgba(124,58,237,.15);
+  --bdh:   rgba(124,58,237,.25);
   --tx:    #1e1040;
   --tx2:   #4b5563;
-  --tx3:   #9ca3af;
+  --tx3:   #6b7280;
   --cover: linear-gradient(135deg, #ede9fe 0%, #ddd6fe 50%, #c4b5fd 100%);
   --card:  rgba(255,255,255,.97);
+  --hero:  linear-gradient(135deg, #ede9fe 0%, var(--bg) 70%);
 }
 
 body {
@@ -47,6 +49,16 @@ body {
   color: var(--tx);
   font-family: var(--font-rubik), 'Segoe UI', Arial, sans-serif;
   transition: background .25s, color .25s;
+}
+
+/* ─── Select / option elements ─── */
+select {
+  background-color: var(--s2);
+  color: var(--tx);
+}
+select option {
+  background-color: var(--s1);
+  color: var(--tx);
 }
 
 /* ─── Light mode: text overrides ─── */
@@ -60,7 +72,7 @@ body {
 [data-theme="light"] .text-slate-500,
 [data-theme="light"] .text-slate-600 { color: var(--tx3) !important; }
 
-[data-theme="light"] .text-slate-700 { color: #d1d5db !important; }
+[data-theme="light"] .text-slate-700 { color: var(--tx3) !important; }
 
 /* ─── Light mode: hardcoded dark Tailwind bg classes ─── */
 [data-theme="light"] .bg-\[\#0a0a0f\]  { background-color: var(--bg)  !important; }
@@ -94,6 +106,14 @@ body {
 /* ─── Light mode: card depth ─── */
 [data-theme="light"] .glass,
 [data-theme="light"] .glass-card { box-shadow: 0 2px 16px rgba(124,58,237,.08); }
+
+/* ─── Light mode: select ─── */
+[data-theme="light"] select { background-color: #ffffff; color: #1e1040; }
+[data-theme="light"] select option { background-color: #ffffff; color: #1e1040; }
+
+/* ─── Light mode: rounded cards get a subtle shadow ─── */
+[data-theme="light"] .rounded-2xl[style*="var(--s2)"],
+[data-theme="light"] .rounded-2xl[style*="var(--s1)"] { box-shadow: 0 1px 8px rgba(124,58,237,.06); }
 
 /* ─── Light mode: sidebar active state ─── */
 [data-theme="light"] [style*="background: 'linear-gradient(135deg, rgba(124"] { background: rgba(124,58,237,.12) !important; }
