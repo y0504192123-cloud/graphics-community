@@ -4,7 +4,6 @@ import { useState, useTransition, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Upload, MessageSquare, X, ImageIcon, Plus, Trash2 } from 'lucide-react'
-import { createClient as createSupabaseClient } from '@/lib/supabase/client'
 import type { InspirationPost } from '@/types'
 
 async function compressImage(file: File, maxMB = 3.5): Promise<File> {
@@ -125,22 +124,23 @@ export default function InspirationClient({ posts, currentUserId, categories, cr
       return
     }
 
-    // Upload directly to Supabase Storage using the signed URL (bypasses Vercel entirely)
+    // Upload directly to Supabase Storage via signed URL (bypasses Vercel body limit)
     try {
-      const supabase = createSupabaseClient()
-      const { error: uploadErr } = await supabase.storage
-        .from('portfolio')
-        .uploadToSignedUrl(urlResult.path!, urlResult.token!, file, { contentType: 'image/jpeg' })
-
-      if (uploadErr) {
-        console.error('[handleSubmit] uploadToSignedUrl error:', uploadErr.message)
-        setUploadError(`שגיאת העלאה: ${uploadErr.message}`)
+      const uploadRes = await fetch(urlResult.signedUrl!, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'image/jpeg' },
+        body: file,
+      })
+      if (!uploadRes.ok) {
+        const errText = await uploadRes.text().catch(() => '')
+        console.error('[handleSubmit] PUT failed:', uploadRes.status, errText)
+        setUploadError(`שגיאת העלאה (${uploadRes.status}): ${errText.slice(0, 200) || 'שגיאה לא ידועה'}`)
         setUploading(false)
         return
       }
-      console.log('[handleSubmit] uploadToSignedUrl success')
+      console.log('[handleSubmit] PUT success:', uploadRes.status)
     } catch (err) {
-      console.error('[handleSubmit] upload threw:', err)
+      console.error('[handleSubmit] PUT threw:', err)
       setUploadError(`שגיאת העלאה: ${String(err)}`)
       setUploading(false)
       return
@@ -164,7 +164,7 @@ export default function InspirationClient({ posts, currentUserId, categories, cr
         setUploadError(result.error)
       } else {
         closeModal()
-        router.refresh()
+        window.location.reload()
       }
     } catch (err) {
       console.error('[handleSubmit] createPost threw:', err)
