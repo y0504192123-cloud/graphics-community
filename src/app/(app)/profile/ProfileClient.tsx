@@ -159,11 +159,11 @@ export default function ProfileClient({ profile, portfolioItems, allSpecializati
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label className={labelCls}>שם מלא</label>
-                <input name="full_name" defaultValue={profile.full_name ?? ''} placeholder="ישראל ישראלי" className={inputCls} />
+                <input name="full_name" defaultValue={profile.full_name ?? ''} className={inputCls} />
               </div>
               <div>
                 <label className={labelCls}>שם משתמש</label>
-                <input name="username" defaultValue={profile.username ?? ''} placeholder="israel123" className={inputCls} dir="ltr" />
+                <input name="username" defaultValue={profile.username ?? ''} className={inputCls} dir="ltr" />
               </div>
               <div className="sm:col-span-2">
                 <label className={labelCls}>תחומי התמחות</label>
@@ -193,7 +193,7 @@ export default function ProfileClient({ profile, portfolioItems, allSpecializati
               </div>
               <div className="sm:col-span-2">
                 <label className={labelCls}>אודות</label>
-                <textarea name="bio" defaultValue={profile.bio ?? ''} rows={3} placeholder="ספר על עצמך — ניסיון, סגנון, מה אתה אוהב לעצב..." className={`${inputCls} resize-none`} />
+                <textarea name="bio" defaultValue={profile.bio ?? ''} rows={3} className={`${inputCls} resize-none`} />
               </div>
             </div>
             <button
@@ -246,15 +246,15 @@ export default function ProfileClient({ profile, portfolioItems, allSpecializati
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label className={labelCls}>כותרת</label>
-                  <input name="title" required placeholder="שם הפרויקט" className={inputCls} />
+                  <input name="title" required className={inputCls} />
                 </div>
                 <div>
                   <label className={labelCls}>קישור לתמונה</label>
-                  <input name="image_url" type="url" placeholder="https://..." className={inputCls} dir="ltr" />
+                  <input name="image_url" type="url" className={inputCls} dir="ltr" />
                 </div>
                 <div className="sm:col-span-2">
                   <label className={labelCls}>תיאור</label>
-                  <textarea name="description" rows={2} placeholder="תאר את הפרויקט..." className={`${inputCls} resize-none`} />
+                  <textarea name="description" rows={2} className={`${inputCls} resize-none`} />
                 </div>
               </div>
               <div className="mt-4 flex gap-2">

@@ -168,8 +168,8 @@ export default function LoginForm({ urlError, urlMessage }: Props) {
                   required
                   min="0"
                   max="50"
-                  placeholder=""
-                  className={fieldCls}
+                  onWheel={(e) => e.currentTarget.blur()}
+                  className={`${fieldCls} [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none`}
                   dir="ltr"
                 />
               </div>

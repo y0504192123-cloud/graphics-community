@@ -189,9 +189,11 @@ export default function ChatClient({ topics: initialTopics, categories, currentU
               <h3 className="mb-4 text-sm font-bold text-purple-300">פתח נושא חדש לשיחה</h3>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="sm:col-span-2">
-                  <input name="title" required placeholder="כותרת הנושא — לדוגמה: עזרה בעיצוב לוגו" className={inputCls} style={{ borderColor: 'rgba(124,58,237,.3)' }} />
+                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-widest text-slate-500">כותרת הנושא</label>
+                  <input name="title" required className={inputCls} style={{ borderColor: 'rgba(124,58,237,.3)' }} />
                 </div>
                 <div>
+                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-widest text-slate-500">קטגוריה</label>
                   <select name="category" className={inputCls} style={{ borderColor: 'rgba(124,58,237,.3)' }}>
                     {(categories.length ? categories : ['כללי']).map((c) => <option key={c} value={c}>{c}</option>)}
                   </select>
@@ -390,8 +392,7 @@ export default function ChatClient({ topics: initialTopics, categories, currentU
             onChange={handleTextareaChange}
             onKeyDown={handleKeyDown}
             rows={1}
-            placeholder={`הודעה בנושא: ${selectedTopic?.title ?? ''}...`}
-            className="flex-1 resize-none bg-transparent py-1.5 text-sm outline-none placeholder:text-slate-600"
+            className="flex-1 resize-none bg-transparent py-1.5 text-sm outline-none"
             style={{ color: 'var(--tx)', maxHeight: '120px' }}
           />
           <button

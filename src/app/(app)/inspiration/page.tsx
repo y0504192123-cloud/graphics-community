@@ -76,12 +76,40 @@ export default async function InspirationPage() {
     revalidatePath('/inspiration')
   }
 
+  async function uploadImage(formData: FormData): Promise<{ url?: string; error?: string }> {
+    'use server'
+    try {
+      const supabase = await createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return { error: 'לא מחובר' }
+
+      const file = formData.get('file') as File
+      if (!file || file.size === 0) return { error: 'קובץ חסר' }
+
+      const admin = createAdminClient()
+      const fileName = `${user.id}/${Date.now()}.jpg`
+      const arrayBuf = await file.arrayBuffer()
+
+      const { data, error } = await admin.storage
+        .from('portfolio')
+        .upload(fileName, arrayBuf, { contentType: 'image/jpeg', upsert: false })
+
+      if (error) return { error: error.message }
+
+      const { data: { publicUrl } } = admin.storage.from('portfolio').getPublicUrl(data.path)
+      return { url: publicUrl }
+    } catch (err) {
+      return { error: String(err) }
+    }
+  }
+
   return (
     <InspirationClient
       posts={posts}
       currentUserId={user.id}
       createPost={createPost}
       deletePost={deletePost}
+      uploadImage={uploadImage}
     />
   )
 }

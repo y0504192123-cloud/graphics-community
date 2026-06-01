@@ -178,8 +178,7 @@ export default function PostClient({ post, comments, currentUserId, addComment, 
               name="content"
               required
               rows={3}
-              placeholder="שאלה, הערה, או מחמאה..."
-              className="w-full resize-none rounded-xl border bg-white/[0.04] px-4 py-2.5 text-sm text-slate-100 outline-none transition-all placeholder:text-slate-600 focus:bg-white/[0.06] focus:ring-2 focus:ring-purple-500/20"
+              className="w-full resize-none rounded-xl border bg-white/[0.04] px-4 py-2.5 text-sm text-slate-100 outline-none transition-all focus:bg-white/[0.06] focus:ring-2 focus:ring-purple-500/20"
               style={{ borderColor: 'rgba(124,58,237,.3)' }}
             />
             <button

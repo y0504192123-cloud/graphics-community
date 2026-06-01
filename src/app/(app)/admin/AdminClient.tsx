@@ -339,15 +339,15 @@ export default function AdminClient({
                 <div className="space-y-3">
                   <div>
                     <label className={labelCls}>כותרת</label>
-                    <input name="title" required placeholder="כותרת העדכון" className={inputCls} style={{ borderColor: 'rgba(124,58,237,.3)' }} />
+                    <input name="title" required className={inputCls} style={{ borderColor: 'rgba(124,58,237,.3)' }} />
                   </div>
                   <div>
                     <label className={labelCls}>תוכן</label>
-                    <textarea name="content" required rows={3} placeholder="תוכן ההודעה..." className={`${inputCls} resize-none`} style={{ borderColor: 'rgba(124,58,237,.3)' }} />
+                    <textarea name="content" required rows={3} className={`${inputCls} resize-none`} style={{ borderColor: 'rgba(124,58,237,.3)' }} />
                   </div>
                   <div>
                     <label className={labelCls}>קישור לתמונה (אופציונלי)</label>
-                    <input name="image_url" type="url" placeholder="https://..." className={inputCls} style={{ borderColor: 'rgba(124,58,237,.3)' }} dir="ltr" />
+                    <input name="image_url" type="url" className={inputCls} style={{ borderColor: 'rgba(124,58,237,.3)' }} dir="ltr" />
                   </div>
                 </div>
                 <button
@@ -398,26 +398,25 @@ export default function AdminClient({
         {/* ── Chat Categories ── */}
         {activeTab === 'categories' && (
           <div>
-            <form
-              action={catAction}
-              className="mb-6 flex gap-2"
-            >
-              <input
-                name="name"
-                required
-                placeholder="שם קטגוריה חדשה..."
-                className={`flex-1 rounded-xl border bg-white/[0.04] px-4 py-2.5 text-sm text-slate-100 outline-none transition-all placeholder:text-slate-600 focus:bg-white/[0.06] focus:ring-2 focus:ring-purple-500/20`}
-                style={{ borderColor: 'rgba(124,58,237,.3)' }}
-              />
-              <button
-                type="submit"
-                disabled={catPending}
-                className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-white transition hover:opacity-90 disabled:opacity-50"
-                style={{ background: 'linear-gradient(135deg, #7c3aed, #6d28d9)' }}
-              >
-                <Plus size={15} />
-                הוסף
-              </button>
+            <form action={catAction} className="mb-6">
+              <label className={`${labelCls} mb-2`}>קטגוריה חדשה</label>
+              <div className="flex gap-2">
+                <input
+                  name="name"
+                  required
+                  className={`flex-1 rounded-xl border bg-white/[0.04] px-4 py-2.5 text-sm text-slate-100 outline-none transition-all focus:bg-white/[0.06] focus:ring-2 focus:ring-purple-500/20`}
+                  style={{ borderColor: 'rgba(124,58,237,.3)' }}
+                />
+                <button
+                  type="submit"
+                  disabled={catPending}
+                  className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-white transition hover:opacity-90 disabled:opacity-50"
+                  style={{ background: 'linear-gradient(135deg, #7c3aed, #6d28d9)' }}
+                >
+                  <Plus size={15} />
+                  הוסף
+                </button>
+              </div>
             </form>
             {catState?.error && (
               <p className="mb-4 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">{catState.error}</p>
@@ -456,23 +455,25 @@ export default function AdminClient({
         {/* ── Specializations ── */}
         {activeTab === 'specializations' && (
           <div>
-            <form action={specAction} className="mb-6 flex gap-2">
-              <input
-                name="name"
-                required
-                placeholder="שם תחום התמחות חדש..."
-                className="flex-1 rounded-xl border bg-white/[0.04] px-4 py-2.5 text-sm text-slate-100 outline-none transition-all placeholder:text-slate-600 focus:bg-white/[0.06] focus:ring-2 focus:ring-purple-500/20"
-                style={{ borderColor: 'rgba(124,58,237,.3)' }}
-              />
-              <button
-                type="submit"
-                disabled={specPending}
-                className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-white transition hover:opacity-90 disabled:opacity-50"
-                style={{ background: 'linear-gradient(135deg, #7c3aed, #6d28d9)' }}
-              >
-                <Plus size={15} />
-                הוסף
-              </button>
+            <form action={specAction} className="mb-6">
+              <label className={`${labelCls} mb-2`}>תחום התמחות חדש</label>
+              <div className="flex gap-2">
+                <input
+                  name="name"
+                  required
+                  className="flex-1 rounded-xl border bg-white/[0.04] px-4 py-2.5 text-sm text-slate-100 outline-none transition-all focus:bg-white/[0.06] focus:ring-2 focus:ring-purple-500/20"
+                  style={{ borderColor: 'rgba(124,58,237,.3)' }}
+                />
+                <button
+                  type="submit"
+                  disabled={specPending}
+                  className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-white transition hover:opacity-90 disabled:opacity-50"
+                  style={{ background: 'linear-gradient(135deg, #7c3aed, #6d28d9)' }}
+                >
+                  <Plus size={15} />
+                  הוסף
+                </button>
+              </div>
             </form>
             {specState?.error && (
               <p className="mb-4 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">{specState.error}</p>

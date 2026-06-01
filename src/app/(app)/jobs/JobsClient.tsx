@@ -110,7 +110,7 @@ export default function JobsClient({ jobs, currentUserId, createJob, applyToJob 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="sm:col-span-2">
                 <label className={labelCls}>כותרת העבודה</label>
-                <input name="title" required placeholder='לדוג׳ "עיצוב לוגו לחברת סטארטאפ"' className={inputCls} />
+                <input name="title" required className={inputCls} />
               </div>
               <div>
                 <label className={labelCls}>קטגוריה</label>
@@ -121,11 +121,17 @@ export default function JobsClient({ jobs, currentUserId, createJob, applyToJob 
               </div>
               <div>
                 <label className={labelCls}>תקציב (₪)</label>
-                <input name="budget" type="number" min="0" placeholder="500" className={inputCls} />
+                <input
+                  name="budget"
+                  type="number"
+                  min="0"
+                  onWheel={(e) => e.currentTarget.blur()}
+                  className={`${inputCls} [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none`}
+                />
               </div>
               <div className="sm:col-span-2">
                 <label className={labelCls}>תיאור מפורט</label>
-                <textarea name="description" required rows={3} placeholder="תאר את העבודה, הדרישות, הסגנון הרצוי..." className={`${inputCls} resize-none`} />
+                <textarea name="description" required rows={3} className={`${inputCls} resize-none`} />
               </div>
             </div>
             <button
@@ -305,7 +311,14 @@ export default function JobsClient({ jobs, currentUserId, createJob, applyToJob 
                         <div className="grid gap-3 sm:grid-cols-2">
                           <div>
                             <label className={labelCls}>מחיר מוצע (₪)</label>
-                            <input name="price" type="number" min="0" placeholder="400" className={inputCls} style={{ background: 'rgba(255,255,255,.03)' }} />
+                            <input
+                              name="price"
+                              type="number"
+                              min="0"
+                              onWheel={(e) => e.currentTarget.blur()}
+                              className={`${inputCls} [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none`}
+                              style={{ background: 'rgba(255,255,255,.03)' }}
+                            />
                           </div>
                           <div className="sm:col-span-2">
                             <label className={labelCls}>תיאור ההצעה</label>
@@ -313,7 +326,6 @@ export default function JobsClient({ jobs, currentUserId, createJob, applyToJob 
                               name="content"
                               required
                               rows={2}
-                              placeholder="ספר על הניסיון שלך ומדוע אתה מתאים לעבודה..."
                               className={`${inputCls} resize-none`}
                               style={{ background: 'rgba(255,255,255,.03)' }}
                             />

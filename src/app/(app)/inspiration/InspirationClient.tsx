@@ -4,10 +4,9 @@ import { useState, useTransition, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Upload, MessageSquare, X, ImageIcon, Plus, Trash2 } from 'lucide-react'
-import { createClient as createSupabaseClient } from '@/lib/supabase/client'
 import type { InspirationPost } from '@/types'
 
-async function compressImage(file: File, maxMB = 4.5): Promise<File> {
+async function compressImage(file: File, maxMB = 3.5): Promise<File> {
   return new Promise((resolve, reject) => {
     const img = new Image()
     const objectUrl = URL.createObjectURL(file)
@@ -70,9 +69,10 @@ type Props = {
   currentUserId: string
   createPost: (prev: { error?: string } | null, fd: FormData) => Promise<{ error?: string } | null>
   deletePost: (id: string) => Promise<void>
+  uploadImage: (fd: FormData) => Promise<{ url?: string; error?: string }>
 }
 
-export default function InspirationClient({ posts, currentUserId, createPost, deletePost }: Props) {
+export default function InspirationClient({ posts, currentUserId, createPost, deletePost, uploadImage }: Props) {
   const router = useRouter()
   const [showModal, setShowModal] = useState(false)
   const [preview, setPreview] = useState<string | null>(null)
@@ -105,11 +105,11 @@ export default function InspirationClient({ posts, currentUserId, createPost, de
       return
     }
 
-    // Step 1: compress image client-side before uploading
+    // Step 1: compress image client-side
     let file: File
     try {
       setUploadStatus('מכווץ תמונה...')
-      file = await compressImage(rawFile, 4.5)
+      file = await compressImage(rawFile)
       console.log('[handleSubmit] compressed:', (file.size / 1024 / 1024).toFixed(2), 'MB')
     } catch (err) {
       console.error('[handleSubmit] compression failed:', err)
@@ -118,26 +118,18 @@ export default function InspirationClient({ posts, currentUserId, createPost, de
       return
     }
 
-    // Step 2: upload directly from browser to Supabase Storage (bypasses Vercel 4.5MB limit)
+    // Step 2: upload via server action (admin client bypasses RLS)
     setUploadStatus('מעלה תמונה...')
-    const supabase = createSupabaseClient()
-    const fileName = `${currentUserId}/${Date.now()}.jpg`
-
-    console.log('[handleSubmit] uploading to Supabase Storage, path:', fileName)
-    const { data: uploadData, error: storageError } = await supabase.storage
-      .from('portfolio')
-      .upload(fileName, file, { contentType: 'image/jpeg', upsert: false })
-
-    console.log('[handleSubmit] storage result — path:', uploadData?.path ?? null, 'error:', storageError?.message ?? null)
-    if (storageError) {
-      setUploadError(storageError.message)
+    const uploadFd = new FormData()
+    uploadFd.set('file', file, file.name)
+    const uploadResult = await uploadImage(uploadFd)
+    console.log('[handleSubmit] uploadImage result:', uploadResult)
+    if (uploadResult.error || !uploadResult.url) {
+      setUploadError(uploadResult.error ?? 'שגיאה בהעלאת התמונה')
       setUploading(false)
       return
     }
-
-    const { data: { publicUrl } } = supabase.storage.from('portfolio').getPublicUrl(uploadData.path)
-    console.log('[handleSubmit] publicUrl:', publicUrl)
-    const imageUrl = publicUrl
+    const imageUrl = uploadResult.url
 
     // Step 3: save post record via server action
     setUploadStatus('שומר...')
@@ -287,7 +279,6 @@ export default function InspirationClient({ posts, currentUserId, createPost, de
                   <input
                     name="title"
                     required
-                    placeholder="שם העיצוב"
                     className={inputCls}
                     style={{ borderColor: 'rgba(124,58,237,.3)', background: 'var(--inp)', color: 'var(--tx)' }}
                   />
@@ -298,7 +289,6 @@ export default function InspirationClient({ posts, currentUserId, createPost, de
                   <textarea
                     name="description"
                     rows={2}
-                    placeholder="תיאור קצר..."
                     className={`${inputCls} resize-none`}
                     style={{ borderColor: 'rgba(124,58,237,.3)', background: 'var(--inp)', color: 'var(--tx)' }}
                   />
@@ -322,7 +312,6 @@ export default function InspirationClient({ posts, currentUserId, createPost, de
                   <label className={labelCls}>תגיות (מופרדות בפסיקים)</label>
                   <input
                     name="tags"
-                    placeholder="לוגו, פרינט, מינימליסטי..."
                     className={inputCls}
                     style={{ borderColor: 'rgba(124,58,237,.3)', background: 'var(--inp)', color: 'var(--tx)' }}
                   />
