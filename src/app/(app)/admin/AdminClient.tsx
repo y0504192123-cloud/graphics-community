@@ -3,11 +3,11 @@
 import { useState, useTransition, useActionState } from 'react'
 import {
   ShieldCheck, Users, Clock, CheckCircle2, XCircle, Newspaper,
-  Hash, Plus, Trash2, ExternalLink, Phone, MapPin, Briefcase, Star, X
+  Hash, Plus, Trash2, ExternalLink, Phone, MapPin, Briefcase, Star, X, Palette
 } from 'lucide-react'
-import type { Profile, NewsItem, ChatCategory, Specialization } from '@/types'
+import type { Profile, NewsItem, ChatCategory, Specialization, InspirationCategory } from '@/types'
 
-type Tab = 'pending' | 'users' | 'news' | 'categories' | 'specializations'
+type Tab = 'pending' | 'users' | 'news' | 'categories' | 'specializations' | 'insp_cats'
 
 type Props = {
   pendingUsers:    Profile[]
@@ -15,6 +15,7 @@ type Props = {
   newsItems:       NewsItem[]
   categories:      ChatCategory[]
   specializations: Specialization[]
+  inspirationCategories:       InspirationCategory[]
   approveUser:     (id: string) => Promise<void>
   rejectUser:      (id: string) => Promise<void>
   makeAdmin:       (id: string) => Promise<void>
@@ -23,34 +24,39 @@ type Props = {
   deleteNews:      (id: string) => Promise<void>
   addCategory:     (prev: { error?: string } | null, fd: FormData) => Promise<{ error?: string } | null>
   deleteCategory:  (id: string) => Promise<void>
-  addSpecialization:    (prev: { error?: string } | null, fd: FormData) => Promise<{ error?: string } | null>
-  deleteSpecialization: (id: string) => Promise<void>
-  deleteUser:           (id: string) => Promise<void>
+  addSpecialization:           (prev: { error?: string } | null, fd: FormData) => Promise<{ error?: string } | null>
+  deleteSpecialization:        (id: string) => Promise<void>
+  deleteUser:                  (id: string) => Promise<void>
+  addInspirationCategory:      (prev: { error?: string } | null, fd: FormData) => Promise<{ error?: string } | null>
+  deleteInspirationCategory:   (id: string) => Promise<void>
 }
 
 const inputCls = 'w-full rounded-xl border bg-white/[0.04] px-4 py-2.5 text-sm text-slate-100 outline-none transition-all placeholder:text-slate-600 focus:bg-white/[0.06] focus:ring-2 focus:ring-purple-500/20'
 const labelCls = 'mb-1.5 block text-xs font-semibold uppercase tracking-widest text-slate-500'
 
 const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
-  { id: 'pending',         label: 'ממתינים לאישור',  icon: <Clock size={15} /> },
-  { id: 'users',           label: 'משתמשים פעילים',   icon: <Users size={15} /> },
-  { id: 'news',            label: 'חדשות',             icon: <Newspaper size={15} /> },
-  { id: 'categories',      label: "קטגוריות צ'אט",    icon: <Hash size={15} /> },
-  { id: 'specializations', label: 'תחומי התמחות',     icon: <Star size={15} /> },
+  { id: 'pending',         label: 'ממתינים לאישור',   icon: <Clock size={15} /> },
+  { id: 'users',           label: 'משתמשים פעילים',    icon: <Users size={15} /> },
+  { id: 'news',            label: 'חדשות',              icon: <Newspaper size={15} /> },
+  { id: 'categories',      label: "קטגוריות צ'אט",     icon: <Hash size={15} /> },
+  { id: 'specializations', label: 'תחומי התמחות',      icon: <Star size={15} /> },
+  { id: 'insp_cats',       label: 'קטגוריות השראה',    icon: <Palette size={15} /> },
 ]
 
 export default function AdminClient({
-  pendingUsers, activeUsers, newsItems, categories, specializations,
+  pendingUsers, activeUsers, newsItems, categories, specializations, inspirationCategories,
   approveUser, rejectUser, makeAdmin, removeAdmin,
   publishNews, deleteNews, addCategory, deleteCategory,
   addSpecialization, deleteSpecialization, deleteUser,
+  addInspirationCategory, deleteInspirationCategory,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('pending')
   const [isPending, startTransition] = useTransition()
 
-  const [newsState, newsAction, newsPending] = useActionState(publishNews, null)
-  const [catState,  catAction,  catPending]  = useActionState(addCategory, null)
-  const [specState, specAction, specPending] = useActionState(addSpecialization, null)
+  const [newsState,     newsAction,     newsPending]  = useActionState(publishNews, null)
+  const [catState,      catAction,      catPending]   = useActionState(addCategory, null)
+  const [specState,     specAction,     specPending]  = useActionState(addSpecialization, null)
+  const [inspCatState,  inspCatAction,  inspCatPending] = useActionState(addInspirationCategory, null)
   const [showNewsForm, setShowNewsForm] = useState(false)
 
   return (
@@ -499,6 +505,63 @@ export default function AdminClient({
                       className="text-slate-500 transition hover:text-red-400 disabled:opacity-50"
                     >
                       <X size={13} />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Inspiration Categories ── */}
+        {activeTab === 'insp_cats' && (
+          <div>
+            <form action={inspCatAction} className="mb-6">
+              <label className={`${labelCls} mb-2`}>קטגוריה חדשה לספריית השראה</label>
+              <div className="flex gap-2">
+                <input
+                  name="name"
+                  required
+                  className="flex-1 rounded-xl border bg-white/[0.04] px-4 py-2.5 text-sm text-slate-100 outline-none transition-all focus:bg-white/[0.06] focus:ring-2 focus:ring-purple-500/20"
+                  style={{ borderColor: 'rgba(124,58,237,.3)' }}
+                />
+                <button
+                  type="submit"
+                  disabled={inspCatPending}
+                  className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-white transition hover:opacity-90 disabled:opacity-50"
+                  style={{ background: 'linear-gradient(135deg, #7c3aed, #6d28d9)' }}
+                >
+                  <Plus size={15} />
+                  הוסף
+                </button>
+              </div>
+            </form>
+            {inspCatState?.error && (
+              <p className="mb-4 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">{inspCatState.error}</p>
+            )}
+
+            <div className="space-y-2">
+              {inspirationCategories.length === 0 ? (
+                <div className="rounded-2xl py-12 text-center text-sm text-slate-500" style={{ border: '2px dashed var(--bd)', background: 'var(--inp)' }}>
+                  אין קטגוריות עדיין
+                </div>
+              ) : (
+                inspirationCategories.map((cat) => (
+                  <div
+                    key={cat.id}
+                    className="flex items-center justify-between rounded-xl px-4 py-3"
+                    style={{ background: 'var(--s2)', border: '1px solid var(--bd)' }}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <Palette size={13} className="text-purple-400" />
+                      <span className="text-sm font-medium text-slate-200">{cat.name}</span>
+                    </div>
+                    <button
+                      disabled={isPending}
+                      onClick={() => startTransition(async () => { await deleteInspirationCategory(cat.id) })}
+                      className="rounded-lg p-1.5 text-slate-600 transition hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50"
+                    >
+                      <Trash2 size={14} />
                     </button>
                   </div>
                 ))

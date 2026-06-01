@@ -10,9 +10,10 @@ export default async function InspirationPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const [postsRes, commentsRes] = await Promise.all([
+  const [postsRes, commentsRes, catsRes] = await Promise.all([
     supabase.from('inspiration_posts').select('*, profiles(*)').order('created_at', { ascending: false }),
     supabase.from('inspiration_comments').select('post_id'),
+    supabase.from('inspiration_categories').select('name').order('name', { ascending: true }),
   ])
 
   const countMap: Record<string, number> = {}
@@ -24,6 +25,8 @@ export default async function InspirationPage() {
     ...p,
     comment_count: countMap[p.id] ?? 0,
   }))
+
+  const categories: string[] = (catsRes.data ?? []).map((c) => c.name)
 
   async function createPost(
     _prev: { error?: string } | null,
@@ -58,7 +61,6 @@ export default async function InspirationPage() {
       if (error) return { error: error.message }
 
       revalidatePath('/inspiration')
-      console.log('[createPost] success, path revalidated')
       return null
     } catch (err) {
       console.error('[createPost] unexpected error:', err)
@@ -76,28 +78,21 @@ export default async function InspirationPage() {
     revalidatePath('/inspiration')
   }
 
-  async function uploadImage(formData: FormData): Promise<{ url?: string; error?: string }> {
+  async function getSignedUploadUrl(): Promise<{ signedUrl?: string; publicUrl?: string; error?: string }> {
     'use server'
     try {
       const supabase = await createClient()
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return { error: 'לא מחובר' }
 
-      const file = formData.get('file') as File
-      if (!file || file.size === 0) return { error: 'קובץ חסר' }
-
       const admin = createAdminClient()
-      const fileName = `${user.id}/${Date.now()}.jpg`
-      const arrayBuf = await file.arrayBuffer()
+      const path = `${user.id}/${Date.now()}.jpg`
 
-      const { data, error } = await admin.storage
-        .from('portfolio')
-        .upload(fileName, arrayBuf, { contentType: 'image/jpeg', upsert: false })
-
+      const { data, error } = await admin.storage.from('portfolio').createSignedUploadUrl(path)
       if (error) return { error: error.message }
 
-      const { data: { publicUrl } } = admin.storage.from('portfolio').getPublicUrl(data.path)
-      return { url: publicUrl }
+      const { data: { publicUrl } } = admin.storage.from('portfolio').getPublicUrl(path)
+      return { signedUrl: data.signedUrl, publicUrl }
     } catch (err) {
       return { error: String(err) }
     }
@@ -107,9 +102,10 @@ export default async function InspirationPage() {
     <InspirationClient
       posts={posts}
       currentUserId={user.id}
+      categories={categories}
       createPost={createPost}
       deletePost={deletePost}
-      uploadImage={uploadImage}
+      getSignedUploadUrl={getSignedUploadUrl}
     />
   )
 }

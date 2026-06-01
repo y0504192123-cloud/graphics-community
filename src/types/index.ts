@@ -105,6 +105,12 @@ export type Specialization = {
   created_at: string
 }
 
+export type InspirationCategory = {
+  id: string
+  name: string
+  created_at: string
+}
+
 export type InspirationPost = {
   id: string
   user_id: string

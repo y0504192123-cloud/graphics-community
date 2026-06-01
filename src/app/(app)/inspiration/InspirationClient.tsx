@@ -56,23 +56,19 @@ async function compressImage(file: File, maxMB = 3.5): Promise<File> {
   })
 }
 
-const CATEGORIES = [
-  'לוגו', 'מיתוג', 'סושיאל מדיה', 'פרסום', 'אינפוגרפיקה',
-  'אילוסטרציה', 'עיצוב אתרים', 'הדפסה', 'מוצרי פרמיום', 'וידאו ומושן', 'אחר',
-]
-
 const inputCls = 'w-full rounded-xl border px-4 py-2.5 text-sm outline-none transition-all focus:ring-2 focus:ring-purple-500/20'
 const labelCls = 'mb-1.5 block text-xs font-semibold uppercase tracking-widest text-slate-500'
 
 type Props = {
   posts: InspirationPost[]
   currentUserId: string
+  categories: string[]
   createPost: (prev: { error?: string } | null, fd: FormData) => Promise<{ error?: string } | null>
   deletePost: (id: string) => Promise<void>
-  uploadImage: (fd: FormData) => Promise<{ url?: string; error?: string }>
+  getSignedUploadUrl: () => Promise<{ signedUrl?: string; publicUrl?: string; error?: string }>
 }
 
-export default function InspirationClient({ posts, currentUserId, createPost, deletePost, uploadImage }: Props) {
+export default function InspirationClient({ posts, currentUserId, categories, createPost, deletePost, getSignedUploadUrl }: Props) {
   const router = useRouter()
   const [showModal, setShowModal] = useState(false)
   const [preview, setPreview] = useState<string | null>(null)
@@ -118,18 +114,31 @@ export default function InspirationClient({ posts, currentUserId, createPost, de
       return
     }
 
-    // Step 2: upload via server action (admin client bypasses RLS)
+    // Step 2: get signed URL from server (tiny request, no file through Vercel)
     setUploadStatus('מעלה תמונה...')
-    const uploadFd = new FormData()
-    uploadFd.set('file', file, file.name)
-    const uploadResult = await uploadImage(uploadFd)
-    console.log('[handleSubmit] uploadImage result:', uploadResult)
-    if (uploadResult.error || !uploadResult.url) {
-      setUploadError(uploadResult.error ?? 'שגיאה בהעלאת התמונה')
+    const urlResult = await getSignedUploadUrl()
+    console.log('[handleSubmit] getSignedUploadUrl result:', urlResult.error ?? 'ok')
+    if (urlResult.error || !urlResult.signedUrl) {
+      setUploadError(urlResult.error ?? 'שגיאה בקבלת URL להעלאה')
       setUploading(false)
       return
     }
-    const imageUrl = uploadResult.url
+
+    // Upload directly from browser to Supabase Storage (bypasses Vercel entirely)
+    const uploadRes = await fetch(urlResult.signedUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'image/jpeg' },
+      body: file,
+    })
+    if (!uploadRes.ok) {
+      const errText = await uploadRes.text().catch(() => '')
+      console.error('[handleSubmit] storage PUT failed:', uploadRes.status, errText)
+      setUploadError(`שגיאת העלאה (${uploadRes.status})${errText ? ': ' + errText.slice(0, 200) : ''}`)
+      setUploading(false)
+      return
+    }
+    console.log('[handleSubmit] storage PUT success')
+    const imageUrl = urlResult.publicUrl!
 
     // Step 3: save post record via server action
     setUploadStatus('שומר...')
@@ -302,7 +311,7 @@ export default function InspirationClient({ posts, currentUserId, createPost, de
                     style={{ borderColor: 'rgba(124,58,237,.3)', background: 'var(--s2)', color: 'var(--tx)' }}
                   >
                     <option value="" style={{ background: 'var(--s1)', color: 'var(--tx)' }}>ללא קטגוריה</option>
-                    {CATEGORIES.map((c) => (
+                    {categories.map((c) => (
                       <option key={c} value={c} style={{ background: 'var(--s1)', color: 'var(--tx)' }}>{c}</option>
                     ))}
                   </select>
