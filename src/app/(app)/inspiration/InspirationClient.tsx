@@ -45,27 +45,32 @@ export default function InspirationClient({ posts, currentUserId, createPost, de
     const fd = new FormData(e.currentTarget)
     const file = fd.get('image') as File
 
+    console.log('[handleSubmit] file:', file?.name ?? 'null', 'size:', file?.size ?? 0)
+
     if (!file || file.size === 0) {
       setUploadError('נא לבחור תמונה')
       setUploading(false)
       return
     }
 
-    // Step 1: upload file via API route (no server action body limit issues)
+    // Step 1: upload file via API route
     const uploadFd = new FormData()
     uploadFd.append('file', file)
 
     let imageUrl: string
     try {
+      console.log('[handleSubmit] uploading file to /api/inspiration/upload')
       const res = await fetch('/api/inspiration/upload', { method: 'POST', body: uploadFd })
       const data = await res.json()
-      if (data.error) {
-        setUploadError(data.error)
+      console.log('[handleSubmit] upload response:', res.status, data)
+      if (!res.ok || data.error) {
+        setUploadError(data.error ?? 'שגיאה בהעלאת התמונה')
         setUploading(false)
         return
       }
       imageUrl = data.url
-    } catch {
+    } catch (err) {
+      console.error('[handleSubmit] fetch error:', err)
       setUploadError('שגיאה בהעלאת התמונה, נסה שוב')
       setUploading(false)
       return
@@ -79,13 +84,21 @@ export default function InspirationClient({ posts, currentUserId, createPost, de
     postFd.set('category', (fd.get('category') as string) || '')
     postFd.set('tags', (fd.get('tags') as string) || '')
 
-    const result = await createPost(null, postFd)
-    if (result?.error) {
-      setUploadError(result.error)
-    } else {
-      closeModal()
-      router.refresh()
+    console.log('[handleSubmit] calling createPost server action')
+    try {
+      const result = await createPost(null, postFd)
+      console.log('[handleSubmit] createPost result:', result)
+      if (result?.error) {
+        setUploadError(result.error)
+      } else {
+        closeModal()
+        router.refresh()
+      }
+    } catch (err) {
+      console.error('[handleSubmit] createPost threw:', err)
+      setUploadError('שגיאה בשמירת הפוסט: ' + String(err))
     }
+
     setUploading(false)
   }
 

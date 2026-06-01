@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import InspirationClient from './InspirationClient'
 import type { InspirationPost } from '@/types'
 
@@ -29,39 +30,49 @@ export default async function InspirationPage() {
     formData: FormData,
   ): Promise<{ error?: string } | null> {
     'use server'
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return { error: 'לא מחובר' }
+    try {
+      const supabase = await createClient()
+      const { data: { user }, error: authErr } = await supabase.auth.getUser()
+      console.log('[createPost] user:', user?.id ?? null, 'authErr:', authErr?.message ?? null)
+      if (!user) return { error: 'לא מחובר' }
 
-    const imageUrl = (formData.get('image_url') as string)?.trim()
-    if (!imageUrl) return { error: 'תמונה חסרה' }
+      const imageUrl = (formData.get('image_url') as string)?.trim()
+      const title    = (formData.get('title')     as string)?.trim()
+      console.log('[createPost] imageUrl:', imageUrl ? '✓' : '✗ MISSING', '| title:', title || '✗ MISSING')
+      if (!imageUrl) return { error: 'תמונה חסרה' }
+      if (!title)    return { error: 'כותרת חובה' }
 
-    const title = (formData.get('title') as string)?.trim()
-    if (!title) return { error: 'כותרת חובה' }
+      const tagsRaw = (formData.get('tags') as string)?.trim()
+      const tags = tagsRaw ? tagsRaw.split(',').map((t) => t.trim()).filter(Boolean) : []
 
-    const tagsRaw = (formData.get('tags') as string)?.trim()
-    const tags = tagsRaw ? tagsRaw.split(',').map((t) => t.trim()).filter(Boolean) : []
+      const admin = createAdminClient()
+      const { error } = await admin.from('inspiration_posts').insert({
+        user_id: user.id,
+        title,
+        description: (formData.get('description') as string)?.trim() || null,
+        image_url: imageUrl,
+        category: (formData.get('category') as string) || null,
+        tags,
+      })
+      console.log('[createPost] insert error:', error?.message ?? 'none')
+      if (error) return { error: error.message }
 
-    const { error } = await supabase.from('inspiration_posts').insert({
-      user_id: user.id,
-      title,
-      description: (formData.get('description') as string)?.trim() || null,
-      image_url: imageUrl,
-      category: (formData.get('category') as string) || null,
-      tags,
-    })
-    if (error) return { error: error.message }
-
-    revalidatePath('/inspiration')
-    return null
+      revalidatePath('/inspiration')
+      console.log('[createPost] success, path revalidated')
+      return null
+    } catch (err) {
+      console.error('[createPost] unexpected error:', err)
+      return { error: String(err) }
+    }
   }
 
   async function deletePost(postId: string): Promise<void> {
     'use server'
+    const admin = createAdminClient()
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
-    await supabase.from('inspiration_posts').delete().eq('id', postId).eq('user_id', user.id)
+    await admin.from('inspiration_posts').delete().eq('id', postId).eq('user_id', user.id)
     revalidatePath('/inspiration')
   }
 
