@@ -104,3 +104,25 @@ export type Specialization = {
   name: string
   created_at: string
 }
+
+export type InspirationPost = {
+  id: string
+  user_id: string
+  title: string
+  description: string | null
+  image_url: string
+  category: string | null
+  tags: string[]
+  created_at: string
+  profiles?: Profile
+  comment_count?: number
+}
+
+export type InspirationComment = {
+  id: string
+  post_id: string
+  user_id: string
+  content: string
+  created_at: string
+  profiles?: Profile
+}

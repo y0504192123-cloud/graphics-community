@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Briefcase, MessageSquare, Library, Menu, X, Sparkles, Moon, Sun, ShieldCheck } from 'lucide-react'
+import { LayoutDashboard, Briefcase, MessageSquare, Library, Menu, X, Sparkles, Moon, Sun, ShieldCheck, Palette } from 'lucide-react'
 import { useState } from 'react'
 import LogoutButton from './LogoutButton'
 import { useTheme } from '@/components/ThemeProvider'
@@ -11,10 +11,11 @@ import type { Profile } from '@/types'
 type NavItem = { href: string; label: string; icon: React.ReactNode }
 
 const navItems: NavItem[] = [
-  { href: '/dashboard', label: 'דשבורד',          icon: <LayoutDashboard size={17} /> },
-  { href: '/jobs',      label: 'לוח עבודות',       icon: <Briefcase size={17} /> },
-  { href: '/chat',      label: "צ'אטים",           icon: <MessageSquare size={17} /> },
-  { href: '/assets',    label: 'ספריית השראה',      icon: <Library size={17} /> },
+  { href: '/dashboard',   label: 'דשבורד',        icon: <LayoutDashboard size={17} /> },
+  { href: '/jobs',        label: 'לוח עבודות',     icon: <Briefcase size={17} /> },
+  { href: '/chat',        label: "צ'אטים",         icon: <MessageSquare size={17} /> },
+  { href: '/inspiration', label: 'ספריית השראה',   icon: <Palette size={17} /> },
+  { href: '/assets',      label: 'נכסים',          icon: <Library size={17} /> },
 ]
 
 type Props = { profile: Profile | null; email: string }
