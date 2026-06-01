@@ -4,6 +4,7 @@ import { useState, useTransition, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Upload, MessageSquare, X, ImageIcon, Plus, Trash2 } from 'lucide-react'
+import { createClient as createSupabaseClient } from '@/lib/supabase/client'
 import type { InspirationPost } from '@/types'
 
 const CATEGORIES = [
@@ -53,28 +54,26 @@ export default function InspirationClient({ posts, currentUserId, createPost, de
       return
     }
 
-    // Step 1: upload file via API route
-    const uploadFd = new FormData()
-    uploadFd.append('file', file)
+    // Step 1: upload directly from browser to Supabase Storage (bypasses Vercel 4.5MB limit)
+    const supabase = createSupabaseClient()
+    const ext = file.name.split('.').pop()?.toLowerCase() ?? 'jpg'
+    const fileName = `${currentUserId}/${Date.now()}.${ext}`
 
-    let imageUrl: string
-    try {
-      console.log('[handleSubmit] uploading file to /api/inspiration/upload')
-      const res = await fetch('/api/inspiration/upload', { method: 'POST', body: uploadFd })
-      const data = await res.json()
-      console.log('[handleSubmit] upload response:', res.status, data)
-      if (!res.ok || data.error) {
-        setUploadError(data.error ?? 'שגיאה בהעלאת התמונה')
-        setUploading(false)
-        return
-      }
-      imageUrl = data.url
-    } catch (err) {
-      console.error('[handleSubmit] fetch error:', err)
-      setUploadError('שגיאה בהעלאת התמונה, נסה שוב')
+    console.log('[handleSubmit] uploading to Supabase Storage, path:', fileName)
+    const { data: uploadData, error: storageError } = await supabase.storage
+      .from('portfolio')
+      .upload(fileName, file, { contentType: file.type, upsert: false })
+
+    console.log('[handleSubmit] storage result — path:', uploadData?.path ?? null, 'error:', storageError?.message ?? null)
+    if (storageError) {
+      setUploadError(storageError.message)
       setUploading(false)
       return
     }
+
+    const { data: { publicUrl } } = supabase.storage.from('portfolio').getPublicUrl(uploadData.path)
+    console.log('[handleSubmit] publicUrl:', publicUrl)
+    const imageUrl = publicUrl
 
     // Step 2: save post record via server action
     const postFd = new FormData()
