@@ -3,7 +3,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import AdminClient from './AdminClient'
-import type { Profile, NewsItem, ChatCategory, Specialization, InspirationCategory } from '@/types'
+import type { Profile, NewsItem, ChatCategory, Specialization, InspirationCategory, JobCategory } from '@/types'
 import { sendApprovalEmail } from '@/lib/email'
 
 export default async function AdminPage() {
@@ -15,13 +15,14 @@ export default async function AdminPage() {
   if (profileData?.role !== 'admin') redirect('/dashboard')
 
   const admin = createAdminClient()
-  const [pendingRes, activeRes, newsRes, catRes, specsRes, inspCatsRes] = await Promise.all([
+  const [pendingRes, activeRes, newsRes, catRes, specsRes, inspCatsRes, jobCatsRes] = await Promise.all([
     admin.from('profiles').select('*').eq('status', 'pending').order('created_at', { ascending: false }),
     admin.from('profiles').select('*').eq('status', 'active').order('created_at', { ascending: false }),
     supabase.from('news').select('*, profiles(*)').order('created_at', { ascending: false }),
     supabase.from('chat_categories').select('*').order('created_at', { ascending: true }),
     supabase.from('specializations').select('*').order('name', { ascending: true }),
     supabase.from('inspiration_categories').select('*').order('name', { ascending: true }),
+    supabase.from('job_categories').select('*').order('name', { ascending: true }),
   ])
 
   const pendingUsers          = (pendingRes.data   ?? []) as Profile[]
@@ -30,6 +31,7 @@ export default async function AdminPage() {
   const categories            = (catRes.data       ?? []) as ChatCategory[]
   const specializations       = (specsRes.data     ?? []) as Specialization[]
   const inspirationCategories = (inspCatsRes.data  ?? []) as InspirationCategory[]
+  const jobCategories         = (jobCatsRes.data   ?? []) as JobCategory[]
 
   /* ── Server Actions ── */
 
@@ -172,6 +174,27 @@ export default async function AdminPage() {
     revalidatePath('/inspiration')
   }
 
+  async function addJobCategory(
+    _prev: { error?: string } | null,
+    formData: FormData,
+  ): Promise<{ error?: string } | null> {
+    'use server'
+    const name = (formData.get('name') as string)?.trim()
+    if (!name) return { error: 'שם הקטגוריה לא יכול להיות ריק' }
+    const { error } = await createAdminClient().from('job_categories').insert({ name })
+    if (error) return { error: error.message }
+    revalidatePath('/admin')
+    revalidatePath('/jobs')
+    return null
+  }
+
+  async function deleteJobCategory(catId: string) {
+    'use server'
+    await createAdminClient().from('job_categories').delete().eq('id', catId)
+    revalidatePath('/admin')
+    revalidatePath('/jobs')
+  }
+
   return (
     <AdminClient
       pendingUsers={pendingUsers}
@@ -193,6 +216,9 @@ export default async function AdminPage() {
       inspirationCategories={inspirationCategories}
       addInspirationCategory={addInspirationCategory}
       deleteInspirationCategory={deleteInspirationCategory}
+      jobCategories={jobCategories}
+      addJobCategory={addJobCategory}
+      deleteJobCategory={deleteJobCategory}
     />
   )
 }

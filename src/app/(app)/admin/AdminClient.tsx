@@ -3,11 +3,11 @@
 import { useState, useTransition, useActionState } from 'react'
 import {
   ShieldCheck, Users, Clock, CheckCircle2, XCircle, Newspaper,
-  Hash, Plus, Trash2, ExternalLink, Phone, MapPin, Briefcase, Star, X, Palette
+  Hash, Plus, Trash2, ExternalLink, Phone, MapPin, Briefcase, Star, X, Palette, FolderOpen
 } from 'lucide-react'
-import type { Profile, NewsItem, ChatCategory, Specialization, InspirationCategory } from '@/types'
+import type { Profile, NewsItem, ChatCategory, Specialization, InspirationCategory, JobCategory } from '@/types'
 
-type Tab = 'pending' | 'users' | 'news' | 'categories' | 'specializations' | 'insp_cats'
+type Tab = 'pending' | 'users' | 'news' | 'categories' | 'specializations' | 'insp_cats' | 'job_cats'
 
 type Props = {
   pendingUsers:    Profile[]
@@ -16,6 +16,7 @@ type Props = {
   categories:      ChatCategory[]
   specializations: Specialization[]
   inspirationCategories:       InspirationCategory[]
+  jobCategories:               JobCategory[]
   approveUser:     (id: string) => Promise<void>
   rejectUser:      (id: string) => Promise<void>
   makeAdmin:       (id: string) => Promise<void>
@@ -29,6 +30,8 @@ type Props = {
   deleteUser:                  (id: string) => Promise<void>
   addInspirationCategory:      (prev: { error?: string } | null, fd: FormData) => Promise<{ error?: string } | null>
   deleteInspirationCategory:   (id: string) => Promise<void>
+  addJobCategory:              (prev: { error?: string } | null, fd: FormData) => Promise<{ error?: string } | null>
+  deleteJobCategory:           (id: string) => Promise<void>
 }
 
 const inputCls = 'w-full rounded-xl border bg-white/[0.04] px-4 py-2.5 text-sm text-slate-100 outline-none transition-all placeholder:text-slate-600 focus:bg-white/[0.06] focus:ring-2 focus:ring-purple-500/20'
@@ -41,14 +44,16 @@ const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'categories',      label: "קטגוריות צ'אט",     icon: <Hash size={15} /> },
   { id: 'specializations', label: 'תחומי התמחות',      icon: <Star size={15} /> },
   { id: 'insp_cats',       label: 'קטגוריות השראה',    icon: <Palette size={15} /> },
+  { id: 'job_cats',        label: 'קטגוריות עבודות',   icon: <FolderOpen size={15} /> },
 ]
 
 export default function AdminClient({
-  pendingUsers, activeUsers, newsItems, categories, specializations, inspirationCategories,
+  pendingUsers, activeUsers, newsItems, categories, specializations, inspirationCategories, jobCategories,
   approveUser, rejectUser, makeAdmin, removeAdmin,
   publishNews, deleteNews, addCategory, deleteCategory,
   addSpecialization, deleteSpecialization, deleteUser,
   addInspirationCategory, deleteInspirationCategory,
+  addJobCategory, deleteJobCategory,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('pending')
   const [isPending, startTransition] = useTransition()
@@ -57,6 +62,7 @@ export default function AdminClient({
   const [catState,      catAction,      catPending]   = useActionState(addCategory, null)
   const [specState,     specAction,     specPending]  = useActionState(addSpecialization, null)
   const [inspCatState,  inspCatAction,  inspCatPending] = useActionState(addInspirationCategory, null)
+  const [jobCatState,   jobCatAction,   jobCatPending]  = useActionState(addJobCategory, null)
   const [showNewsForm, setShowNewsForm] = useState(false)
 
   return (
@@ -559,6 +565,63 @@ export default function AdminClient({
                     <button
                       disabled={isPending}
                       onClick={() => startTransition(async () => { await deleteInspirationCategory(cat.id) })}
+                      className="rounded-lg p-1.5 text-slate-600 transition hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Job Categories ── */}
+        {activeTab === 'job_cats' && (
+          <div>
+            <form action={jobCatAction} className="mb-6">
+              <label className={`${labelCls} mb-2`}>קטגוריה חדשה ללוח עבודות</label>
+              <div className="flex gap-2">
+                <input
+                  name="name"
+                  required
+                  className="flex-1 rounded-xl border bg-white/[0.04] px-4 py-2.5 text-sm text-slate-100 outline-none transition-all focus:bg-white/[0.06] focus:ring-2 focus:ring-purple-500/20"
+                  style={{ borderColor: 'rgba(124,58,237,.3)' }}
+                />
+                <button
+                  type="submit"
+                  disabled={jobCatPending}
+                  className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-white transition hover:opacity-90 disabled:opacity-50"
+                  style={{ background: 'linear-gradient(135deg, #7c3aed, #6d28d9)' }}
+                >
+                  <Plus size={15} />
+                  הוסף
+                </button>
+              </div>
+            </form>
+            {jobCatState?.error && (
+              <p className="mb-4 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">{jobCatState.error}</p>
+            )}
+
+            <div className="space-y-2">
+              {jobCategories.length === 0 ? (
+                <div className="rounded-2xl py-12 text-center text-sm text-slate-500" style={{ border: '2px dashed var(--bd)', background: 'var(--inp)' }}>
+                  אין קטגוריות עדיין
+                </div>
+              ) : (
+                jobCategories.map((cat) => (
+                  <div
+                    key={cat.id}
+                    className="flex items-center justify-between rounded-xl px-4 py-3"
+                    style={{ background: 'var(--s2)', border: '1px solid var(--bd)' }}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <FolderOpen size={13} className="text-purple-400" />
+                      <span className="text-sm font-medium text-slate-200">{cat.name}</span>
+                    </div>
+                    <button
+                      disabled={isPending}
+                      onClick={() => startTransition(async () => { await deleteJobCategory(cat.id) })}
                       className="rounded-lg p-1.5 text-slate-600 transition hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50"
                     >
                       <Trash2 size={14} />

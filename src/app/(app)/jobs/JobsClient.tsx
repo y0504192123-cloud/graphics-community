@@ -7,20 +7,10 @@ import type { Job, Profile } from '@/types'
 type Props = {
   jobs: (Job & { profiles: Profile | null })[]
   currentUserId: string
+  categories: string[]
   createJob: (formData: FormData) => Promise<void>
   applyToJob: (jobId: string, formData: FormData) => Promise<void>
 }
-
-const categories = [
-  'לוגואים ומיתוג',
-  'עיצוב דפוס',
-  'מדיה חברתית',
-  'אמנות דיגיטלית',
-  'עיצוב אינטרנט',
-  'פוסטרים ומודעות',
-  'עיצוב אריזות',
-  'אחר',
-]
 
 const statusConfig: Record<string, { label: string; color: string; bg: string; dot: string }> = {
   open:        { label: 'פתוח',   color: 'text-emerald-400', bg: 'rgba(52,211,153,.1)',  dot: '#34d399' },
@@ -42,7 +32,7 @@ const categoryIcons: Record<string, string> = {
   'אחר': '✦',
 }
 
-export default function JobsClient({ jobs, currentUserId, createJob, applyToJob }: Props) {
+export default function JobsClient({ jobs, currentUserId, categories, createJob, applyToJob }: Props) {
   const [showCreate, setShowCreate] = useState(false)
   const [applyingTo, setApplyingTo] = useState<string | null>(null)
   const [filterCat, setFilterCat] = useState<string>('הכל')
