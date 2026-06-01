@@ -78,7 +78,7 @@ export default async function InspirationPage() {
     revalidatePath('/inspiration')
   }
 
-  async function getSignedUploadUrl(): Promise<{ signedUrl?: string; publicUrl?: string; error?: string }> {
+  async function getSignedUploadUrl(): Promise<{ signedUrl?: string; token?: string; path?: string; publicUrl?: string; error?: string }> {
     'use server'
     try {
       const supabase = await createClient()
@@ -92,7 +92,7 @@ export default async function InspirationPage() {
       if (error) return { error: error.message }
 
       const { data: { publicUrl } } = admin.storage.from('portfolio').getPublicUrl(path)
-      return { signedUrl: data.signedUrl, publicUrl }
+      return { signedUrl: data.signedUrl, token: data.token, path, publicUrl }
     } catch (err) {
       return { error: String(err) }
     }

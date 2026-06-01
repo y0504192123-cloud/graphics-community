@@ -4,6 +4,7 @@ import { useState, useTransition, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Upload, MessageSquare, X, ImageIcon, Plus, Trash2 } from 'lucide-react'
+import { createClient as createSupabaseClient } from '@/lib/supabase/client'
 import type { InspirationPost } from '@/types'
 
 async function compressImage(file: File, maxMB = 3.5): Promise<File> {
@@ -65,7 +66,7 @@ type Props = {
   categories: string[]
   createPost: (prev: { error?: string } | null, fd: FormData) => Promise<{ error?: string } | null>
   deletePost: (id: string) => Promise<void>
-  getSignedUploadUrl: () => Promise<{ signedUrl?: string; publicUrl?: string; error?: string }>
+  getSignedUploadUrl: () => Promise<{ signedUrl?: string; token?: string; path?: string; publicUrl?: string; error?: string }>
 }
 
 export default function InspirationClient({ posts, currentUserId, categories, createPost, deletePost, getSignedUploadUrl }: Props) {
@@ -124,20 +125,26 @@ export default function InspirationClient({ posts, currentUserId, categories, cr
       return
     }
 
-    // Upload directly from browser to Supabase Storage (bypasses Vercel entirely)
-    const uploadRes = await fetch(urlResult.signedUrl, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'image/jpeg' },
-      body: file,
-    })
-    if (!uploadRes.ok) {
-      const errText = await uploadRes.text().catch(() => '')
-      console.error('[handleSubmit] storage PUT failed:', uploadRes.status, errText)
-      setUploadError(`שגיאת העלאה (${uploadRes.status})${errText ? ': ' + errText.slice(0, 200) : ''}`)
+    // Upload directly to Supabase Storage using the signed URL (bypasses Vercel entirely)
+    try {
+      const supabase = createSupabaseClient()
+      const { error: uploadErr } = await supabase.storage
+        .from('portfolio')
+        .uploadToSignedUrl(urlResult.path!, urlResult.token!, file, { contentType: 'image/jpeg' })
+
+      if (uploadErr) {
+        console.error('[handleSubmit] uploadToSignedUrl error:', uploadErr.message)
+        setUploadError(`שגיאת העלאה: ${uploadErr.message}`)
+        setUploading(false)
+        return
+      }
+      console.log('[handleSubmit] uploadToSignedUrl success')
+    } catch (err) {
+      console.error('[handleSubmit] upload threw:', err)
+      setUploadError(`שגיאת העלאה: ${String(err)}`)
       setUploading(false)
       return
     }
-    console.log('[handleSubmit] storage PUT success')
     const imageUrl = urlResult.publicUrl!
 
     // Step 3: save post record via server action

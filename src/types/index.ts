@@ -93,6 +93,12 @@ export type Asset = {
   created_at: string
 }
 
+export type JobCategory = {
+  id: string
+  name: string
+  created_at: string
+}
+
 export type ChatCategory = {
   id: string
   name: string

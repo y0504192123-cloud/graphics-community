@@ -6,23 +6,20 @@ import type { Job, Profile } from '@/types'
 
 export default async function JobsPage() {
   const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
+  const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: jobs } = await supabase
-    .from('jobs')
-    .select('*, profiles(*)')
-    .order('created_at', { ascending: false })
+  const [jobsRes, catsRes] = await Promise.all([
+    supabase.from('jobs').select('*, profiles(*)').order('created_at', { ascending: false }),
+    supabase.from('job_categories').select('name').order('name', { ascending: true }),
+  ])
+
+  const categories: string[] = (catsRes.data ?? []).map((c) => c.name)
 
   async function createJob(formData: FormData) {
     'use server'
     const supabase = await createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const { data: { user } } = await supabase.auth.getUser()
     if (!user) redirect('/login')
 
     const budgetStr = formData.get('budget') as string
@@ -41,9 +38,7 @@ export default async function JobsPage() {
   async function applyToJob(jobId: string, formData: FormData) {
     'use server'
     const supabase = await createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const { data: { user } } = await supabase.auth.getUser()
     if (!user) redirect('/login')
 
     const priceStr = formData.get('price') as string
@@ -60,8 +55,9 @@ export default async function JobsPage() {
 
   return (
     <JobsClient
-      jobs={(jobs ?? []) as (Job & { profiles: Profile | null })[]}
+      jobs={(jobsRes.data ?? []) as (Job & { profiles: Profile | null })[]}
       currentUserId={user.id}
+      categories={categories}
       createJob={createJob}
       applyToJob={applyToJob}
     />
