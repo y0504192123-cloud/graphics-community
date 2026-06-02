@@ -318,7 +318,11 @@ export default function ChatClient({
   }
 
   const handleCommunitySend = async () => {
-    if (!communityText.trim() || !selectedTopic || isSendingC) return
+    console.log('[CLIENT handleCommunitySend] called — text:', communityText, 'topic:', selectedTopic?.id, 'isSending:', isSendingC)
+    if (!communityText.trim() || !selectedTopic || isSendingC) {
+      console.log('[CLIENT handleCommunitySend] BLOCKED — text empty?', !communityText.trim(), 'no topic?', !selectedTopic, 'already sending?', isSendingC)
+      return
+    }
     const content = communityText.trim()
     setCommunityText('')
     if (communityTextRef.current) { communityTextRef.current.style.height = 'auto' }
@@ -330,10 +334,12 @@ export default function ChatClient({
       created_at: new Date().toISOString(),
       profiles: currentProfile ?? undefined,
     }])
+    console.log('[CLIENT handleCommunitySend] calling sendMessage...')
     setSendError(null)
     setIsSendingC(true)
     try {
       await sendMessage(selectedTopic.id, content)
+      console.log('[CLIENT handleCommunitySend] sendMessage returned OK')
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       console.error('[sendMessage] client error:', err)
