@@ -9,6 +9,7 @@ import {
   sendPrivateMessage,
   deletePrivateMessage,
   markMessagesRead,
+  getChatUploadUrl,
 } from './actions'
 import type { Topic, Profile, PrivateMessage } from '@/types'
 
@@ -85,6 +86,7 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
       initialDmProfile={dmProfile}
       initialJobQuote={initialJobQuote}
       activeUsers={activeUsers}
+      getChatUploadUrl={getChatUploadUrl}
     />
   )
 }

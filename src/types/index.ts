@@ -100,10 +100,14 @@ export type PrivateMessage = {
   id: string
   sender_id: string
   receiver_id: string
-  content: string
+  content: string | null
   job_id: string | null
   is_read: boolean
   created_at: string
+  attachment_url?: string | null
+  attachment_type?: string | null
+  attachment_name?: string | null
+  deleted_for_all?: boolean
   sender?: Profile
   receiver?: Profile
 }

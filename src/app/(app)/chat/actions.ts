@@ -40,16 +40,25 @@ export async function deleteMessage(messageId: string) {
   await admin.from('messages').delete().eq('id', messageId)
 }
 
-export async function sendPrivateMessage(receiverId: string, content: string) {
+export async function sendPrivateMessage(
+  receiverId: string,
+  content: string,
+  attachmentUrl?: string,
+  attachmentType?: string,
+  attachmentName?: string,
+) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
   await createAdminClient().from('private_messages').insert({
     sender_id: user.id,
     receiver_id: receiverId,
-    content,
+    content: content || null,
     job_id: null,
     is_read: false,
+    attachment_url: attachmentUrl ?? null,
+    attachment_type: attachmentType ?? null,
+    attachment_name: attachmentName ?? null,
   })
 }
 
@@ -60,9 +69,10 @@ export async function deletePrivateMessage(messageId: string) {
   const admin = createAdminClient()
   const { data: msg } = await admin.from('private_messages').select('sender_id').eq('id', messageId).single()
   if (!msg) return
-  const { data: profile } = await admin.from('profiles').select('role').eq('id', user.id).single()
-  if (msg.sender_id !== user.id && profile?.role !== 'admin') return
-  await admin.from('private_messages').delete().eq('id', messageId)
+  if (msg.sender_id !== user.id) return
+  await admin.from('private_messages')
+    .update({ deleted_for_all: true, content: null })
+    .eq('id', messageId)
 }
 
 export async function markMessagesRead(senderId: string) {
@@ -75,4 +85,16 @@ export async function markMessagesRead(senderId: string) {
     .eq('sender_id', senderId)
     .eq('receiver_id', user.id)
     .eq('is_read', false)
+}
+
+export async function getChatUploadUrl(): Promise<{ signedUrl?: string; publicUrl?: string; error?: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'לא מחובר' }
+  const admin = createAdminClient()
+  const path = `${user.id}/${Date.now()}`
+  const { data, error } = await admin.storage.from('chat-attachments').createSignedUploadUrl(path)
+  if (error) return { error: error.message }
+  const { data: { publicUrl } } = admin.storage.from('chat-attachments').getPublicUrl(path)
+  return { signedUrl: data.signedUrl, publicUrl }
 }

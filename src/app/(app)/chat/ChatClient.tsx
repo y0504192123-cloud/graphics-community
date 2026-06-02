@@ -1,9 +1,17 @@
 'use client'
 
-import { useState, useEffect, useRef, useMemo } from 'react'
-import { Send, ArrowRight, Plus, X, Hash, Clock, Smile, MessageSquare, Lock, Trash2, Search, UserPlus } from 'lucide-react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import {
+  Send, ArrowRight, Plus, X, Hash, Lock, Trash2,
+  Search, UserPlus, Pin, Paperclip, Check, CheckCheck,
+  MessageSquare, File as FileIcon, Image as ImageIcon,
+} from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { Topic, Message, Profile, PrivateMessage } from '@/types'
+
+// ─────────────────────────────────────────────────────────
+// Types
+// ─────────────────────────────────────────────────────────
 
 type Props = {
   topics: Topic[]
@@ -12,13 +20,14 @@ type Props = {
   currentProfile: Profile | null
   isAdmin: boolean
   activeUsers: Profile[]
-  createTopic: (formData: FormData) => Promise<void>
+  createTopic: (fd: FormData) => Promise<void>
   sendMessage: (topicId: string, content: string) => Promise<void>
-  deleteMessage: (messageId: string) => Promise<void>
+  deleteMessage: (id: string) => Promise<void>
   initialPrivateMessages: PrivateMessage[]
-  sendPrivateMessage: (receiverId: string, content: string) => Promise<void>
-  deletePrivateMessage: (messageId: string) => Promise<void>
+  sendPrivateMessage: (receiverId: string, content: string, attUrl?: string, attType?: string, attName?: string) => Promise<void>
+  deletePrivateMessage: (id: string) => Promise<void>
   markMessagesRead: (senderId: string) => Promise<void>
+  getChatUploadUrl: () => Promise<{ signedUrl?: string; publicUrl?: string; error?: string }>
   initialDmUserId: string | null
   initialDmProfile: Profile | null
   initialJobQuote: string | null
@@ -32,7 +41,11 @@ type Convo = {
   unread: number
 }
 
-const categoryColors: Record<string, { bg: string; text: string; border: string }> = {
+// ─────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────
+
+const catColors: Record<string, { bg: string; text: string; border: string }> = {
   'כללי':               { bg: 'rgba(124,58,237,.1)',  text: '#7c3aed', border: 'rgba(124,58,237,.3)'  },
   'עזרה בפוטושופ':      { bg: 'rgba(59,130,246,.1)',  text: '#2563eb', border: 'rgba(59,130,246,.3)'  },
   'עזרה באילוסטרייטור': { bg: 'rgba(234,179,8,.1)',   text: '#d97706', border: 'rgba(234,179,8,.3)'   },
@@ -42,13 +55,17 @@ const categoryColors: Record<string, { bg: string; text: string; border: string 
   'כלים וטכניקות':      { bg: 'rgba(99,102,241,.1)',  text: '#4f46e5', border: 'rgba(99,102,241,.3)'  },
 }
 
-const avatarGradients = [
-  'from-violet-600 to-purple-800',
-  'from-pink-600 to-rose-800',
-  'from-blue-600 to-indigo-800',
-  'from-emerald-600 to-teal-800',
-  'from-amber-600 to-orange-800',
+const GRADIENTS = [
+  'from-violet-500 to-purple-700',
+  'from-pink-500 to-rose-700',
+  'from-blue-500 to-indigo-700',
+  'from-emerald-500 to-teal-700',
+  'from-amber-500 to-orange-700',
 ]
+
+// ─────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────
 
 function hashStr(s: string): number {
   let h = 0
@@ -56,133 +73,326 @@ function hashStr(s: string): number {
   return Math.abs(h)
 }
 
-function CategoryBadge({ cat }: { cat: string }) {
-  const c = categoryColors[cat] ?? categoryColors['כללי']
+function grad(uid: string) { return GRADIENTS[hashStr(uid) % GRADIENTS.length] }
+
+function dName(p: Profile | null | undefined) { return p?.full_name ?? p?.username ?? 'משתמש' }
+
+function initials(name: string) { return name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase() }
+
+function fmtTime(iso: string) {
+  return new Date(iso).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
+}
+
+function fmtDateSep(iso: string): string {
+  const d = new Date(iso)
+  const today = new Date()
+  const yesterday = new Date(today)
+  yesterday.setDate(today.getDate() - 1)
+  if (d.toDateString() === today.toDateString()) return 'היום'
+  if (d.toDateString() === yesterday.toDateString()) return 'אתמול'
+  return d.toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' })
+}
+
+function needsDateSep(curr: string, prev?: string): boolean {
+  if (!prev) return true
+  return new Date(curr).toDateString() !== new Date(prev).toDateString()
+}
+
+// ─────────────────────────────────────────────────────────
+// Small components
+// ─────────────────────────────────────────────────────────
+
+function AvatarBubble({ profile, uid, size = 9 }: { profile?: Profile | null; uid: string; size?: number }) {
+  const sz = `h-${size} w-${size}`
+  const textSz = size <= 8 ? 'text-xs' : 'text-sm'
   return (
-    <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold" style={{ background: c.bg, color: c.text, border: `1px solid ${c.border}` }}>
+    <div className={`${sz} shrink-0 rounded-full overflow-hidden bg-gradient-to-br ${grad(uid)} flex items-center justify-center ${textSz} font-bold text-white shadow-sm`}>
+      {profile?.avatar_url
+        ? <img src={profile.avatar_url} alt="" className="h-full w-full object-cover" />
+        : <span>{initials(dName(profile))}</span>
+      }
+    </div>
+  )
+}
+
+function DateSepLine({ iso }: { iso: string }) {
+  return (
+    <div className="my-4 flex items-center gap-3">
+      <div className="flex-1 h-px" style={{ background: 'var(--bd)' }} />
+      <span className="rounded-full px-3 py-0.5 text-[11px] font-medium" style={{ background: 'var(--inp)', color: 'var(--tx3)', border: '1px solid var(--bd)' }}>
+        {fmtDateSep(iso)}
+      </span>
+      <div className="flex-1 h-px" style={{ background: 'var(--bd)' }} />
+    </div>
+  )
+}
+
+function TypingDots() {
+  return (
+    <div className="flex items-center gap-1 px-1">
+      {[0, 1, 2].map(i => (
+        <span key={i} className="h-1.5 w-1.5 rounded-full bg-slate-400 animate-bounce" style={{ animationDelay: `${i * 150}ms` }} />
+      ))}
+    </div>
+  )
+}
+
+function CatBadge({ cat }: { cat: string }) {
+  const c = catColors[cat] ?? catColors['כללי']
+  return (
+    <span className="rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: c.bg, color: c.text, border: `1px solid ${c.border}` }}>
       {cat}
     </span>
   )
 }
 
-const inputCls = 'w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition-all placeholder:text-slate-400 hover:border-slate-300 focus:border-purple-400 focus:ring-2 focus:ring-purple-100'
+// ─────────────────────────────────────────────────────────
+// InputBar
+// ─────────────────────────────────────────────────────────
 
 type InputBarProps = {
   value: string
-  onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void
+  onChange: (v: string) => void
   onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void
   onSend: () => void
   isSending: boolean
   textRef: React.RefObject<HTMLTextAreaElement | null>
+  onAttachClick?: () => void
+  attachment?: { name: string; type: string; preview?: string } | null
+  onRemoveAttachment?: () => void
+  isUploading?: boolean
+  placeholder?: string
 }
 
-function InputBar({ value, onChange, onKeyDown, onSend, isSending, textRef }: InputBarProps) {
+function InputBar({ value, onChange, onKeyDown, onSend, isSending, textRef, onAttachClick, attachment, onRemoveAttachment, isUploading, placeholder }: InputBarProps) {
   const handleInput = (e: React.FormEvent<HTMLTextAreaElement>) => {
     const el = e.currentTarget
     el.style.height = 'auto'
-    el.style.height = el.scrollHeight + 'px'
+    el.style.height = Math.min(el.scrollHeight, 140) + 'px'
   }
+  const canSend = (value.trim() || attachment) && !isSending && !isUploading
+
   return (
-    <div className="shrink-0 px-4 py-3 lg:px-5" style={{ background: 'var(--hdr)', borderTop: '1px solid var(--bd)' }}>
-      <div className="flex items-end gap-2 rounded-2xl p-2" style={{ background: 'var(--inp)', border: '1px solid var(--bd)' }}>
-        <button className="mb-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100">
-          <Smile size={17} />
-        </button>
+    <div className="shrink-0 px-3 py-2.5" style={{ background: 'var(--hdr)', borderTop: '1px solid var(--bd)' }}>
+      {attachment && (
+        <div className="mb-2 flex items-center gap-2 rounded-xl px-3 py-2 text-sm" style={{ background: 'var(--inp)', border: '1px solid var(--bd)' }}>
+          {attachment.type.startsWith('image/') && attachment.preview
+            ? <img src={attachment.preview} alt="" className="h-10 w-10 rounded-lg object-cover shrink-0" />
+            : <FileIcon size={20} className="shrink-0 text-purple-500" />
+          }
+          <span className="flex-1 truncate text-xs" style={{ color: 'var(--tx2)' }}>{attachment.name}</span>
+          <button onClick={onRemoveAttachment} className="shrink-0 rounded p-0.5 hover:bg-red-500/10" style={{ color: 'var(--tx3)' }}>
+            <X size={14} />
+          </button>
+        </div>
+      )}
+      <div className="flex items-end gap-2 rounded-2xl px-2 py-1.5" style={{ background: 'var(--inp)', border: '1px solid var(--bd)' }}>
+        {onAttachClick && (
+          <button onClick={onAttachClick} className="mb-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition hover:bg-slate-100" style={{ color: isUploading ? '#a855f7' : 'var(--tx3)' }}>
+            {isUploading ? <div className="h-4 w-4 rounded-full border-2 border-purple-400 border-t-transparent animate-spin" /> : <Paperclip size={16} />}
+          </button>
+        )}
         <textarea
           ref={textRef}
           value={value}
-          onChange={onChange}
+          onChange={e => onChange(e.target.value)}
           onInput={handleInput}
           onKeyDown={onKeyDown}
           rows={1}
-          placeholder="כתוב הודעה..."
-          className="flex-1 resize-none bg-transparent py-1.5 text-sm leading-relaxed outline-none placeholder:text-slate-600"
-          style={{ color: 'var(--tx)', maxHeight: '210px', overflowY: 'auto' }}
+          placeholder={placeholder ?? 'כתוב הודעה...'}
+          className="flex-1 resize-none bg-transparent py-1.5 text-sm leading-relaxed outline-none placeholder:text-slate-400"
+          style={{ color: 'var(--tx)', maxHeight: '140px', overflowY: 'auto' }}
         />
         <button
           onClick={onSend}
-          disabled={!value.trim() || isSending}
-          className="mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white shadow-md transition-all duration-200 hover:scale-105 disabled:opacity-30"
-          style={{ background: value.trim() ? 'linear-gradient(135deg, #7c3aed, #6d28d9)' : 'var(--inp)' }}
+          disabled={!canSend}
+          className="mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white transition-all hover:scale-105 disabled:opacity-30"
+          style={{ background: canSend ? 'linear-gradient(135deg, #7c3aed, #6d28d9)' : 'var(--inp)' }}
         >
-          <Send size={15} className={value.trim() ? '' : 'text-slate-600'} />
+          <Send size={15} className={canSend ? 'text-white' : 'text-slate-400'} />
         </button>
       </div>
-      <p className="mt-1.5 text-center text-[10px] text-slate-700">Enter לשליחה · Shift+Enter לשורה חדשה</p>
+      <p className="mt-1 text-center text-[10px]" style={{ color: 'var(--tx3)' }}>Enter לשליחה · Shift+Enter לשורה חדשה</p>
     </div>
   )
 }
 
-const headerBg: React.CSSProperties = { background: 'var(--hero)' }
-
-function BgDecorations() {
-  return (
-    <>
-      <div className="pointer-events-none absolute -top-16 start-0 h-48 w-48 rounded-full opacity-30" style={{ background: 'radial-gradient(circle, rgba(168,85,247,.35) 0%, transparent 70%)', filter: 'blur(40px)' }} />
-      <div className="grid-pattern absolute inset-0" />
-    </>
-  )
-}
+// ─────────────────────────────────────────────────────────
+// Main component
+// ─────────────────────────────────────────────────────────
 
 export default function ChatClient({
   topics: initialTopics, categories,
   currentUserId, currentProfile, isAdmin, activeUsers,
   createTopic, sendMessage, deleteMessage,
   initialPrivateMessages,
-  sendPrivateMessage, deletePrivateMessage, markMessagesRead,
+  sendPrivateMessage, deletePrivateMessage, markMessagesRead, getChatUploadUrl,
   initialDmUserId, initialDmProfile, initialJobQuote,
 }: Props) {
 
+  // ── Layout ──
+  const [mobileShowChat, setMobileShowChat] = useState(!!initialDmUserId)
   const [mainTab, setMainTab] = useState<'community' | 'private'>(initialDmUserId ? 'private' : 'community')
 
-  // Community state
-  const [topics, setTopics]             = useState<Topic[]>(initialTopics)
-  const [communityView, setCommunityView] = useState<'list' | 'chat'>('list')
+  // ── Community state ──
+  const [topics, setTopics] = useState<Topic[]>(initialTopics)
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null)
   const [communityMsgs, setCommunityMsgs] = useState<Message[]>([])
   const [communityText, setCommunityText] = useState('')
-  const [isSendingC, setIsSendingC]     = useState(false)
-  const [sendError, setSendError]       = useState<string | null>(null)
-  const [showCreate, setShowCreate]     = useState(false)
-  const [filterCat, setFilterCat]       = useState('הכל')
+  const [isSendingC, setIsSendingC] = useState(false)
+  const [showCreateTopic, setShowCreateTopic] = useState(false)
+  const [filterCat, setFilterCat] = useState('הכל')
 
-  // Private state
-  const [privateMsgs, setPrivateMsgs]   = useState<PrivateMessage[]>(initialPrivateMessages)
+  // ── Private state ──
+  const [privateMsgs, setPrivateMsgs] = useState<PrivateMessage[]>(initialPrivateMessages)
   const [selectedPartner, setSelectedPartner] = useState<string | null>(initialDmUserId)
-  const [dmView, setDmView]             = useState<'list' | 'chat'>(initialDmUserId ? 'chat' : 'list')
-  const [privateText, setPrivateText]   = useState(initialJobQuote ?? '')
-  const [isSendingP, setIsSendingP]     = useState(false)
-
+  const [privateText, setPrivateText] = useState(initialJobQuote ?? '')
+  const [isSendingP, setIsSendingP] = useState(false)
   const [showNewChat, setShowNewChat] = useState(false)
   const [userSearch, setUserSearch] = useState('')
 
+  // ── New features state ──
+  const [partnerTyping, setPartnerTyping] = useState(false)
+  const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set())
+  const [privateSearch, setPrivateSearch] = useState('')
+  const [showPrivateSearch, setShowPrivateSearch] = useState(false)
+  const [pinnedMsgId, setPinnedMsgId] = useState<string | null>(null)
+  const [attachFile, setAttachFile] = useState<File | null>(null)
+  const [attachPreview, setAttachPreview] = useState<string | null>(null)
+  const [isUploading, setIsUploading] = useState(false)
+
+  // ── Refs ──
   const communityBottomRef = useRef<HTMLDivElement>(null)
   const privateBottomRef   = useRef<HTMLDivElement>(null)
   const communityTextRef   = useRef<HTMLTextAreaElement>(null)
   const privateTextRef     = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef       = useRef<HTMLInputElement>(null)
   const selectedPartnerRef = useRef<string | null>(selectedPartner)
   selectedPartnerRef.current = selectedPartner
   const markReadRef = useRef(markMessagesRead)
   markReadRef.current = markMessagesRead
+  const typingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const supabase = useMemo(() => createClient(), [])
 
-  // ── Computed ──
+  // ── Online presence ──
+  useEffect(() => {
+    const ch = supabase.channel('online-users')
+      .on('presence', { event: 'sync' }, () => {
+        const state = ch.presenceState<{ userId: string }>()
+        const ids = new Set<string>()
+        Object.values(state).flat().forEach((p: any) => ids.add(p.userId))
+        setOnlineUsers(ids)
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') await ch.track({ userId: currentUserId })
+      })
+    return () => { supabase.removeChannel(ch) }
+  }, [currentUserId, supabase])
 
+  // ── Typing indicator ──
+  useEffect(() => {
+    if (!selectedPartner) { setPartnerTyping(false); return }
+    const key = [currentUserId, selectedPartner].sort().join('_')
+    const ch = supabase.channel(`typing-${key}`)
+      .on('broadcast', { event: 'typing' }, ({ payload }) => {
+        if (payload?.userId === selectedPartner) {
+          setPartnerTyping(true)
+          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
+          typingTimeoutRef.current = setTimeout(() => setPartnerTyping(false), 3000)
+        }
+      })
+      .subscribe()
+    typingChannelRef.current = ch
+    return () => { supabase.removeChannel(ch); typingChannelRef.current = null }
+  }, [selectedPartner, currentUserId, supabase])
+
+  const broadcastTyping = useCallback(() => {
+    typingChannelRef.current?.send({ type: 'broadcast', event: 'typing', payload: { userId: currentUserId } })
+  }, [currentUserId])
+
+  // ── Realtime: new topics ──
+  useEffect(() => {
+    const ch = supabase.channel('rt-topics')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'topics' }, async (payload) => {
+        const t = payload.new as Topic
+        const { data: prof } = await supabase.from('profiles').select('id,full_name,username,avatar_url').eq('id', t.created_by).single()
+        setTopics(prev => [{ ...t, profiles: prof as Profile | undefined ?? undefined }, ...prev])
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  }, [supabase])
+
+  // ── Realtime: community messages ──
+  useEffect(() => {
+    if (!selectedTopic) return
+    const topicId = selectedTopic.id
+    const ch = supabase.channel(`rt-msgs-${topicId}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `channel_id=eq.${topicId}` }, async (payload) => {
+        const m = payload.new as Message
+        const { data: prof } = await supabase.from('profiles').select('id,full_name,username,avatar_url').eq('id', m.user_id).single()
+        setCommunityMsgs(prev => {
+          const deduped = prev.filter(x => !(String(x.id).startsWith('temp-') && x.user_id === m.user_id && x.content === m.content))
+          if (deduped.some(x => String(x.id) === String(m.id))) return deduped
+          return [...deduped, { ...m, profiles: prof as Profile | undefined ?? undefined }]
+        })
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages', filter: `channel_id=eq.${topicId}` }, (payload) => {
+        const old = payload.old as { id: string }
+        setCommunityMsgs(prev => prev.filter(m => m.id !== old.id))
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  }, [selectedTopic?.id, supabase])
+
+  // ── Realtime: private messages ──
+  useEffect(() => {
+    const ch = supabase.channel('rt-private')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'private_messages' }, (payload) => {
+        const u = payload.new as PrivateMessage
+        setPrivateMsgs(prev => prev.map(m => m.id === u.id ? { ...m, ...u } : m))
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'private_messages' }, async (payload) => {
+        const m = payload.new as PrivateMessage
+        if (m.sender_id !== currentUserId && m.receiver_id !== currentUserId) return
+        const [{ data: sp }, { data: rp }] = await Promise.all([
+          supabase.from('profiles').select('id,full_name,username,avatar_url').eq('id', m.sender_id).single(),
+          supabase.from('profiles').select('id,full_name,username,avatar_url').eq('id', m.receiver_id).single(),
+        ])
+        const full: PrivateMessage = { ...m, sender: sp as Profile | undefined ?? undefined, receiver: rp as Profile | undefined ?? undefined }
+        setPrivateMsgs(prev => {
+          if (prev.some(x => String(x.id) === String(m.id))) return prev
+          if (m.sender_id === currentUserId) {
+            const deduped = prev.filter(x => !(String(x.id).startsWith('temp-') && x.sender_id === currentUserId && x.receiver_id === m.receiver_id && x.content === m.content))
+            return [...deduped, full]
+          }
+          return [...prev, full]
+        })
+        if (m.receiver_id === currentUserId && selectedPartnerRef.current === m.sender_id) {
+          markReadRef.current(m.sender_id)
+          setPrivateMsgs(prev => prev.map(x => x.sender_id === m.sender_id && x.receiver_id === currentUserId && !x.is_read ? { ...x, is_read: true } : x))
+        }
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  }, [supabase, currentUserId])
+
+  // ── Auto-scroll ──
+  useEffect(() => { communityBottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [communityMsgs])
+  useEffect(() => { privateBottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [privateMsgs, selectedPartner])
+
+  // ── Computed ──
   const convos: Convo[] = useMemo(() => {
     const map = new Map<string, { msgs: PrivateMessage[], profile: Profile | null }>()
-
-    for (const msg of privateMsgs) {
-      const partnerId = msg.sender_id === currentUserId ? msg.receiver_id : msg.sender_id
-      const profile = msg.sender_id === currentUserId
-        ? (msg.receiver as Profile | undefined ?? null)
-        : (msg.sender as Profile | undefined ?? null)
+    for (const m of privateMsgs) {
+      const partnerId = m.sender_id === currentUserId ? m.receiver_id : m.sender_id
+      const prof = m.sender_id === currentUserId ? (m.receiver as Profile | undefined ?? null) : (m.sender as Profile | undefined ?? null)
       if (!map.has(partnerId)) map.set(partnerId, { msgs: [], profile: null })
       const entry = map.get(partnerId)!
-      entry.msgs.push(msg)
-      if (!entry.profile && profile) entry.profile = profile
+      entry.msgs.push(m)
+      if (!entry.profile && prof) entry.profile = prof
     }
-
     return Array.from(map.entries())
       .map(([partnerId, { msgs, profile }]) => ({
         partnerId, profile, msgs,
@@ -200,11 +410,13 @@ export default function ChatClient({
 
   const currentConvMsgs = useMemo(() => {
     if (!selectedPartner) return []
-    return privateMsgs.filter(m =>
+    const msgs = privateMsgs.filter(m =>
       (m.sender_id === currentUserId && m.receiver_id === selectedPartner) ||
       (m.sender_id === selectedPartner && m.receiver_id === currentUserId)
     )
-  }, [privateMsgs, selectedPartner, currentUserId])
+    if (!privateSearch.trim()) return msgs
+    return msgs.filter(m => m.content?.toLowerCase().includes(privateSearch.toLowerCase()) || m.attachment_name?.toLowerCase().includes(privateSearch.toLowerCase()))
+  }, [privateMsgs, selectedPartner, currentUserId, privateSearch])
 
   const partnerProfile = useMemo(() => {
     if (!selectedPartner) return null
@@ -214,717 +426,628 @@ export default function ChatClient({
       ?? null
   }, [selectedPartner, convos, initialDmUserId, initialDmProfile, activeUsers])
 
-  // ── Realtime ──
+  const pinnedMsg = useMemo(() =>
+    pinnedMsgId ? currentConvMsgs.find(m => m.id === pinnedMsgId) ?? null : null,
+    [pinnedMsgId, currentConvMsgs]
+  )
 
-  // New topics (community list)
-  useEffect(() => {
-    const ch = supabase.channel('rt-topics')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'topics' }, async (payload) => {
-        const newTopic = payload.new as Topic
-        const { data: profile } = await supabase.from('profiles').select('id, full_name, username, avatar_url').eq('id', newTopic.created_by).single()
-        setTopics(prev => [{ ...newTopic, profiles: profile as Profile | undefined ?? undefined }, ...prev])
-      })
-      .subscribe()
-    return () => { supabase.removeChannel(ch) }
-  }, [supabase])
-
-  // Community chat messages — filter by channel_id (works now that REPLICA IDENTITY FULL is set)
-  useEffect(() => {
-    if (!selectedTopic) return
-    const topicId = selectedTopic.id
-    const ch = supabase.channel(`rt-messages-${topicId}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `channel_id=eq.${topicId}` }, async (payload) => {
-        const newMsg = payload.new as Message
-        const { data: profile } = await supabase.from('profiles').select('id, full_name, username, avatar_url').eq('id', newMsg.user_id).single()
-        setCommunityMsgs(prev => {
-          const withoutTemp = prev.filter(
-            m => !(String(m.id).startsWith('temp-') && m.user_id === newMsg.user_id && m.content === newMsg.content)
-          )
-          if (withoutTemp.some(m => String(m.id) === String(newMsg.id))) return withoutTemp
-          return [...withoutTemp, { ...newMsg, profiles: profile as Profile | undefined ?? undefined }]
-        })
-      })
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages', filter: `channel_id=eq.${topicId}` }, (payload) => {
-        const old = payload.old as { id: string }
-        setCommunityMsgs(prev => prev.filter(m => m.id !== old.id))
-      })
-      .subscribe()
-    return () => { supabase.removeChannel(ch) }
-  }, [selectedTopic?.id, supabase])
-
-  // Private messages
-  useEffect(() => {
-    const ch = supabase.channel('rt-private-messages')
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'private_messages' }, (payload) => {
-        const updated = payload.new as { id: string; is_read: boolean }
-        setPrivateMsgs(prev => prev.map(m => m.id === updated.id ? { ...m, is_read: updated.is_read } : m))
-      })
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'private_messages' }, (payload) => {
-        const old = payload.old as { id: string }
-        setPrivateMsgs(prev => prev.filter(m => m.id !== old.id))
-      })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'private_messages' }, async (payload) => {
-        const newMsg = payload.new as PrivateMessage
-        // Only care about messages involving the current user
-        if (newMsg.sender_id !== currentUserId && newMsg.receiver_id !== currentUserId) return
-
-        const [{ data: senderProfile }, { data: receiverProfile }] = await Promise.all([
-          supabase.from('profiles').select('id, full_name, username, avatar_url').eq('id', newMsg.sender_id).single(),
-          supabase.from('profiles').select('id, full_name, username, avatar_url').eq('id', newMsg.receiver_id).single(),
-        ])
-        const fullMsg: PrivateMessage = { ...newMsg, sender: senderProfile as Profile | undefined ?? undefined, receiver: receiverProfile as Profile | undefined ?? undefined }
-
-        setPrivateMsgs(prev => {
-          if (prev.some(m => String(m.id) === String(newMsg.id))) return prev
-          // Replace matching temp message (own sent messages)
-          if (newMsg.sender_id === currentUserId) {
-            const withoutTemp = prev.filter(
-              m => !(String(m.id).startsWith('temp-') && m.sender_id === currentUserId && m.receiver_id === newMsg.receiver_id && m.content === newMsg.content)
-            )
-            return [...withoutTemp, fullMsg]
-          }
-          return [...prev, fullMsg]
-        })
-
-        // Auto-mark as read if conversation with this sender is currently open
-        if (newMsg.receiver_id === currentUserId && selectedPartnerRef.current === newMsg.sender_id) {
-          markReadRef.current(newMsg.sender_id)
-          setPrivateMsgs(prev => prev.map(m =>
-            m.sender_id === newMsg.sender_id && m.receiver_id === currentUserId && !m.is_read
-              ? { ...m, is_read: true }
-              : m
-          ))
-        }
-      })
-      .subscribe()
-    return () => { supabase.removeChannel(ch) }
-  }, [supabase, currentUserId])
-
-  useEffect(() => { communityBottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [communityMsgs])
-  useEffect(() => { privateBottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [currentConvMsgs])
+  const filteredTopics = filterCat === 'הכל' ? topics : topics.filter(t => t.category === filterCat)
+  const filteredUsers = activeUsers.filter(u => {
+    const q = userSearch.toLowerCase()
+    return !q || (u.full_name ?? '').toLowerCase().includes(q) || (u.username ?? '').toLowerCase().includes(q)
+  })
 
   // ── Handlers ──
 
+  const openTopic = async (topic: Topic) => {
+    setSelectedTopic(topic)
+    setMobileShowChat(true)
+    const { data } = await supabase.from('messages')
+      .select('id,content,created_at,user_id,channel_id,profiles(id,full_name,username,avatar_url)')
+      .eq('channel_id', topic.id).order('created_at', { ascending: true }).limit(50)
+    setCommunityMsgs((data as unknown as Message[]) ?? [])
+  }
+
   const openConversation = async (partnerId: string) => {
     setSelectedPartner(partnerId)
-    setDmView('chat')
+    setDmTab()
+    setMobileShowChat(true)
+    setShowPrivateSearch(false)
+    setPrivateSearch('')
+    setPinnedMsgId(null)
     setPrivateMsgs(prev => prev.map(m =>
       m.sender_id === partnerId && m.receiver_id === currentUserId && !m.is_read
-        ? { ...m, is_read: true }
-        : m
+        ? { ...m, is_read: true } : m
     ))
     await markMessagesRead(partnerId)
   }
 
-  const openTopic = async (topic: Topic) => {
-    setSelectedTopic(topic)
-    setCommunityView('chat')
-    const { data } = await supabase.from('messages').select('id, content, created_at, user_id, channel_id, profiles(id, full_name, username, avatar_url)').eq('channel_id', topic.id).order('created_at', { ascending: true }).limit(50)
-    setCommunityMsgs((data as unknown as Message[]) ?? [])
-  }
+  function setDmTab() { setMainTab('private') }
 
   const handleCommunitySend = async () => {
     if (!communityText.trim() || !selectedTopic || isSendingC) return
     const content = communityText.trim()
     setCommunityText('')
-    if (communityTextRef.current) { communityTextRef.current.style.height = 'auto' }
-    setCommunityMsgs(prev => [...prev, {
-      id: `temp-${Date.now()}`,
-      channel_id: selectedTopic.id,
-      user_id: currentUserId,
-      content,
-      created_at: new Date().toISOString(),
-      profiles: currentProfile ?? undefined,
-    }])
-    setSendError(null)
+    if (communityTextRef.current) communityTextRef.current.style.height = 'auto'
+    setCommunityMsgs(prev => [...prev, { id: `temp-${Date.now()}`, channel_id: selectedTopic.id, user_id: currentUserId, content, created_at: new Date().toISOString(), profiles: currentProfile ?? undefined }])
     setIsSendingC(true)
-    try {
-      await sendMessage(selectedTopic.id, content)
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      console.error('[sendMessage] client error:', err)
-      setSendError(msg)
-    } finally {
-      setIsSendingC(false)
-    }
+    try { await sendMessage(selectedTopic.id, content) } finally { setIsSendingC(false) }
   }
 
   const handlePrivateSend = async () => {
-    if (!privateText.trim() || !selectedPartner || isSendingP) return
+    if ((!privateText.trim() && !attachFile) || !selectedPartner || isSendingP) return
     const content = privateText.trim()
+
+    if (attachFile) {
+      setIsUploading(true)
+      try {
+        const { signedUrl, publicUrl, error } = await getChatUploadUrl()
+        if (error || !signedUrl || !publicUrl) return
+        await fetch(signedUrl, { method: 'PUT', body: attachFile, headers: { 'Content-Type': attachFile.type } })
+        const attType = attachFile.type.startsWith('image/') ? 'image' : 'file'
+        setPrivateMsgs(prev => [...prev, { id: `temp-${Date.now()}`, sender_id: currentUserId, receiver_id: selectedPartner, content: content || null, job_id: null, is_read: false, created_at: new Date().toISOString(), attachment_url: publicUrl, attachment_type: attType, attachment_name: attachFile.name, sender: currentProfile ?? undefined }])
+        await sendPrivateMessage(selectedPartner, content, publicUrl, attType, attachFile.name)
+      } finally {
+        setIsUploading(false)
+        setAttachFile(null)
+        setAttachPreview(null)
+        setPrivateText('')
+        if (privateTextRef.current) privateTextRef.current.style.height = 'auto'
+      }
+      return
+    }
+
     setPrivateText('')
-    if (privateTextRef.current) { privateTextRef.current.style.height = 'auto' }
-    setPrivateMsgs(prev => [...prev, {
-      id: `temp-${Date.now()}`,
-      sender_id: currentUserId,
-      receiver_id: selectedPartner,
-      content,
-      job_id: null,
-      is_read: false,
-      created_at: new Date().toISOString(),
-      sender: currentProfile ?? undefined,
-    }])
+    if (privateTextRef.current) privateTextRef.current.style.height = 'auto'
+    setPrivateMsgs(prev => [...prev, { id: `temp-${Date.now()}`, sender_id: currentUserId, receiver_id: selectedPartner, content, job_id: null, is_read: false, created_at: new Date().toISOString(), sender: currentProfile ?? undefined }])
     setIsSendingP(true)
     try { await sendPrivateMessage(selectedPartner, content) } finally { setIsSendingP(false) }
   }
 
-  const handleDeleteCommunityMsg = (messageId: string) => {
-    setCommunityMsgs(prev => prev.filter(m => m.id !== messageId))
-    deleteMessage(messageId)
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setAttachFile(file)
+    if (file.type.startsWith('image/')) {
+      const reader = new FileReader()
+      reader.onload = ev => setAttachPreview(ev.target?.result as string)
+      reader.readAsDataURL(file)
+    } else {
+      setAttachPreview(null)
+    }
+    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
-  const handleDeletePrivateMsg = (messageId: string) => {
-    setPrivateMsgs(prev => prev.filter(m => m.id !== messageId))
-    deletePrivateMessage(messageId)
+  const handleDeletePrivate = async (msgId: string) => {
+    setPrivateMsgs(prev => prev.map(m => m.id === msgId ? { ...m, deleted_for_all: true, content: null, attachment_url: null } : m))
+    await deletePrivateMessage(msgId)
+  }
+
+  const handleDeleteCommunity = (msgId: string) => {
+    setCommunityMsgs(prev => prev.filter(m => m.id !== msgId))
+    deleteMessage(msgId)
   }
 
   const handleCommunityKey = (e: React.KeyboardEvent) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleCommunitySend() } }
-  const handlePrivateKey   = (e: React.KeyboardEvent) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handlePrivateSend() } }
+  const handlePrivateKey = (e: React.KeyboardEvent) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handlePrivateSend() } }
 
-  const makeTextareaHandler = (setter: (v: string) => void) => (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setter(e.target.value)
-  }
+  // ─────────────────────────────────────────────────────────
+  // LEFT PANEL
+  // ─────────────────────────────────────────────────────────
 
-  const dName      = (p: Profile | null | undefined) => p?.full_name ?? p?.username ?? 'משתמש'
-  const initials   = (name: string) => name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
-  const avatarGrad = (uid: string) => avatarGradients[hashStr(uid) % avatarGradients.length]
-  const filteredTopics = filterCat === 'הכל' ? topics : topics.filter(t => t.category === filterCat)
+  const leftPanel = (
+    <div className="flex h-full flex-col" style={{ background: 'var(--s1)' }}>
 
-  // Shared tab bar
-  const TabBar = (
-    <div className="mt-4 flex gap-1">
-      {([
-        { id: 'community' as const, label: 'קהילתי', icon: <MessageSquare size={14} />, badge: 0 },
-        { id: 'private'   as const, label: 'פרטי',   icon: <Lock size={14} />,          badge: totalUnread },
-      ] as const).map(tab => (
-        <button
-          key={tab.id}
-          onClick={() => setMainTab(tab.id)}
-          className="flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-semibold transition-all duration-200"
-          style={mainTab === tab.id
-            ? { background: 'linear-gradient(135deg, #7c3aed, #6d28d9)', color: 'white' }
-            : { background: 'var(--inp)', border: '1px solid var(--bd)', color: 'var(--tx2)' }
-          }
-        >
-          {tab.icon}
-          <span>{tab.label}</span>
-          {tab.badge > 0 && (
-            <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">
-              {tab.badge > 9 ? '9+' : tab.badge}
-            </span>
-          )}
-        </button>
-      ))}
-    </div>
-  )
-
-  // ── COMMUNITY LIST ──
-  if (mainTab === 'community' && communityView === 'list') {
-    return (
-      <div className="min-h-full" style={{ background: 'var(--bg)' }}>
-        <div className="relative overflow-hidden px-6 py-8" style={headerBg}>
-          <BgDecorations />
-          <div className="relative mx-auto max-w-5xl">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h1 className="text-2xl font-bold text-white lg:text-3xl">צ׳אטים</h1>
-                <p className="mt-1 text-sm text-slate-400">שוחח עם הקהילה לפי נושאים</p>
-              </div>
-              <button
-                onClick={() => setShowCreate(s => !s)}
-                className="flex w-fit items-center gap-2 rounded-xl px-5 py-3 text-sm font-bold text-white shadow-lg transition-all hover:scale-[1.02] hover:opacity-90"
-                style={{ background: 'linear-gradient(135deg, #7c3aed, #6d28d9)', boxShadow: '0 4px 20px rgba(124,58,237,.4)' }}
-              >
-                {showCreate ? <X size={15} /> : <Plus size={15} />}
-                {showCreate ? 'ביטול' : 'נושא חדש'}
-              </button>
-            </div>
-            {TabBar}
-          </div>
-        </div>
-
-        <div className="mx-auto max-w-5xl px-6 py-6">
-          {showCreate && (
-            <form
-              action={(fd) => { createTopic(fd); setShowCreate(false) }}
-              className="mb-6 animate-fade-up rounded-2xl p-5"
-              style={{ background: 'rgba(124,58,237,.06)', border: '1px solid rgba(124,58,237,.2)' }}
+      {/* Tab bar */}
+      <div className="shrink-0 px-3 pt-3 pb-2" style={{ borderBottom: '1px solid var(--bd)' }}>
+        <div className="flex gap-1 rounded-xl p-1" style={{ background: 'var(--inp)', border: '1px solid var(--bd)' }}>
+          {([
+            { id: 'community' as const, label: 'קהילתי', icon: <MessageSquare size={13} /> },
+            { id: 'private'   as const, label: 'פרטי',   icon: <Lock size={13} />, badge: totalUnread },
+          ]).map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setMainTab(tab.id)}
+              className="relative flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold transition-all"
+              style={mainTab === tab.id
+                ? { background: 'linear-gradient(135deg,#7c3aed,#6d28d9)', color: 'white' }
+                : { color: 'var(--tx2)' }
+              }
             >
-              <h3 className="mb-4 text-sm font-bold text-purple-700">פתח נושא חדש לשיחה</h3>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="sm:col-span-2">
-                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-widest text-slate-500">כותרת הנושא</label>
-                  <input name="title" required className={inputCls} style={{ borderColor: 'rgba(124,58,237,.3)' }} />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-widest text-slate-500">קטגוריה</label>
-                  <select name="category" className={inputCls} style={{ borderColor: 'rgba(124,58,237,.3)' }}>
-                    {(categories.length ? categories : ['כללי']).map((c) => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </div>
-              </div>
-              <button type="submit" className="mt-4 rounded-xl px-5 py-2 text-sm font-bold text-white transition hover:opacity-90" style={{ background: 'linear-gradient(135deg, #7c3aed, #6d28d9)' }}>
-                פתח נושא
-              </button>
-            </form>
-          )}
-
-          <div className="mb-5 flex flex-wrap gap-2">
-            {['הכל', ...(categories.length ? categories : ['כללי'])].map((cat) => (
-              <button
-                key={cat}
-                onClick={() => setFilterCat(cat)}
-                className="rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all duration-200"
-                style={filterCat === cat
-                  ? { background: 'linear-gradient(135deg, #7c3aed, #6d28d9)', color: 'white', boxShadow: '0 2px 12px rgba(124,58,237,.4)' }
-                  : { background: 'var(--inp)', border: '1px solid var(--bd)', color: '#94a3b8' }
-                }
-              >
-                {cat}
-              </button>
-            ))}
-          </div>
-
-          {filteredTopics.length === 0 ? (
-            <div className="flex flex-col items-center gap-4 rounded-2xl py-20 text-center" style={{ border: '2px dashed var(--bd)', background: 'var(--inp)' }}>
-              <MessageSquare size={32} className="text-slate-600" />
-              <div>
-                <p className="font-semibold text-slate-400">אין נושאים עדיין</p>
-                <p className="mt-1 text-sm text-slate-600">היה הראשון לפתוח שיחה!</p>
-              </div>
-            </div>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {filteredTopics.map((topic, i) => {
-                const c = categoryColors[topic.category] ?? categoryColors['כללי']
-                const creator = dName(topic.profiles)
-                return (
-                  <button
-                    key={topic.id}
-                    onClick={() => openTopic(topic)}
-                    className="group animate-fade-up overflow-hidden rounded-2xl text-start transition-all duration-300 hover:scale-[1.02] hover:-translate-y-0.5"
-                    style={{ background: 'var(--s2)', border: '1px solid var(--bd)', boxShadow: '0 2px 12px rgba(0,0,0,.2)', animationDelay: `${i * 40}ms` }}
-                  >
-                    <div className="h-1 w-full" style={{ background: c.text }} />
-                    <div className="p-4">
-                      <div className="mb-3 flex items-start justify-between gap-2">
-                        <CategoryBadge cat={topic.category} />
-                        <span className="flex items-center gap-1 text-xs text-slate-600">
-                          <Clock size={10} />
-                          {new Date(topic.created_at).toLocaleDateString('he-IL')}
-                        </span>
-                      </div>
-                      <h3 className="mb-3 font-bold line-clamp-2 transition-colors" style={{ color: 'var(--tx)' }}>{topic.title}</h3>
-                      <div className="flex items-center gap-2">
-                        <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${avatarGrad(topic.created_by)} text-[9px] font-bold text-white`}>
-                          {initials(creator)}
-                        </div>
-                        <span className="text-xs text-slate-500">{creator}</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-end gap-1 px-4 py-2 text-xs text-slate-500 transition-colors group-hover:text-purple-400" style={{ borderTop: '1px solid var(--bd)' }}>
-                      <span>הצטרף לשיחה</span>
-                      <ArrowRight size={12} className="transition-transform group-hover:translate-x-0.5" />
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-          )}
+              {tab.icon}
+              {tab.label}
+              {tab.badge && tab.badge > 0 && (
+                <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">
+                  {tab.badge > 9 ? '9+' : tab.badge}
+                </span>
+              )}
+            </button>
+          ))}
         </div>
       </div>
-    )
-  }
 
-  // ── COMMUNITY CHAT ──
-  if (mainTab === 'community' && communityView === 'chat') {
-    return (
-      <div className="flex h-[calc(100vh-3.5rem)] flex-col overflow-hidden lg:h-screen" style={{ background: 'var(--bg)' }}>
-        <div className="shrink-0 flex items-center gap-3 px-5 py-3.5" style={{ background: 'var(--hdr)', borderBottom: '1px solid var(--bd)', backdropFilter: 'blur(20px)' }}>
-          <button
-            onClick={() => { setCommunityView('list'); setSelectedTopic(null); setCommunityMsgs([]) }}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition hover:bg-slate-100"
-            style={{ color: 'var(--tx3)' }}
-          >
-            <ArrowRight size={17} />
-          </button>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <Hash size={14} className="shrink-0 text-purple-500" />
-              <h2 className="truncate text-sm font-bold" style={{ color: 'var(--tx)' }}>{selectedTopic?.title}</h2>
+      {/* Community list */}
+      {mainTab === 'community' && (
+        <div className="flex flex-1 flex-col overflow-hidden">
+          {/* Category filter */}
+          <div className="shrink-0 overflow-x-auto px-3 py-2" style={{ borderBottom: '1px solid var(--bd)' }}>
+            <div className="flex gap-1.5">
+              {['הכל', ...categories].map(cat => (
+                <button
+                  key={cat}
+                  onClick={() => setFilterCat(cat)}
+                  className="shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold transition"
+                  style={filterCat === cat
+                    ? { background: 'linear-gradient(135deg,#7c3aed,#6d28d9)', color: 'white' }
+                    : { background: 'var(--inp)', border: '1px solid var(--bd)', color: 'var(--tx2)' }
+                  }
+                >
+                  {cat}
+                </button>
+              ))}
             </div>
-            {selectedTopic && <CategoryBadge cat={selectedTopic.category} />}
           </div>
-          <div className="flex items-center gap-1.5 text-xs shrink-0" style={{ color: '#10b981' }}>
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
-            פעיל
-          </div>
-        </div>
 
-        <div className="flex-1 overflow-y-auto px-4 py-4 lg:px-6">
-          {communityMsgs.length === 0 && (
-            <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl" style={{ background: 'rgba(124,58,237,.1)', border: '1px solid rgba(124,58,237,.2)' }}>
-                <MessageSquare size={26} className="text-purple-400" />
+          {/* New topic button + form */}
+          <div className="shrink-0 px-3 py-2" style={{ borderBottom: '1px solid var(--bd)' }}>
+            <button
+              onClick={() => setShowCreateTopic(s => !s)}
+              className="flex w-full items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold text-white transition hover:opacity-90"
+              style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)' }}
+            >
+              {showCreateTopic ? <X size={13} /> : <Plus size={13} />}
+              {showCreateTopic ? 'ביטול' : 'נושא חדש'}
+            </button>
+            {showCreateTopic && (
+              <form
+                action={(fd) => { createTopic(fd); setShowCreateTopic(false) }}
+                className="mt-2 space-y-2"
+              >
+                <input name="title" required placeholder="כותרת הנושא" className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-100" />
+                <select name="category" className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-purple-400">
+                  {(categories.length ? categories : ['כללי']).map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <button type="submit" className="w-full rounded-xl py-1.5 text-xs font-bold text-white" style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)' }}>פתח נושא</button>
+              </form>
+            )}
+          </div>
+
+          {/* Topic list */}
+          <div className="flex-1 overflow-y-auto">
+            {filteredTopics.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 py-12 text-center">
+                <MessageSquare size={24} className="text-slate-300" />
+                <p className="text-xs" style={{ color: 'var(--tx3)' }}>אין נושאים עדיין</p>
               </div>
-              <div>
-                <p className="font-bold" style={{ color: 'var(--tx)' }}>{selectedTopic?.title}</p>
-                <p className="mt-1 text-sm text-slate-600">היה הראשון לכתוב הודעה בנושא זה</p>
-              </div>
-            </div>
-          )}
-          <div className="space-y-1">
-            {communityMsgs.map((msg, i) => {
-              const isOwn = msg.user_id === currentUserId
-              const prevMsg = communityMsgs[i - 1]
-              const sameUser = prevMsg?.user_id === msg.user_id
-              const isTemp = String(msg.id).startsWith('temp-')
-              const name = dName(msg.profiles)
-              const gradient = avatarGrad(msg.user_id)
+            ) : filteredTopics.map(topic => {
+              const c = catColors[topic.category] ?? catColors['כללי']
+              const active = selectedTopic?.id === topic.id
               return (
-                <div key={msg.id} className={`group flex items-end gap-2.5 ${isOwn ? 'flex-row-reverse' : ''} ${sameUser ? 'mt-0.5' : 'mt-4'}`}>
-                  {!sameUser ? (
-                    <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${gradient} text-xs font-bold text-white shadow-md`}>
-                      {initials(name)}
-                    </div>
-                  ) : <div className="w-8 shrink-0" />}
-                  <div className={`flex max-w-[72%] flex-col gap-0.5 ${isOwn ? 'items-end' : 'items-start'}`}>
-                    {!sameUser && (
-                      <div className={`flex items-center gap-2 px-1 ${isOwn ? 'flex-row-reverse' : ''}`}>
-                        <span className="text-xs font-semibold" style={{ color: 'var(--tx2)' }}>{isOwn ? 'אתה' : name}</span>
-                        <span className="text-[10px]" style={{ color: 'var(--tx3)' }}>
-                          {new Date(msg.created_at).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      </div>
-                    )}
-                    <div
-                      className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${isTemp ? 'opacity-60' : ''}`}
-                      style={isOwn
-                        ? { background: 'linear-gradient(135deg, #7c3aed, #6d28d9)', boxShadow: '0 2px 12px rgba(124,58,237,.25)', color: 'white' }
-                        : { background: 'var(--s2)', border: '1px solid var(--bd)', color: 'var(--tx2)' }
-                      }
-                    >
-                      {msg.content}
-                    </div>
-                    {(isOwn || isAdmin) && !isTemp && (
-                      <button
-                        onClick={() => handleDeleteCommunityMsg(msg.id)}
-                        className="mt-0.5 flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[10px] text-slate-700 opacity-0 transition-all group-hover:opacity-100 hover:bg-red-500/10 hover:text-red-400"
-                      >
-                        <Trash2 size={10} />
-                        מחק
-                      </button>
-                    )}
-                    {isOwn && !isTemp && (
-                      <span className="px-1 text-[10px] text-slate-600">✓</span>
-                    )}
-                    {sameUser && !(isOwn || isAdmin) && (
-                      <span className="px-1 text-[10px] text-slate-700 opacity-0 transition-opacity group-hover:opacity-100">
-                        {new Date(msg.created_at).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                    )}
+                <button
+                  key={topic.id}
+                  onClick={() => openTopic(topic)}
+                  className="flex w-full items-start gap-3 px-3 py-3 text-start transition hover:bg-slate-50"
+                  style={{ borderBottom: '1px solid var(--bd)', background: active ? 'rgba(124,58,237,.06)' : undefined }}
+                >
+                  <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl" style={{ background: c.bg, border: `1px solid ${c.border}` }}>
+                    <Hash size={14} style={{ color: c.text }} />
                   </div>
-                </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold" style={{ color: active ? '#7c3aed' : 'var(--tx)' }}>{topic.title}</p>
+                    <p className="mt-0.5 text-[11px]" style={{ color: 'var(--tx3)' }}>{new Date(topic.created_at).toLocaleDateString('he-IL')}</p>
+                  </div>
+                  {active && <div className="mt-1 h-4 w-1 shrink-0 rounded-full bg-purple-600" />}
+                </button>
               )
             })}
           </div>
-          <div ref={communityBottomRef} />
         </div>
+      )}
 
-        {sendError && (
-          <div className="shrink-0 px-4 py-2 text-xs text-red-400 bg-red-500/10 border-t border-red-500/20">
-            שגיאה: {sendError}
-          </div>
-        )}
-        <InputBar
-          value={communityText}
-          onChange={makeTextareaHandler(setCommunityText)}
-          onKeyDown={handleCommunityKey}
-          onSend={handleCommunitySend}
-          isSending={isSendingC}
-          textRef={communityTextRef}
-        />
-      </div>
-    )
-  }
-
-  // ── PRIVATE LIST ──
-  if (mainTab === 'private' && dmView === 'list') {
-    const filteredUsers = activeUsers.filter(u => {
-      const q = userSearch.trim().toLowerCase()
-      if (!q) return true
-      return (u.full_name ?? '').toLowerCase().includes(q) || (u.username ?? '').toLowerCase().includes(q)
-    })
-
-    return (
-      <div className="min-h-full" style={{ background: 'var(--bg)' }}>
-        <div className="relative overflow-hidden px-6 py-8" style={headerBg}>
-          <BgDecorations />
-          <div className="relative mx-auto max-w-5xl">
-            <div>
-              <h1 className="text-2xl font-bold text-white lg:text-3xl">צ׳אטים</h1>
-              <p className="mt-1 text-sm text-slate-400">שיחות פרטיות</p>
-            </div>
-            {TabBar}
-          </div>
-        </div>
-
-        <div className="mx-auto max-w-5xl px-6 py-6">
-
+      {/* Private list */}
+      {mainTab === 'private' && (
+        <div className="flex flex-1 flex-col overflow-hidden">
           {/* New chat button */}
-          <div className="mb-5 flex items-center justify-between">
-            <p className="text-sm font-semibold" style={{ color: 'var(--tx2)' }}>
-              {convos.length > 0 ? `${convos.length} שיחות` : 'אין שיחות עדיין'}
-            </p>
+          <div className="shrink-0 px-3 py-2" style={{ borderBottom: '1px solid var(--bd)' }}>
             <button
               onClick={() => { setShowNewChat(s => !s); setUserSearch('') }}
-              className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold text-white transition hover:opacity-90"
-              style={{ background: 'linear-gradient(135deg, #7c3aed, #6d28d9)' }}
+              className="flex w-full items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold text-white transition hover:opacity-90"
+              style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)' }}
             >
-              {showNewChat ? <X size={14} /> : <UserPlus size={14} />}
+              {showNewChat ? <X size={13} /> : <UserPlus size={13} />}
               {showNewChat ? 'ביטול' : 'צ׳אט חדש'}
             </button>
           </div>
 
           {/* User picker */}
           {showNewChat && (
-            <div className="mb-5 animate-fade-up rounded-2xl overflow-hidden" style={{ border: '1px solid var(--bd)', background: 'var(--s2)', boxShadow: '0 4px 24px rgba(0,0,0,.08)' }}>
-              <div className="p-3 border-b" style={{ borderColor: 'var(--bd)' }}>
-                <div className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: 'var(--inp)', border: '1px solid var(--bd)' }}>
-                  <Search size={14} style={{ color: 'var(--tx3)' }} className="shrink-0" />
-                  <input
-                    autoFocus
-                    value={userSearch}
-                    onChange={e => setUserSearch(e.target.value)}
-                    placeholder="חפש משתמש..."
-                    className="flex-1 bg-transparent text-sm outline-none placeholder:text-slate-400"
-                    style={{ color: 'var(--tx)' }}
-                  />
-                  {userSearch && (
-                    <button onClick={() => setUserSearch('')} style={{ color: 'var(--tx3)' }}>
-                      <X size={13} />
-                    </button>
-                  )}
+            <div className="shrink-0" style={{ borderBottom: '1px solid var(--bd)' }}>
+              <div className="px-3 py-2">
+                <div className="flex items-center gap-2 rounded-xl px-2.5 py-1.5" style={{ background: 'var(--inp)', border: '1px solid var(--bd)' }}>
+                  <Search size={13} style={{ color: 'var(--tx3)' }} />
+                  <input autoFocus value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder="חפש..." className="flex-1 bg-transparent text-xs outline-none placeholder:text-slate-400" style={{ color: 'var(--tx)' }} />
+                  {userSearch && <button onClick={() => setUserSearch('')} style={{ color: 'var(--tx3)' }}><X size={12} /></button>}
                 </div>
               </div>
-              <div className="max-h-72 overflow-y-auto">
-                {filteredUsers.length === 0 ? (
-                  <p className="py-8 text-center text-sm" style={{ color: 'var(--tx3)' }}>לא נמצאו משתמשים</p>
-                ) : (
-                  filteredUsers.map(u => {
-                    const name = dName(u)
-                    const existingConvo = convos.find(c => c.partnerId === u.id)
+              <div className="max-h-48 overflow-y-auto">
+                {filteredUsers.length === 0
+                  ? <p className="py-4 text-center text-xs" style={{ color: 'var(--tx3)' }}>לא נמצאו משתמשים</p>
+                  : filteredUsers.map(u => {
+                    const existing = convos.find(c => c.partnerId === u.id)
+                    const isOnline = onlineUsers.has(u.id)
                     return (
                       <button
                         key={u.id}
-                        onClick={() => {
-                          setShowNewChat(false)
-                          setUserSearch('')
-                          if (existingConvo) {
-                            openConversation(u.id)
-                          } else {
-                            setSelectedPartner(u.id)
-                            setDmView('chat')
-                          }
-                        }}
-                        className="flex w-full items-center gap-3 px-4 py-3 text-start transition hover:bg-slate-50"
+                        onClick={() => { setShowNewChat(false); setUserSearch(''); existing ? openConversation(u.id) : openConversation(u.id) }}
+                        className="flex w-full items-center gap-2.5 px-3 py-2.5 text-start transition hover:bg-slate-50"
                       >
-                        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${avatarGrad(u.id)} text-xs font-bold text-white`}>
-                          {u.avatar_url
-                            ? <img src={u.avatar_url} alt={name} className="h-9 w-9 rounded-full object-cover" />
-                            : initials(name)
-                          }
+                        <div className="relative shrink-0">
+                          <AvatarBubble profile={u} uid={u.id} size={8} />
+                          {isOnline && <span className="absolute bottom-0 end-0 h-2 w-2 rounded-full bg-emerald-500 ring-2 ring-white" />}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-semibold" style={{ color: 'var(--tx)' }}>{name}</p>
-                          {u.specialization && (
-                            <p className="truncate text-xs" style={{ color: 'var(--tx3)' }}>{u.specialization}</p>
-                          )}
+                          <p className="truncate text-xs font-semibold" style={{ color: 'var(--tx)' }}>{dName(u)}</p>
+                          {u.specialization && <p className="truncate text-[10px]" style={{ color: 'var(--tx3)' }}>{u.specialization}</p>}
                         </div>
-                        {existingConvo && (
-                          <span className="shrink-0 text-xs text-purple-600 font-medium">שיחה קיימת</span>
-                        )}
+                        {existing && <span className="shrink-0 text-[10px] text-purple-600">קיים</span>}
                       </button>
                     )
                   })
-                )}
+                }
               </div>
             </div>
           )}
 
           {/* Convo list */}
-          {!showNewChat && convos.length === 0 ? (
-            <div className="flex flex-col items-center gap-4 rounded-2xl py-20 text-center" style={{ border: '2px dashed var(--bd)', background: 'var(--inp)' }}>
-              <Lock size={32} className="text-slate-400" />
-              <div>
-                <p className="font-semibold" style={{ color: 'var(--tx2)' }}>אין שיחות פרטיות</p>
-                <p className="mt-1 text-sm" style={{ color: 'var(--tx3)' }}>לחץ &ldquo;צ׳אט חדש&rdquo; כדי להתחיל שיחה</p>
+          <div className="flex-1 overflow-y-auto">
+            {convos.length === 0 && !showNewChat ? (
+              <div className="flex flex-col items-center gap-2 py-12 text-center px-4">
+                <Lock size={24} className="text-slate-300" />
+                <p className="text-xs" style={{ color: 'var(--tx3)' }}>לחץ "צ׳אט חדש" להתחיל שיחה</p>
               </div>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {convos.map(convo => {
-                const name = dName(convo.profile)
-                const hasUnread = convo.unread > 0
-                return (
-                  <button
-                    key={convo.partnerId}
-                    onClick={() => openConversation(convo.partnerId)}
-                    className="group flex w-full items-center gap-4 rounded-2xl p-4 text-start transition-all duration-200 hover:-translate-y-0.5"
-                    style={{
-                      background: 'var(--s2)',
-                      border: hasUnread ? '1px solid rgba(124,58,237,.3)' : '1px solid var(--bd)',
-                      boxShadow: '0 2px 12px rgba(0,0,0,.08)',
-                    }}
-                  >
-                    <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${avatarGrad(convo.partnerId)} text-sm font-bold text-white shadow-md`}>
-                      {convo.profile?.avatar_url
-                        ? <img src={convo.profile.avatar_url} alt={name} className="h-12 w-12 rounded-full object-cover" />
-                        : initials(name)
-                      }
+            ) : convos.map(convo => {
+              const name = dName(convo.profile)
+              const hasUnread = convo.unread > 0
+              const active = selectedPartner === convo.partnerId
+              const isOnline = onlineUsers.has(convo.partnerId)
+              const lastContent = convo.lastMsg.deleted_for_all
+                ? 'הודעה נמחקה'
+                : convo.lastMsg.attachment_url
+                  ? (convo.lastMsg.attachment_type === 'image' ? '📷 תמונה' : '📎 קובץ')
+                  : (convo.lastMsg.content ?? '')
+              return (
+                <button
+                  key={convo.partnerId}
+                  onClick={() => openConversation(convo.partnerId)}
+                  className="flex w-full items-center gap-3 px-3 py-3.5 text-start transition"
+                  style={{
+                    borderBottom: '1px solid var(--bd)',
+                    background: active ? 'rgba(124,58,237,.06)' : undefined,
+                  }}
+                >
+                  <div className="relative shrink-0">
+                    <AvatarBubble profile={convo.profile} uid={convo.partnerId} size={10} />
+                    {isOnline && <span className="absolute bottom-0 end-0 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white" />}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="truncate text-sm font-semibold" style={{ color: hasUnread ? '#6b21a8' : 'var(--tx)' }}>{name}</span>
+                      <span className="shrink-0 text-[10px]" style={{ color: 'var(--tx3)' }}>{fmtTime(convo.lastMsg.created_at)}</span>
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-semibold" style={{ color: hasUnread ? '#6b21a8' : 'var(--tx)' }}>{name}</span>
-                        <span className="text-[11px]" style={{ color: 'var(--tx3)' }}>
-                          {new Date(convo.lastMsg.created_at).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
+                    <div className="mt-0.5 flex items-center justify-between gap-1">
+                      <p className="truncate text-xs" style={{ color: hasUnread ? 'var(--tx2)' : 'var(--tx3)', fontStyle: convo.lastMsg.deleted_for_all ? 'italic' : undefined }}>
+                        {convo.lastMsg.sender_id === currentUserId && <span style={{ color: 'var(--tx3)' }}>אתה: </span>}
+                        {lastContent}
+                      </p>
+                      {hasUnread && (
+                        <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-purple-600 px-1.5 text-[10px] font-bold text-white">
+                          {convo.unread > 9 ? '9+' : convo.unread}
                         </span>
-                      </div>
-                      <div className="mt-0.5 flex items-center justify-between gap-2">
-                        <p className="truncate text-xs" style={{ color: hasUnread ? 'var(--tx2)' : 'var(--tx3)' }}>
-                          {convo.lastMsg.sender_id === currentUserId && <span style={{ color: 'var(--tx3)' }}>אתה: </span>}
-                          {convo.lastMsg.content}
-                        </p>
-                        {hasUnread && (
-                          <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-purple-600 px-1.5 text-[10px] font-bold text-white">
-                            {convo.unread > 9 ? '9+' : convo.unread}
-                          </span>
-                        )}
-                      </div>
+                      )}
                     </div>
-                  </button>
-                )
-              })}
-            </div>
-          )}
+                  </div>
+                </button>
+              )
+            })}
+          </div>
         </div>
-      </div>
-    )
-  }
+      )}
+    </div>
+  )
 
-  // ── PRIVATE CHAT ──
-  return (
-    <div className="flex h-[calc(100vh-3.5rem)] flex-col overflow-hidden lg:h-screen" style={{ background: 'var(--bg)' }}>
-      <div className="shrink-0 flex items-center gap-3 px-5 py-3.5" style={{ background: 'var(--hdr)', borderBottom: '1px solid var(--bd)', backdropFilter: 'blur(20px)' }}>
-        <button
-          onClick={() => { setDmView('list'); setSelectedPartner(null) }}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition hover:bg-slate-100"
-          style={{ color: 'var(--tx3)' }}
-        >
+  // ─────────────────────────────────────────────────────────
+  // WELCOME SCREEN
+  // ─────────────────────────────────────────────────────────
+
+  const welcomeScreen = (
+    <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center px-6" style={{ background: 'var(--bg)' }}>
+      <div className="flex h-20 w-20 items-center justify-center rounded-3xl" style={{ background: 'rgba(124,58,237,.08)', border: '2px solid rgba(124,58,237,.15)' }}>
+        <MessageSquare size={36} className="text-purple-400" />
+      </div>
+      <div>
+        <p className="text-lg font-bold" style={{ color: 'var(--tx)' }}>ברוך הבא לצ׳אטים</p>
+        <p className="mt-1 text-sm" style={{ color: 'var(--tx3)' }}>בחר שיחה מהרשימה כדי להתחיל</p>
+      </div>
+    </div>
+  )
+
+  // ─────────────────────────────────────────────────────────
+  // COMMUNITY CHAT (right panel)
+  // ─────────────────────────────────────────────────────────
+
+  const communityChat = selectedTopic && (
+    <div className="flex h-full flex-col" style={{ background: 'var(--bg)' }}>
+      {/* Header */}
+      <div className="shrink-0 flex items-center gap-3 px-4 py-3" style={{ background: 'var(--hdr)', borderBottom: '1px solid var(--bd)' }}>
+        <button onClick={() => { setSelectedTopic(null); setMobileShowChat(false) }} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition hover:bg-slate-100 lg:hidden" style={{ color: 'var(--tx3)' }}>
           <ArrowRight size={17} />
         </button>
-        {selectedPartner && (
-          <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${avatarGrad(selectedPartner)} text-xs font-bold shadow-sm`} style={{ color: 'white' }}>
-            {partnerProfile?.avatar_url
-              ? <img src={partnerProfile.avatar_url} alt={dName(partnerProfile)} className="h-9 w-9 rounded-full object-cover" />
-              : initials(dName(partnerProfile))
-            }
-          </div>
-        )}
-        <div className="min-w-0 flex-1">
-          <h2 className="truncate text-sm font-bold" style={{ color: 'var(--tx)' }}>{dName(partnerProfile)}</h2>
-          {partnerProfile?.specialization && (
-            <p className="text-xs" style={{ color: 'var(--tx3)' }}>{partnerProfile.specialization}</p>
-          )}
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl" style={{ background: (catColors[selectedTopic.category] ?? catColors['כללי']).bg }}>
+          <Hash size={16} style={{ color: (catColors[selectedTopic.category] ?? catColors['כללי']).text }} />
         </div>
-        <Lock size={14} style={{ color: 'var(--tx3)' }} className="shrink-0" />
+        <div className="min-w-0 flex-1">
+          <h2 className="truncate text-sm font-bold" style={{ color: 'var(--tx)' }}>{selectedTopic.title}</h2>
+          <CatBadge cat={selectedTopic.category} />
+        </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-4 lg:px-6">
-        {currentConvMsgs.length === 0 && (
-          <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl" style={{ background: 'rgba(124,58,237,.1)', border: '1px solid rgba(124,58,237,.2)' }}>
-              <Lock size={26} className="text-purple-400" />
-            </div>
-            <div>
-              <p className="font-bold" style={{ color: 'var(--tx)' }}>{dName(partnerProfile)}</p>
-              <p className="mt-1 text-sm text-slate-600">שלח הודעה ראשונה לפתוח את השיחה</p>
-            </div>
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-0.5">
+        {communityMsgs.length === 0 && (
+          <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+            <Hash size={28} className="text-slate-300" />
+            <p className="text-sm" style={{ color: 'var(--tx3)' }}>היה הראשון לכתוב הודעה בנושא זה</p>
           </div>
         )}
-
-        <div className="space-y-1">
-          {currentConvMsgs.map((msg, i) => {
-            const isOwn = msg.sender_id === currentUserId
-            const prev = currentConvMsgs[i - 1]
-            const sameUser = prev?.sender_id === msg.sender_id
-            const isTemp = String(msg.id).startsWith('temp-')
-            const profile = isOwn ? currentProfile : partnerProfile
-            const name = dName(profile)
-
-            return (
-              <div key={msg.id} className={`group flex items-end gap-2.5 ${isOwn ? 'flex-row-reverse' : ''} ${sameUser ? 'mt-0.5' : 'mt-4'}`}>
-                {!sameUser ? (
-                  <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${avatarGrad(msg.sender_id)} text-xs font-bold text-white shadow-md`}>
-                    {profile?.avatar_url
-                      ? <img src={profile.avatar_url} alt={name} className="h-8 w-8 rounded-full object-cover" />
-                      : initials(name)
-                    }
-                  </div>
-                ) : <div className="w-8 shrink-0" />}
-
-                <div className={`flex max-w-[72%] flex-col gap-0.5 ${isOwn ? 'items-end' : 'items-start'}`}>
+        {communityMsgs.map((msg, i) => {
+          const isOwn = msg.user_id === currentUserId
+          const prev = communityMsgs[i - 1]
+          const sameUser = prev?.user_id === msg.user_id
+          const isTemp = String(msg.id).startsWith('temp-')
+          const name = dName(msg.profiles)
+          return (
+            <div key={msg.id}>
+              {needsDateSep(msg.created_at, prev?.created_at) && <DateSepLine iso={msg.created_at} />}
+              <div className={`group flex items-end gap-2 ${isOwn ? 'flex-row-reverse' : ''} ${sameUser ? 'mt-0.5' : 'mt-3'}`}>
+                {!sameUser
+                  ? <AvatarBubble profile={msg.profiles} uid={msg.user_id} size={8} />
+                  : <div className="w-8 shrink-0" />
+                }
+                <div className={`flex max-w-[75%] flex-col gap-0.5 ${isOwn ? 'items-end' : 'items-start'}`}>
                   {!sameUser && (
                     <div className={`flex items-center gap-2 px-1 ${isOwn ? 'flex-row-reverse' : ''}`}>
                       <span className="text-xs font-semibold" style={{ color: 'var(--tx2)' }}>{isOwn ? 'אתה' : name}</span>
-                      <span className="text-[10px]" style={{ color: 'var(--tx3)' }}>
-                        {new Date(msg.created_at).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
-                      </span>
+                      <span className="text-[10px]" style={{ color: 'var(--tx3)' }}>{fmtTime(msg.created_at)}</span>
                     </div>
                   )}
                   <div
-                    className={`relative rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${isTemp ? 'opacity-70' : ''}`}
+                    className={`rounded-2xl px-3.5 py-2 text-sm leading-relaxed ${isTemp ? 'opacity-60' : ''}`}
                     style={isOwn
-                      ? { background: 'linear-gradient(135deg, #7c3aed, #6d28d9)', boxShadow: '0 2px 12px rgba(124,58,237,.25)', color: 'white' }
-                      : { background: 'var(--s2)', border: '1px solid var(--bd)', color: 'var(--tx2)' }
+                      ? { background: 'linear-gradient(135deg,#7c3aed,#6d28d9)', color: 'white' }
+                      : { background: 'var(--s2)', border: '1px solid var(--bd)', color: 'var(--tx)' }
                     }
                   >
                     {msg.content}
-                    {isTemp && <span className="absolute -bottom-4 end-0 text-[9px] text-slate-600">שולח...</span>}
                   </div>
-                  {isOwn && !isTemp && msg.is_read && (
-                    <span className="px-1 text-[10px] text-purple-400">✓✓ נקרא</span>
-                  )}
                   {(isOwn || isAdmin) && !isTemp && (
-                    <button
-                      onClick={() => handleDeletePrivateMsg(msg.id)}
-                      className="mt-0.5 flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[10px] text-slate-700 opacity-0 transition-all group-hover:opacity-100 hover:bg-red-500/10 hover:text-red-400"
-                    >
-                      <Trash2 size={10} />
-                      מחק
+                    <button onClick={() => handleDeleteCommunity(msg.id)} className="mt-0.5 flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] opacity-0 transition group-hover:opacity-100 hover:bg-red-500/10 hover:text-red-500" style={{ color: 'var(--tx3)' }}>
+                      <Trash2 size={10} /> מחק
                     </button>
-                  )}
-                  {sameUser && !(isOwn || isAdmin) && (
-                    <span className="px-1 text-[10px] text-slate-700 opacity-0 transition-opacity group-hover:opacity-100">
-                      {new Date(msg.created_at).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
-                    </span>
                   )}
                 </div>
               </div>
-            )
-          })}
+            </div>
+          )
+        })}
+        <div ref={communityBottomRef} />
+      </div>
+
+      <InputBar value={communityText} onChange={setCommunityText} onKeyDown={handleCommunityKey} onSend={handleCommunitySend} isSending={isSendingC} textRef={communityTextRef} />
+    </div>
+  )
+
+  // ─────────────────────────────────────────────────────────
+  // PRIVATE CHAT (right panel)
+  // ─────────────────────────────────────────────────────────
+
+  const privateChat = selectedPartner && (
+    <div className="flex h-full flex-col" style={{ background: 'var(--bg)' }}>
+      {/* Header */}
+      <div className="shrink-0 flex items-center gap-3 px-4 py-3" style={{ background: 'var(--hdr)', borderBottom: '1px solid var(--bd)' }}>
+        <button onClick={() => { setSelectedPartner(null); setMobileShowChat(false) }} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition hover:bg-slate-100 lg:hidden" style={{ color: 'var(--tx3)' }}>
+          <ArrowRight size={17} />
+        </button>
+        <div className="relative shrink-0">
+          <AvatarBubble profile={partnerProfile} uid={selectedPartner} size={10} />
+          {onlineUsers.has(selectedPartner) && (
+            <span className="absolute bottom-0 end-0 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white" />
+          )}
         </div>
+        <div className="min-w-0 flex-1">
+          <h2 className="truncate text-sm font-bold" style={{ color: 'var(--tx)' }}>{dName(partnerProfile)}</h2>
+          <p className="text-[11px]" style={{ color: onlineUsers.has(selectedPartner) ? '#059669' : 'var(--tx3)' }}>
+            {onlineUsers.has(selectedPartner) ? 'מקוון' : partnerProfile?.specialization ?? ''}
+          </p>
+        </div>
+        <button onClick={() => setShowPrivateSearch(s => !s)} className="flex h-8 w-8 items-center justify-center rounded-xl transition hover:bg-slate-100" style={{ color: showPrivateSearch ? '#7c3aed' : 'var(--tx3)' }}>
+          <Search size={15} />
+        </button>
+        <Lock size={14} style={{ color: 'var(--tx3)' }} className="shrink-0" />
+      </div>
+
+      {/* Search bar */}
+      {showPrivateSearch && (
+        <div className="shrink-0 flex items-center gap-2 px-4 py-2" style={{ background: 'var(--inp)', borderBottom: '1px solid var(--bd)' }}>
+          <Search size={14} style={{ color: 'var(--tx3)' }} />
+          <input autoFocus value={privateSearch} onChange={e => setPrivateSearch(e.target.value)} placeholder="חפש בשיחה..." className="flex-1 bg-transparent text-sm outline-none placeholder:text-slate-400" style={{ color: 'var(--tx)' }} />
+          {privateSearch && <button onClick={() => setPrivateSearch('')} style={{ color: 'var(--tx3)' }}><X size={13} /></button>}
+          <button onClick={() => { setShowPrivateSearch(false); setPrivateSearch('') }} className="text-xs text-purple-600 font-medium">סגור</button>
+        </div>
+      )}
+
+      {/* Pinned message */}
+      {pinnedMsg && (
+        <div className="shrink-0 flex items-center gap-2.5 px-4 py-2" style={{ background: 'rgba(124,58,237,.06)', borderBottom: '1px solid rgba(124,58,237,.15)' }}>
+          <Pin size={13} className="shrink-0 text-purple-500" />
+          <p className="flex-1 truncate text-xs" style={{ color: 'var(--tx2)' }}>
+            {pinnedMsg.deleted_for_all ? 'הודעה נמחקה' : pinnedMsg.content ?? (pinnedMsg.attachment_type === 'image' ? '📷 תמונה' : '📎 קובץ')}
+          </p>
+          <button onClick={() => setPinnedMsgId(null)} style={{ color: 'var(--tx3)' }}><X size={13} /></button>
+        </div>
+      )}
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto px-4 py-3">
+        {currentConvMsgs.length === 0 && (
+          <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+            <Lock size={28} className="text-slate-300" />
+            <p className="text-sm" style={{ color: 'var(--tx3)' }}>שלח הודעה ראשונה לפתוח את השיחה</p>
+          </div>
+        )}
+        {currentConvMsgs.map((msg, i) => {
+          const isOwn = msg.sender_id === currentUserId
+          const prev = currentConvMsgs[i - 1]
+          const sameUser = prev?.sender_id === msg.sender_id
+          const isTemp = String(msg.id).startsWith('temp-')
+          const isDeleted = !!msg.deleted_for_all
+          const isPinned = pinnedMsgId === msg.id
+          const name = dName(isOwn ? currentProfile : partnerProfile)
+          return (
+            <div key={msg.id}>
+              {needsDateSep(msg.created_at, prev?.created_at) && <DateSepLine iso={msg.created_at} />}
+              <div className={`group flex items-end gap-2 ${isOwn ? 'flex-row-reverse' : ''} ${sameUser ? 'mt-0.5' : 'mt-3'}`}>
+                {!sameUser
+                  ? <AvatarBubble profile={isOwn ? currentProfile : partnerProfile} uid={msg.sender_id} size={8} />
+                  : <div className="w-8 shrink-0" />
+                }
+                <div className={`flex max-w-[75%] flex-col gap-0.5 ${isOwn ? 'items-end' : 'items-start'}`}>
+                  {!sameUser && (
+                    <div className={`flex items-center gap-2 px-1 ${isOwn ? 'flex-row-reverse' : ''}`}>
+                      <span className="text-xs font-semibold" style={{ color: 'var(--tx2)' }}>{isOwn ? 'אתה' : name}</span>
+                      <span className="text-[10px]" style={{ color: 'var(--tx3)' }}>{fmtTime(msg.created_at)}</span>
+                    </div>
+                  )}
+                  <div
+                    className={`rounded-2xl text-sm leading-relaxed ${isTemp ? 'opacity-70' : ''} ${isPinned ? 'ring-2 ring-purple-400' : ''}`}
+                    style={isOwn
+                      ? { background: isDeleted ? 'var(--inp)' : 'linear-gradient(135deg,#7c3aed,#6d28d9)', color: isDeleted ? 'var(--tx3)' : 'white', padding: '8px 14px' }
+                      : { background: isDeleted ? 'var(--inp)' : 'var(--s2)', border: '1px solid var(--bd)', color: isDeleted ? 'var(--tx3)' : 'var(--tx)', padding: '8px 14px' }
+                    }
+                  >
+                    {isDeleted ? (
+                      <span style={{ fontStyle: 'italic' }}>🚫 הודעה נמחקה</span>
+                    ) : (
+                      <>
+                        {msg.attachment_url && (
+                          <div className="mb-1">
+                            {msg.attachment_type === 'image'
+                              ? <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer"><img src={msg.attachment_url} alt="" className="max-h-48 max-w-[220px] rounded-xl object-cover cursor-pointer hover:opacity-90 transition" /></a>
+                              : (
+                                <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition hover:opacity-80" style={{ background: isOwn ? 'rgba(255,255,255,.15)' : 'var(--inp)', border: '1px solid var(--bd)' }}>
+                                  <FileIcon size={16} />
+                                  <span className="truncate text-xs">{msg.attachment_name ?? 'קובץ'}</span>
+                                </a>
+                              )
+                            }
+                          </div>
+                        )}
+                        {msg.content && <span className="whitespace-pre-wrap">{msg.content}</span>}
+                      </>
+                    )}
+                  </div>
+
+                  {/* Status + actions */}
+                  <div className={`flex items-center gap-1 px-1 ${isOwn ? 'flex-row-reverse' : ''}`}>
+                    {sameUser && (
+                      <span className="text-[10px]" style={{ color: 'var(--tx3)' }}>{fmtTime(msg.created_at)}</span>
+                    )}
+                    {isOwn && !isTemp && !isDeleted && (
+                      msg.is_read
+                        ? <CheckCheck size={12} className="text-purple-500" />
+                        : <Check size={12} style={{ color: 'var(--tx3)' }} />
+                    )}
+                    {isOwn && isTemp && <span className="text-[10px]" style={{ color: 'var(--tx3)' }}>שולח...</span>}
+
+                    {/* Hover actions */}
+                    {!isDeleted && !isTemp && (
+                      <div className="flex items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
+                        <button
+                          onClick={() => setPinnedMsgId(pinnedMsgId === msg.id ? null : msg.id)}
+                          className="rounded p-1 transition hover:bg-purple-500/10"
+                          title={isPinned ? 'הסר הצמדה' : 'הצמד הודעה'}
+                          style={{ color: isPinned ? '#7c3aed' : 'var(--tx3)' }}
+                        >
+                          <Pin size={11} />
+                        </button>
+                        {isOwn && (
+                          <button onClick={() => handleDeletePrivate(msg.id)} className="rounded p-1 transition hover:bg-red-500/10 hover:text-red-500" style={{ color: 'var(--tx3)' }}>
+                            <Trash2 size={11} />
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )
+        })}
+
+        {/* Typing indicator */}
+        {partnerTyping && (
+          <div className="mt-3 flex items-end gap-2">
+            <AvatarBubble profile={partnerProfile} uid={selectedPartner} size={8} />
+            <div className="rounded-2xl px-4 py-2.5" style={{ background: 'var(--s2)', border: '1px solid var(--bd)' }}>
+              <TypingDots />
+            </div>
+          </div>
+        )}
+
         <div ref={privateBottomRef} />
       </div>
 
+      {/* Hidden file input */}
+      <input ref={fileInputRef} type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.zip,.rar" className="hidden" onChange={handleFileSelect} />
+
       <InputBar
         value={privateText}
-        onChange={makeTextareaHandler(setPrivateText)}
+        onChange={(v) => { setPrivateText(v); broadcastTyping() }}
         onKeyDown={handlePrivateKey}
         onSend={handlePrivateSend}
         isSending={isSendingP}
         textRef={privateTextRef}
+        onAttachClick={() => fileInputRef.current?.click()}
+        attachment={attachFile ? { name: attachFile.name, type: attachFile.type, preview: attachPreview ?? undefined } : null}
+        onRemoveAttachment={() => { setAttachFile(null); setAttachPreview(null) }}
+        isUploading={isUploading}
       />
+    </div>
+  )
+
+  // ─────────────────────────────────────────────────────────
+  // Render
+  // ─────────────────────────────────────────────────────────
+
+  const rightContent = mainTab === 'community'
+    ? (selectedTopic ? communityChat : welcomeScreen)
+    : (selectedPartner ? privateChat : welcomeScreen)
+
+  return (
+    <div className="flex h-[calc(100vh-3.5rem)] overflow-hidden lg:h-screen">
+
+      {/* Left panel — conversation/topic list */}
+      <div
+        className={`${mobileShowChat ? 'hidden' : 'flex'} lg:flex w-full flex-col lg:w-80 xl:w-96 shrink-0`}
+        style={{ borderInlineEnd: '1px solid var(--bd)' }}
+      >
+        {leftPanel}
+      </div>
+
+      {/* Right panel — active chat or welcome */}
+      <div className={`${mobileShowChat ? 'flex' : 'hidden'} lg:flex flex-1 flex-col overflow-hidden`}>
+        {rightContent}
+      </div>
+
     </div>
   )
 }
