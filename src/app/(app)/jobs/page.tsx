@@ -34,16 +34,21 @@ export default async function JobsPage() {
       const title = formData.get('title') as string
       const description = formData.get('description') as string
       const category = (formData.get('category') as string) || null
-      const budgetStr = formData.get('budget') as string
-      const budget = budgetStr ? Number(budgetStr) : null
-      console.log('[createJob] payload:', { title, description, category, budget })
+      const budgetMinStr = formData.get('budget_min') as string
+      const budgetMaxStr = formData.get('budget_max') as string
+      const deadline = (formData.get('deadline') as string) || null
+      const budget_min = budgetMinStr ? Number(budgetMinStr) : null
+      const budget_max = budgetMaxStr ? Number(budgetMaxStr) : null
+      console.log('[createJob] payload:', { title, description, category, budget_min, budget_max, deadline })
 
       const { error, data } = await createAdminClient().from('jobs').insert({
         client_id: user!.id,
         title,
         description,
         category,
-        budget,
+        budget_min,
+        budget_max,
+        deadline,
         status: 'open',
       }).select()
       console.log('[createJob] insert result — data:', JSON.stringify(data), 'error:', error?.message ?? 'none')

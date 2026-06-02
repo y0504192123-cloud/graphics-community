@@ -29,7 +29,9 @@ export type Job = {
   client_id: string
   title: string
   description: string
-  budget: number | null
+  budget_min: number | null
+  budget_max: number | null
+  deadline: string | null
   category: string | null
   status: 'open' | 'closed' | 'in_progress'
   created_at: string

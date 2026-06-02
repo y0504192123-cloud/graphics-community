@@ -113,13 +113,31 @@ export default function JobsClient({ jobs, currentUserId, categories, createJob,
                 </select>
               </div>
               <div>
-                <label className={labelCls}>תקציב (₪)</label>
+                <label className={labelCls}>תקציב מינימום (₪)</label>
                 <input
-                  name="budget"
+                  name="budget_min"
                   type="number"
                   min="0"
                   onWheel={(e) => e.currentTarget.blur()}
                   className={`${inputCls} [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none`}
+                />
+              </div>
+              <div>
+                <label className={labelCls}>תקציב מקסימום (₪)</label>
+                <input
+                  name="budget_max"
+                  type="number"
+                  min="0"
+                  onWheel={(e) => e.currentTarget.blur()}
+                  className={`${inputCls} [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none`}
+                />
+              </div>
+              <div>
+                <label className={labelCls}>דדליין</label>
+                <input
+                  name="deadline"
+                  type="date"
+                  className={inputCls}
                 />
               </div>
               <div className="sm:col-span-2">
@@ -244,13 +262,19 @@ export default function JobsClient({ jobs, currentUserId, categories, createJob,
                         </div>
                       </div>
 
-                      {job.budget != null && (
+                      {(job.budget_min != null || job.budget_max != null) && (
                         <div
                           className="shrink-0 rounded-xl px-4 py-2 text-center"
                           style={{ background: 'rgba(124,58,237,.1)', border: '1px solid rgba(124,58,237,.2)' }}
                         >
                           <p className="text-xs text-slate-500">תקציב</p>
-                          <p className="text-lg font-bold text-purple-300">₪{job.budget.toLocaleString()}</p>
+                          <p className="text-lg font-bold text-purple-300">
+                            {job.budget_min != null && job.budget_max != null
+                              ? `₪${job.budget_min.toLocaleString()}–₪${job.budget_max.toLocaleString()}`
+                              : job.budget_min != null
+                              ? `₪${job.budget_min.toLocaleString()}+`
+                              : `עד ₪${job.budget_max!.toLocaleString()}`}
+                          </p>
                         </div>
                       )}
                     </div>
