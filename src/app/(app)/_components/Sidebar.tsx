@@ -68,7 +68,7 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
       {/* Logo */}
       {logoUrl && (
         <div className="px-4 pb-4 pt-5">
-          <img src={logoUrl} alt="Grafi" className="h-9 max-w-[160px] object-contain" />
+          <img src={logoUrl} alt="Grafi" className="max-w-[160px] object-contain" style={{ maxHeight: '48px' }} />
         </div>
       )}
 
@@ -205,7 +205,7 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
       >
         <div className="flex items-center gap-2.5">
           {logoUrl && (
-            <img src={logoUrl} alt="Grafi" className="h-8 max-w-[120px] object-contain" />
+            <img src={logoUrl} alt="Grafi" className="max-w-[120px] object-contain" style={{ maxHeight: '48px' }} />
           )}
         </div>
         <div className="flex items-center gap-2">

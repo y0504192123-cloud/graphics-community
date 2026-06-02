@@ -56,7 +56,7 @@ export default function LoginForm({ urlError, urlMessage, logoUrl }: Props) {
       <div className="mb-7 text-center">
         {logoUrl ? (
           <div className="mb-4 flex justify-center">
-            <img src={logoUrl} alt="Grafi" className="h-14 max-w-[200px] object-contain" />
+            <img src={logoUrl} alt="Grafi" className="max-w-[240px] object-contain" style={{ maxHeight: '80px' }} />
           </div>
         ) : (
           <div className="relative mx-auto mb-4 w-fit">
