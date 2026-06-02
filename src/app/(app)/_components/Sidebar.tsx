@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Briefcase, MessageSquare, Library, Menu, X, Sparkles, ShieldCheck, Palette, Globe } from 'lucide-react'
+import { LayoutDashboard, Briefcase, MessageSquare, Library, Menu, X, ShieldCheck, Palette, Globe } from 'lucide-react'
 import { useState, useEffect, useMemo } from 'react'
 import LogoutButton from './LogoutButton'
 import { useLanguage } from '@/components/LanguageProvider'
@@ -70,23 +70,13 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
         {logoUrl ? (
           <img src={logoUrl} alt="Grafi" className="h-9 max-w-[160px] object-contain" />
         ) : (
-          <div className="flex items-center gap-3">
-            <div
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl shadow-sm"
-              style={{ background: 'linear-gradient(135deg, #7c3aed, #a855f7)' }}
-            >
-              <svg viewBox="0 0 32 32" className="h-5 w-5" fill="none">
-                <path d="M7 25 L16 7 L25 25" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-                <path d="M10 19.5 L22 19.5" stroke="white" strokeWidth="2" strokeLinecap="round" />
-              </svg>
-            </div>
-            <div>
-              <p className="text-sm font-bold" style={{ color: 'var(--tx)' }}>{t.appName}</p>
-              <p className="flex items-center gap-1 text-[10px]" style={{ color: 'var(--purple-light)' }}>
-                <Sparkles size={9} />
-                {t.appSub}
-              </p>
-            </div>
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl shadow-sm"
+            style={{ background: 'linear-gradient(135deg, #7c3aed, #a855f7)' }}
+          >
+            <svg viewBox="0 0 32 32" className="h-5 w-5" fill="none">
+              <path d="M7 25 L16 7 L25 25" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M10 19.5 L22 19.5" stroke="white" strokeWidth="2" strokeLinecap="round" />
+            </svg>
           </div>
         )}
       </div>

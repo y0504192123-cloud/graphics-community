@@ -73,8 +73,6 @@ export default function LoginForm({ urlError, urlMessage, logoUrl }: Props) {
             <div className="absolute -inset-2 -z-10 rounded-3xl opacity-40 blur-xl" style={{ background: 'linear-gradient(135deg, #7c3aed, #ec4899)' }} />
           </div>
         )}
-        <h1 className="text-2xl font-bold text-white">Grafi</h1>
-        <p className="mt-1 text-sm text-slate-400">הפלטפורמה המובילה לגרפיקאים</p>
       </div>
 
       {/* Mode tabs */}
