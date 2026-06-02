@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { Send, ArrowRight, Plus, X, Hash, Clock, Smile, MessageSquare, Lock } from 'lucide-react'
+import { Send, ArrowRight, Plus, X, Hash, Clock, Smile, MessageSquare, Lock, Trash2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { Topic, Message, Profile, PrivateMessage } from '@/types'
 
@@ -10,10 +10,13 @@ type Props = {
   categories: string[]
   currentUserId: string
   currentProfile: Profile | null
+  isAdmin: boolean
   createTopic: (formData: FormData) => Promise<void>
   sendMessage: (topicId: string, content: string) => Promise<void>
+  deleteMessage: (messageId: string) => Promise<void>
   initialPrivateMessages: PrivateMessage[]
   sendPrivateMessage: (receiverId: string, content: string) => Promise<void>
+  deletePrivateMessage: (messageId: string) => Promise<void>
   markMessagesRead: (senderId: string) => Promise<void>
   initialDmUserId: string | null
   initialDmProfile: Profile | null
@@ -122,10 +125,10 @@ function BgDecorations() {
 
 export default function ChatClient({
   topics: initialTopics, categories,
-  currentUserId, currentProfile,
-  createTopic, sendMessage,
+  currentUserId, currentProfile, isAdmin,
+  createTopic, sendMessage, deleteMessage,
   initialPrivateMessages,
-  sendPrivateMessage, markMessagesRead,
+  sendPrivateMessage, deletePrivateMessage, markMessagesRead,
   initialDmUserId, initialDmProfile, initialJobQuote,
 }: Props) {
 
@@ -218,7 +221,7 @@ export default function ChatClient({
     return () => { supabase.removeChannel(ch) }
   }, [supabase])
 
-  // Community chat messages — no column filter (avoids REPLICA IDENTITY requirement), filter client-side
+  // Community chat messages
   useEffect(() => {
     if (!selectedTopic) return
     const topicId = selectedTopic.id
@@ -235,13 +238,21 @@ export default function ChatClient({
           return [...withoutTemp, { ...newMsg, profiles: profile ?? undefined }]
         })
       })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages' }, (payload) => {
+        const old = payload.old as { id: string }
+        setCommunityMsgs(prev => prev.filter(m => m.id !== old.id))
+      })
       .subscribe()
     return () => { supabase.removeChannel(ch) }
   }, [selectedTopic?.id, supabase])
 
-  // Private messages — no column filter, filter client-side for both sent and received
+  // Private messages
   useEffect(() => {
     const ch = supabase.channel('rt-private-messages')
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'private_messages' }, (payload) => {
+        const old = payload.old as { id: string }
+        setPrivateMsgs(prev => prev.filter(m => m.id !== old.id))
+      })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'private_messages' }, async (payload) => {
         const newMsg = payload.new as PrivateMessage
         // Only care about messages involving the current user
@@ -336,6 +347,16 @@ export default function ChatClient({
     }])
     setIsSendingP(true)
     try { await sendPrivateMessage(selectedPartner, content) } finally { setIsSendingP(false) }
+  }
+
+  const handleDeleteCommunityMsg = (messageId: string) => {
+    setCommunityMsgs(prev => prev.filter(m => m.id !== messageId))
+    deleteMessage(messageId)
+  }
+
+  const handleDeletePrivateMsg = (messageId: string) => {
+    setPrivateMsgs(prev => prev.filter(m => m.id !== messageId))
+    deletePrivateMessage(messageId)
   }
 
   const handleCommunityKey = (e: React.KeyboardEvent) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleCommunitySend() } }
@@ -566,7 +587,16 @@ export default function ChatClient({
                       {msg.content}
                       {isTemp && <span className="absolute -bottom-4 end-0 text-[9px] text-slate-600">שולח...</span>}
                     </div>
-                    {sameUser && (
+                    {(isOwn || isAdmin) && !isTemp && (
+                      <button
+                        onClick={() => handleDeleteCommunityMsg(msg.id)}
+                        className="mt-0.5 flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[10px] text-slate-700 opacity-0 transition-all group-hover:opacity-100 hover:bg-red-500/10 hover:text-red-400"
+                      >
+                        <Trash2 size={10} />
+                        מחק
+                      </button>
+                    )}
+                    {sameUser && !(isOwn || isAdmin) && (
                       <span className="px-1 text-[10px] text-slate-700 opacity-0 transition-opacity group-hover:opacity-100">
                         {new Date(msg.created_at).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
                       </span>
@@ -748,7 +778,16 @@ export default function ChatClient({
                   {isOwn && !isTemp && msg.is_read && (
                     <span className="px-1 text-[10px] text-purple-400">✓✓ נקרא</span>
                   )}
-                  {sameUser && (
+                  {(isOwn || isAdmin) && !isTemp && (
+                    <button
+                      onClick={() => handleDeletePrivateMsg(msg.id)}
+                      className="mt-0.5 flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[10px] text-slate-700 opacity-0 transition-all group-hover:opacity-100 hover:bg-red-500/10 hover:text-red-400"
+                    >
+                      <Trash2 size={10} />
+                      מחק
+                    </button>
+                  )}
+                  {sameUser && !(isOwn || isAdmin) && (
                     <span className="px-1 text-[10px] text-slate-700 opacity-0 transition-opacity group-hover:opacity-100">
                       {new Date(msg.created_at).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
                     </span>

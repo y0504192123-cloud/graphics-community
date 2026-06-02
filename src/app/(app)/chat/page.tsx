@@ -23,6 +23,7 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
   const { data: profileData } = await supabase.from('profiles').select('*').eq('id', user.id).single()
 
   const admin = createAdminClient()
+  const isAdmin = profileData?.role === 'admin'
 
   const [topicsRes, categoriesRes, privMsgsRes] = await Promise.all([
     supabase.from('topics').select('*, profiles(*)').order('created_at', { ascending: false }),
@@ -38,14 +39,12 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
   const categories = (categoriesRes.data ?? []).map((c: { name: string }) => c.name)
   const privateMessages = (privMsgsRes.data ?? []) as PrivateMessage[]
 
-  // Fetch DM partner profile if navigating from a job card
   let dmProfile: Profile | null = null
   if (dmUserId) {
     const { data } = await admin.from('profiles').select('*').eq('id', dmUserId).single()
     dmProfile = data
   }
 
-  // Build pre-filled job quote
   let initialJobQuote: string | null = null
   if (jobTitle) {
     const lines = [`📋 פנייה לגבי: ${jobTitle}`]
@@ -79,6 +78,19 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
     })
   }
 
+  async function deleteMessage(messageId: string) {
+    'use server'
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    const admin = createAdminClient()
+    const { data: msg } = await admin.from('messages').select('user_id').eq('id', messageId).single()
+    if (!msg) return
+    const { data: profile } = await admin.from('profiles').select('role').eq('id', user.id).single()
+    if (msg.user_id !== user.id && profile?.role !== 'admin') return
+    await admin.from('messages').delete().eq('id', messageId)
+  }
+
   async function sendPrivateMessage(receiverId: string, content: string) {
     'use server'
     const supabase = await createClient()
@@ -91,6 +103,19 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
       job_id: null,
       is_read: false,
     })
+  }
+
+  async function deletePrivateMessage(messageId: string) {
+    'use server'
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    const admin = createAdminClient()
+    const { data: msg } = await admin.from('private_messages').select('sender_id').eq('id', messageId).single()
+    if (!msg) return
+    const { data: profile } = await admin.from('profiles').select('role').eq('id', user.id).single()
+    if (msg.sender_id !== user.id && profile?.role !== 'admin') return
+    await admin.from('private_messages').delete().eq('id', messageId)
   }
 
   async function markMessagesRead(senderId: string) {
@@ -112,10 +137,13 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
       categories={categories}
       currentUserId={user.id}
       currentProfile={profileData}
+      isAdmin={isAdmin}
       createTopic={createTopic}
       sendMessage={sendMessage}
+      deleteMessage={deleteMessage}
       initialPrivateMessages={privateMessages}
       sendPrivateMessage={sendPrivateMessage}
+      deletePrivateMessage={deletePrivateMessage}
       markMessagesRead={markMessagesRead}
       initialDmUserId={dmUserId}
       initialDmProfile={dmProfile}
