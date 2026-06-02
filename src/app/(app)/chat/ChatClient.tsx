@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import {
   Send, ArrowRight, X, Lock, Trash2,
   Search, UserPlus, Pin, Paperclip, Check, CheckCheck,
-  MessageSquare, File as FileIcon, Edit2, CornerUpLeft, Smile,
+  MessageSquare, File as FileIcon, Edit2, CornerUpLeft, Smile, Users,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { Message, Profile, PrivateMessage } from '@/types'
@@ -262,7 +262,7 @@ export default function ChatClient({
 
   // ── Layout ──
   const [mobileShowChat, setMobileShowChat] = useState(!!initialDmUserId)
-  const [mainTab, setMainTab] = useState<'community' | 'private'>(initialDmUserId ? 'private' : 'community')
+  const [activeSide, setActiveSide] = useState<'community' | 'private'>(initialDmUserId ? 'private' : 'community')
 
   // ── Community state ──
   const [communityMsgs, setCommunityMsgs] = useState<Message[]>([])
@@ -517,11 +517,6 @@ export default function ChatClient({
       .sort((a, b) => new Date(b.lastMsg.created_at).getTime() - new Date(a.lastMsg.created_at).getTime())
   }, [privateMsgs, currentUserId])
 
-  const totalUnread = useMemo(() =>
-    privateMsgs.filter(m => m.receiver_id === currentUserId && !m.is_read).length,
-    [privateMsgs, currentUserId]
-  )
-
   const currentConvMsgs = useMemo(() => {
     if (!selectedPartner) return []
     const msgs = privateMsgs.filter(m =>
@@ -552,9 +547,15 @@ export default function ChatClient({
 
   // ── Handlers ──
 
+  const openCommunity = () => {
+    setActiveSide('community')
+    setSelectedPartner(null)
+    setMobileShowChat(true)
+  }
+
   const openConversation = async (partnerId: string) => {
     setSelectedPartner(partnerId)
-    setMainTab('private')
+    setActiveSide('private')
     setMobileShowChat(true)
     setShowPrivateSearch(false)
     setPrivateSearch('')
@@ -719,150 +720,130 @@ export default function ChatClient({
   const leftPanel = (
     <div className="flex h-full flex-col" style={{ background: 'var(--s1)' }}>
 
-      {/* Tab bar */}
+      {/* Header: new DM button */}
       <div className="shrink-0 px-3 pt-3 pb-2" style={{ borderBottom: '1px solid var(--bd)' }}>
-        <div className="flex gap-1 rounded-xl p-1" style={{ background: 'var(--inp)', border: '1px solid var(--bd)' }}>
-          {([
-            { id: 'community' as const, label: 'קהילתי', icon: <MessageSquare size={13} /> },
-            { id: 'private'   as const, label: 'פרטי',   icon: <Lock size={13} />, badge: totalUnread },
-          ]).map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setMainTab(tab.id)}
-              className="relative flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold transition-all"
-              style={mainTab === tab.id
-                ? { background: 'linear-gradient(135deg,#7c3aed,#6d28d9)', color: 'white' }
-                : { color: 'var(--tx2)' }
-              }
-            >
-              {tab.icon}
-              {tab.label}
-              {tab.badge && tab.badge > 0 && (
-                <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">
-                  {tab.badge > 9 ? '9+' : tab.badge}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
+        <button
+          onClick={() => { setShowNewChat(s => !s); setUserSearch('') }}
+          className="flex w-full items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold text-white transition hover:opacity-90"
+          style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)' }}
+        >
+          {showNewChat ? <X size={13} /> : <UserPlus size={13} />}
+          {showNewChat ? 'ביטול' : 'צ׳אט חדש'}
+        </button>
       </div>
 
-      {/* Community room */}
-      {mainTab === 'community' && (
-        <div className="flex flex-1 flex-col overflow-hidden">
-          <button
-            onClick={() => setMobileShowChat(true)}
-            className="flex w-full items-center gap-3 px-4 py-4 text-start transition hover:bg-purple-50/40"
-            style={{ borderBottom: '1px solid var(--bd)', background: 'rgba(124,58,237,.04)' }}
-          >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ background: 'rgba(124,58,237,.1)', border: '1px solid rgba(124,58,237,.2)' }}>
-              <MessageSquare size={18} className="text-purple-600" />
+      {/* New DM search panel */}
+      {showNewChat && (
+        <div className="shrink-0" style={{ borderBottom: '1px solid var(--bd)' }}>
+          <div className="px-3 py-2">
+            <div className="flex items-center gap-2 rounded-xl px-2.5 py-1.5" style={{ background: 'var(--inp)', border: '1px solid var(--bd)' }}>
+              <Search size={13} style={{ color: 'var(--tx3)' }} />
+              <input autoFocus value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder="חפש..." className="flex-1 bg-transparent text-xs outline-none placeholder:text-slate-400" style={{ color: 'var(--tx)' }} />
+              {userSearch && <button onClick={() => setUserSearch('')} style={{ color: 'var(--tx3)' }}><X size={12} /></button>}
             </div>
-            <div className="min-w-0 flex-1">
-              <p className="font-bold text-sm" style={{ color: '#7c3aed' }}>חדר הקהילה</p>
-              <p className="mt-0.5 text-[11px]" style={{ color: 'var(--tx3)' }}>צ׳אט כללי לכולם</p>
-            </div>
-            <div className="h-2 w-2 shrink-0 rounded-full bg-purple-500" />
-          </button>
-          <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center px-4">
-            <MessageSquare size={28} className="text-slate-300" />
-            <p className="text-xs font-medium" style={{ color: 'var(--tx3)' }}>לחץ על חדר הקהילה כדי להיכנס</p>
+          </div>
+          <div className="max-h-52 overflow-y-auto">
+            {filteredUsers.length === 0
+              ? <p className="py-4 text-center text-xs" style={{ color: 'var(--tx3)' }}>לא נמצאו משתמשים</p>
+              : filteredUsers.map(u => (
+                <button
+                  key={u.id}
+                  onClick={() => { setShowNewChat(false); setUserSearch(''); openConversation(u.id) }}
+                  className="flex w-full items-center gap-2.5 px-3 py-2.5 text-start transition hover:bg-slate-50"
+                >
+                  <AvatarBubble profile={u} uid={u.id} size={8} online={onlineUsers.has(u.id)} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-semibold" style={{ color: 'var(--tx)' }}>{dName(u)}</p>
+                    {u.specialization && <p className="truncate text-[10px]" style={{ color: 'var(--tx3)' }}>{u.specialization}</p>}
+                  </div>
+                  {convos.some(c => c.partnerId === u.id) && <span className="shrink-0 text-[10px] text-purple-600">קיים</span>}
+                </button>
+              ))
+            }
           </div>
         </div>
       )}
 
-      {/* Private list */}
-      {mainTab === 'private' && (
-        <div className="flex flex-1 flex-col overflow-hidden">
-          <div className="shrink-0 px-3 py-2" style={{ borderBottom: '1px solid var(--bd)' }}>
-            <button
-              onClick={() => { setShowNewChat(s => !s); setUserSearch('') }}
-              className="flex w-full items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold text-white transition hover:opacity-90"
-              style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)' }}
-            >
-              {showNewChat ? <X size={13} /> : <UserPlus size={13} />}
-              {showNewChat ? 'ביטול' : 'צ׳אט חדש'}
-            </button>
-          </div>
+      {/* Unified list */}
+      <div className="flex-1 overflow-y-auto">
 
-          {showNewChat && (
-            <div className="shrink-0" style={{ borderBottom: '1px solid var(--bd)' }}>
-              <div className="px-3 py-2">
-                <div className="flex items-center gap-2 rounded-xl px-2.5 py-1.5" style={{ background: 'var(--inp)', border: '1px solid var(--bd)' }}>
-                  <Search size={13} style={{ color: 'var(--tx3)' }} />
-                  <input autoFocus value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder="חפש..." className="flex-1 bg-transparent text-xs outline-none placeholder:text-slate-400" style={{ color: 'var(--tx)' }} />
-                  {userSearch && <button onClick={() => setUserSearch('')} style={{ color: 'var(--tx3)' }}><X size={12} /></button>}
+        {/* Community room — always first */}
+        <button
+          onClick={openCommunity}
+          className="flex w-full items-center gap-3 px-4 py-3.5 text-start transition hover:bg-purple-50/40"
+          style={{
+            borderBottom: '1px solid var(--bd)',
+            background: activeSide === 'community' ? 'rgba(124,58,237,.07)' : undefined,
+          }}
+        >
+          <div
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+            style={{
+              background: activeSide === 'community' ? 'rgba(124,58,237,.18)' : 'rgba(124,58,237,.09)',
+              border: '1px solid rgba(124,58,237,.2)',
+            }}
+          >
+            <Users size={18} className="text-purple-600" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="font-bold text-sm" style={{ color: activeSide === 'community' ? '#7c3aed' : 'var(--tx)' }}>
+              צ׳אט מרכזי
+            </p>
+            <p className="mt-0.5 text-[11px]" style={{ color: 'var(--tx3)' }}>צ׳אט כללי לכל חברי הקהילה</p>
+          </div>
+          {activeSide === 'community' && (
+            <span className="absolute end-0 h-8 w-1 rounded-s-full bg-purple-600" />
+          )}
+        </button>
+
+        {/* Private conversations */}
+        {convos.map(convo => {
+          const name = dName(convo.profile)
+          const hasUnread = convo.unread > 0
+          const active = activeSide === 'private' && selectedPartner === convo.partnerId
+          const isOnline = onlineUsers.has(convo.partnerId)
+          const lastContent = convo.lastMsg.deleted_for_all
+            ? 'הודעה נמחקה'
+            : convo.lastMsg.attachment_url
+              ? (convo.lastMsg.attachment_type === 'image' ? '📷 תמונה' : '📎 קובץ')
+              : (convo.lastMsg.content ?? '')
+          return (
+            <button
+              key={convo.partnerId}
+              onClick={() => openConversation(convo.partnerId)}
+              className="relative flex w-full items-center gap-3 px-3 py-3.5 text-start transition hover:bg-slate-50/60"
+              style={{ borderBottom: '1px solid var(--bd)', background: active ? 'rgba(124,58,237,.06)' : undefined }}
+            >
+              <AvatarBubble profile={convo.profile} uid={convo.partnerId} size={10} online={isOnline} />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="truncate text-sm font-semibold" style={{ color: hasUnread ? '#6b21a8' : 'var(--tx)' }}>{name}</span>
+                  <span className="shrink-0 text-[10px]" style={{ color: 'var(--tx3)' }}>{fmtTime(convo.lastMsg.created_at)}</span>
+                </div>
+                <div className="mt-0.5 flex items-center justify-between gap-1">
+                  <p className="truncate text-xs" style={{ color: hasUnread ? 'var(--tx2)' : 'var(--tx3)', fontStyle: convo.lastMsg.deleted_for_all ? 'italic' : undefined }}>
+                    {convo.lastMsg.sender_id === currentUserId && <span style={{ color: 'var(--tx3)' }}>אתה: </span>}
+                    {lastContent}
+                  </p>
+                  {hasUnread && (
+                    <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-purple-600 px-1.5 text-[10px] font-bold text-white">
+                      {convo.unread > 9 ? '9+' : convo.unread}
+                    </span>
+                  )}
                 </div>
               </div>
-              <div className="max-h-48 overflow-y-auto">
-                {filteredUsers.length === 0
-                  ? <p className="py-4 text-center text-xs" style={{ color: 'var(--tx3)' }}>לא נמצאו משתמשים</p>
-                  : filteredUsers.map(u => (
-                    <button
-                      key={u.id}
-                      onClick={() => { setShowNewChat(false); setUserSearch(''); openConversation(u.id) }}
-                      className="flex w-full items-center gap-2.5 px-3 py-2.5 text-start transition hover:bg-slate-50"
-                    >
-                      <AvatarBubble profile={u} uid={u.id} size={8} online={onlineUsers.has(u.id)} />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-xs font-semibold" style={{ color: 'var(--tx)' }}>{dName(u)}</p>
-                        {u.specialization && <p className="truncate text-[10px]" style={{ color: 'var(--tx3)' }}>{u.specialization}</p>}
-                      </div>
-                      {convos.some(c => c.partnerId === u.id) && <span className="shrink-0 text-[10px] text-purple-600">קיים</span>}
-                    </button>
-                  ))
-                }
-              </div>
-            </div>
-          )}
+              {active && <span className="absolute end-0 h-8 w-1 rounded-s-full bg-purple-600" />}
+            </button>
+          )
+        })}
 
-          <div className="flex-1 overflow-y-auto">
-            {convos.length === 0 && !showNewChat ? (
-              <div className="flex flex-col items-center gap-2 py-12 text-center px-4">
-                <Lock size={24} className="text-slate-300" />
-                <p className="text-xs" style={{ color: 'var(--tx3)' }}>לחץ "צ׳אט חדש" להתחיל שיחה</p>
-              </div>
-            ) : convos.map(convo => {
-              const name = dName(convo.profile)
-              const hasUnread = convo.unread > 0
-              const active = selectedPartner === convo.partnerId
-              const isOnline = onlineUsers.has(convo.partnerId)
-              const lastContent = convo.lastMsg.deleted_for_all
-                ? 'הודעה נמחקה'
-                : convo.lastMsg.attachment_url
-                  ? (convo.lastMsg.attachment_type === 'image' ? '📷 תמונה' : '📎 קובץ')
-                  : (convo.lastMsg.content ?? '')
-              return (
-                <button
-                  key={convo.partnerId}
-                  onClick={() => openConversation(convo.partnerId)}
-                  className="flex w-full items-center gap-3 px-3 py-3.5 text-start transition"
-                  style={{ borderBottom: '1px solid var(--bd)', background: active ? 'rgba(124,58,237,.06)' : undefined }}
-                >
-                  <AvatarBubble profile={convo.profile} uid={convo.partnerId} size={10} online={isOnline} />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-1">
-                      <span className="truncate text-sm font-semibold" style={{ color: hasUnread ? '#6b21a8' : 'var(--tx)' }}>{name}</span>
-                      <span className="shrink-0 text-[10px]" style={{ color: 'var(--tx3)' }}>{fmtTime(convo.lastMsg.created_at)}</span>
-                    </div>
-                    <div className="mt-0.5 flex items-center justify-between gap-1">
-                      <p className="truncate text-xs" style={{ color: hasUnread ? 'var(--tx2)' : 'var(--tx3)', fontStyle: convo.lastMsg.deleted_for_all ? 'italic' : undefined }}>
-                        {convo.lastMsg.sender_id === currentUserId && <span style={{ color: 'var(--tx3)' }}>אתה: </span>}
-                        {lastContent}
-                      </p>
-                      {hasUnread && (
-                        <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-purple-600 px-1.5 text-[10px] font-bold text-white">
-                          {convo.unread > 9 ? '9+' : convo.unread}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </button>
-              )
-            })}
+        {convos.length === 0 && (
+          <div className="flex flex-col items-center gap-2 py-10 text-center px-4">
+            <Lock size={20} className="text-slate-300" />
+            <p className="text-xs" style={{ color: 'var(--tx3)' }}>לחץ "צ׳אט חדש" לשיחה פרטית</p>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   )
 
@@ -893,10 +874,10 @@ export default function ChatClient({
           <ArrowRight size={17} />
         </button>
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl" style={{ background: 'rgba(124,58,237,.1)', border: '1px solid rgba(124,58,237,.2)' }}>
-          <MessageSquare size={16} className="text-purple-600" />
+          <Users size={16} className="text-purple-600" />
         </div>
         <div className="min-w-0 flex-1">
-          <h2 className="truncate text-sm font-bold" style={{ color: 'var(--tx)' }}>חדר הקהילה</h2>
+          <h2 className="truncate text-sm font-bold" style={{ color: 'var(--tx)' }}>צ׳אט מרכזי</h2>
           <p className="text-[11px]" style={{ color: 'var(--tx3)' }}>צ׳אט כללי לכל חברי הקהילה</p>
         </div>
       </div>
@@ -1266,7 +1247,7 @@ export default function ChatClient({
   // Render
   // ─────────────────────────────────────────────────────────
 
-  const rightContent = mainTab === 'community'
+  const rightContent = activeSide === 'community'
     ? communityChat
     : (selectedPartner ? privateChat : welcomeScreen)
 
