@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import Sidebar from './_components/Sidebar'
 import type { Profile } from '@/types'
 
@@ -9,7 +10,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   if (!user) redirect('/login')
 
-  const { data: profileData } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+  const admin = createAdminClient()
+  const [{ data: profileData }, { data: logoData }] = await Promise.all([
+    supabase.from('profiles').select('*').eq('id', user.id).single(),
+    admin.from('site_settings').select('value').eq('key', 'logo_url').single(),
+  ])
+  const logoUrl: string | null = logoData?.value ?? null
 
   if (!profileData) {
     // Attempt insert for genuinely new users (no-op on conflict)
@@ -41,7 +47,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: 'var(--bg)' }}>
-      <Sidebar profile={profileData as Profile} email={user.email ?? ''} currentUserId={user.id} />
+      <Sidebar profile={profileData as Profile} email={user.email ?? ''} currentUserId={user.id} logoUrl={logoUrl} />
       <main className="flex-1 overflow-y-auto pt-14 lg:pt-0">{children}</main>
     </div>
   )

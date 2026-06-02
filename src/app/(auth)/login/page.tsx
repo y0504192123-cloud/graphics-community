@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import LoginForm from './LoginForm'
 
 export default async function LoginPage({
@@ -7,8 +7,7 @@ export default async function LoginPage({
   searchParams: Promise<{ error?: string; message?: string }>
 }) {
   const params = await searchParams
-  const supabase = await createClient()
-  const { data: logoData } = await supabase
+  const { data: logoData } = await createAdminClient()
     .from('site_settings')
     .select('value')
     .eq('key', 'logo_url')
