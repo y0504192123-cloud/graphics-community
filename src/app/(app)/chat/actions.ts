@@ -18,17 +18,14 @@ export async function createTopic(formData: FormData) {
 }
 
 export async function sendMessage(topicId: string, content: string) {
-  console.log('[SERVER sendMessage] called — topicId:', topicId)
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  console.log('[SERVER sendMessage] user:', user?.id ?? 'null')
   if (!user) redirect('/login')
-  const { data, error } = await createAdminClient().from('messages').insert({
+  await createAdminClient().from('messages').insert({
     channel_id: topicId,
     user_id: user.id,
     content,
-  }).select()
-  console.log('[SERVER sendMessage] insert result — data:', JSON.stringify(data), 'error:', JSON.stringify(error))
+  })
 }
 
 export async function deleteMessage(messageId: string) {
