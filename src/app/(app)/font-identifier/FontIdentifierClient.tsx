@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Send, ImagePlus, X, ScanText } from 'lucide-react'
 
-type HistoryEntry = { role: 'user' | 'model'; text: string }
+type HistoryEntry = { role: 'user' | 'assistant'; text: string }
 
 type Props = {
   identifyFont: (
@@ -107,7 +107,7 @@ export default function FontIdentifierClient({ identifyFont }: Props) {
 
     // Build text-only history (skip images to keep payload small)
     const history: HistoryEntry[] = messages.flatMap(m =>
-      m.isLoading ? [] : [{ role: (m.role === 'user' ? 'user' : 'model') as 'user' | 'model', text: m.content }]
+      m.isLoading ? [] : [{ role: (m.role === 'user' ? 'user' : 'assistant') as 'user' | 'assistant', text: m.content }]
     ).slice(-10)
 
     try {
