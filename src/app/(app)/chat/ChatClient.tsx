@@ -216,7 +216,7 @@ export default function ChatClient({
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'topics' }, async (payload) => {
         const newTopic = payload.new as Topic
         const { data: profile } = await supabase.from('profiles').select('id, full_name, username, avatar_url').eq('id', newTopic.created_by).single()
-        setTopics(prev => [{ ...newTopic, profiles: profile ?? undefined }, ...prev])
+        setTopics(prev => [{ ...newTopic, profiles: profile as Profile | undefined ?? undefined }, ...prev])
       })
       .subscribe()
     return () => { supabase.removeChannel(ch) }
@@ -235,7 +235,7 @@ export default function ChatClient({
             m => !(m.id.startsWith('temp-') && m.user_id === newMsg.user_id && m.content === newMsg.content)
           )
           if (withoutTemp.some(m => m.id === newMsg.id)) return withoutTemp
-          return [...withoutTemp, { ...newMsg, profiles: profile ?? undefined }]
+          return [...withoutTemp, { ...newMsg, profiles: profile as Profile | undefined ?? undefined }]
         })
       })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages', filter: `channel_id=eq.${topicId}` }, (payload) => {
@@ -266,7 +266,7 @@ export default function ChatClient({
           supabase.from('profiles').select('id, full_name, username, avatar_url').eq('id', newMsg.sender_id).single(),
           supabase.from('profiles').select('id, full_name, username, avatar_url').eq('id', newMsg.receiver_id).single(),
         ])
-        const fullMsg: PrivateMessage = { ...newMsg, sender: senderProfile ?? undefined, receiver: receiverProfile ?? undefined }
+        const fullMsg: PrivateMessage = { ...newMsg, sender: senderProfile as Profile | undefined ?? undefined, receiver: receiverProfile as Profile | undefined ?? undefined }
 
         setPrivateMsgs(prev => {
           if (prev.some(m => m.id === newMsg.id)) return prev
@@ -314,7 +314,7 @@ export default function ChatClient({
     setSelectedTopic(topic)
     setCommunityView('chat')
     const { data } = await supabase.from('messages').select('id, content, created_at, user_id, channel_id, profiles(id, full_name, username, avatar_url)').eq('channel_id', topic.id).order('created_at', { ascending: true }).limit(50)
-    setCommunityMsgs((data as Message[]) ?? [])
+    setCommunityMsgs((data as unknown as Message[]) ?? [])
   }
 
   const handleCommunitySend = async () => {
