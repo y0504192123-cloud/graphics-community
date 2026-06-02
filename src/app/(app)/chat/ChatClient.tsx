@@ -221,14 +221,13 @@ export default function ChatClient({
     return () => { supabase.removeChannel(ch) }
   }, [supabase])
 
-  // Community chat messages
+  // Community chat messages — filter by channel_id (works now that REPLICA IDENTITY FULL is set)
   useEffect(() => {
     if (!selectedTopic) return
     const topicId = selectedTopic.id
     const ch = supabase.channel(`rt-messages-${topicId}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, async (payload) => {
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `channel_id=eq.${topicId}` }, async (payload) => {
         const newMsg = payload.new as Message
-        if (newMsg.channel_id !== topicId) return
         const { data: profile } = await supabase.from('profiles').select('*').eq('id', newMsg.user_id).single()
         setCommunityMsgs(prev => {
           const withoutTemp = prev.filter(
@@ -238,7 +237,7 @@ export default function ChatClient({
           return [...withoutTemp, { ...newMsg, profiles: profile ?? undefined }]
         })
       })
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages' }, (payload) => {
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages', filter: `channel_id=eq.${topicId}` }, (payload) => {
         const old = payload.old as { id: string }
         setCommunityMsgs(prev => prev.filter(m => m.id !== old.id))
       })
@@ -582,14 +581,13 @@ export default function ChatClient({
                       </div>
                     )}
                     <div
-                      className={`relative rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${isTemp ? 'opacity-70' : 'opacity-100'}`}
+                      className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${isTemp ? 'opacity-60' : ''}`}
                       style={isOwn
                         ? { background: 'linear-gradient(135deg, #7c3aed, #6d28d9)', boxShadow: '0 2px 12px rgba(124,58,237,.25)', color: 'white' }
                         : { background: 'var(--s2)', border: '1px solid var(--bd)', color: 'var(--tx2)' }
                       }
                     >
                       {msg.content}
-                      {isTemp && <span className="absolute -bottom-4 end-0 text-[9px] text-slate-600">שולח...</span>}
                     </div>
                     {(isOwn || isAdmin) && !isTemp && (
                       <button
