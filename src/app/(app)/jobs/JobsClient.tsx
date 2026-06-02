@@ -28,7 +28,7 @@ const accentColor: Record<string, string> = {
   closed:      'linear-gradient(to bottom, #f87171, #dc2626)',
 }
 
-const inputCls = 'w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-4 py-2.5 text-sm text-slate-100 outline-none transition-all focus:border-purple-500/50 focus:bg-white/[0.06] focus:ring-2 focus:ring-purple-500/20'
+const inputCls = 'w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition-all hover:border-slate-300 focus:border-purple-400 focus:ring-2 focus:ring-purple-100'
 const labelCls = 'mb-1.5 block text-xs font-semibold uppercase tracking-widest text-slate-500'
 
 const categoryIcons: Record<string, string> = {
@@ -72,7 +72,7 @@ export default function JobsClient({
       {/* Header */}
       <div
         className="relative overflow-hidden px-6 py-8"
-        style={{ background: 'linear-gradient(135deg, var(--s2) 0%, var(--bg) 70%)' }}
+        style={{ background: 'var(--hero)' }}
       >
         <div className="pointer-events-none absolute -top-20 start-0 h-60 w-60 rounded-full opacity-25" style={{ background: 'radial-gradient(circle, rgba(99,102,241,.6) 0%, transparent 70%)', filter: 'blur(50px)' }} />
         <div className="pointer-events-none absolute -bottom-10 end-20 h-40 w-40 rounded-full opacity-20" style={{ background: 'radial-gradient(circle, rgba(124,58,237,.5) 0%, transparent 70%)', filter: 'blur(40px)' }} />
@@ -86,8 +86,8 @@ export default function JobsClient({
                   {openCount} פתוחות
                 </span>
               </div>
-              <h1 className="text-2xl font-bold text-white lg:text-3xl">לוח עבודות</h1>
-              <p className="mt-1 text-sm text-slate-400">מצא עבודות עיצוב מהקהילה</p>
+              <h1 className="text-2xl font-bold lg:text-3xl" style={{ color: 'var(--tx)' }}>לוח עבודות</h1>
+              <p className="mt-1 text-sm" style={{ color: 'var(--tx2)' }}>מצא עבודות עיצוב מהקהילה</p>
             </div>
             <button
               onClick={() => setShowCreate((s) => !s)}
@@ -117,8 +117,8 @@ export default function JobsClient({
             }}
           >
             <div className="mb-5 flex items-center justify-between">
-              <h3 className="font-bold text-purple-300">פרסום עבודה חדשה</h3>
-              <button type="button" onClick={() => setShowCreate(false)} className="text-slate-500 hover:text-slate-300">
+              <h3 className="font-bold text-purple-700">פרסום עבודה חדשה</h3>
+              <button type="button" onClick={() => setShowCreate(false)} className="text-slate-400 hover:text-slate-600">
                 <X size={16} />
               </button>
             </div>
@@ -181,7 +181,7 @@ export default function JobsClient({
               key={cat}
               onClick={() => setFilterCat(cat)}
               className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all duration-200 ${
-                filterCat === cat ? 'text-white shadow-lg' : 'text-slate-400 hover:text-slate-200'
+                filterCat === cat ? 'text-white shadow-lg' : 'hover:text-slate-700'
               }`}
               style={filterCat === cat
                 ? { background: 'linear-gradient(135deg, #7c3aed, #6d28d9)', boxShadow: '0 2px 12px rgba(124,58,237,.4)' }
@@ -201,10 +201,10 @@ export default function JobsClient({
               className="flex flex-col items-center justify-center gap-4 rounded-2xl py-16 text-center"
               style={{ border: '2px dashed var(--bd)', background: 'var(--inp)' }}
             >
-              <Briefcase size={32} className="text-slate-700" />
+              <Briefcase size={32} style={{ color: 'var(--tx3)' }} />
               <div>
-                <p className="font-semibold text-slate-400">אין עבודות בקטגוריה זו</p>
-                <p className="mt-1 text-sm text-slate-600">נסה קטגוריה אחרת או חזור מאוחר יותר</p>
+                <p className="font-semibold" style={{ color: 'var(--tx2)' }}>אין עבודות בקטגוריה זו</p>
+                <p className="mt-1 text-sm" style={{ color: 'var(--tx3)' }}>נסה קטגוריה אחרת או חזור מאוחר יותר</p>
               </div>
             </div>
           )}
@@ -237,7 +237,7 @@ export default function JobsClient({
                     <div className="mb-3 flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <div className="mb-2 flex flex-wrap items-center gap-2">
-                          <h3 className="font-bold text-slate-100 group-hover:text-white">{job.title}</h3>
+                          <h3 className="font-bold group-hover:text-purple-700" style={{ color: 'var(--tx)' }}>{job.title}</h3>
 
                           {/* Status badge */}
                           <span
@@ -296,13 +296,13 @@ export default function JobsClient({
                           style={{ background: 'rgba(124,58,237,.1)', border: '1px solid rgba(124,58,237,.2)' }}
                         >
                           <p className="text-xs text-slate-500">תקציב</p>
-                          <p className="whitespace-nowrap text-base font-bold text-purple-300">{budget}</p>
+                          <p className="whitespace-nowrap text-base font-bold text-purple-700">{budget}</p>
                         </div>
                       )}
                     </div>
 
                     {/* Full description */}
-                    <p className="mb-4 text-sm leading-relaxed text-slate-400">{job.description}</p>
+                    <p className="mb-4 text-sm leading-relaxed" style={{ color: 'var(--tx2)' }}>{job.description}</p>
 
                     {/* Bottom row: status changer (owner) + apply (other) + delete */}
                     <div className="flex flex-wrap items-center gap-2">
@@ -397,7 +397,7 @@ export default function JobsClient({
                           })
                         }}
                       >
-                        <h4 className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-400">הצעה שלך</h4>
+                        <h4 className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-500">הצעה שלך</h4>
                         <div className="grid gap-3 sm:grid-cols-2">
                           <div>
                             <label className={labelCls}>מחיר מוצע (₪)</label>
@@ -407,7 +407,7 @@ export default function JobsClient({
                               min="0"
                               onWheel={(e) => e.currentTarget.blur()}
                               className={`${inputCls} [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none`}
-                              style={{ background: 'rgba(255,255,255,.03)' }}
+                              style={{ background: 'var(--inp)' }}
                             />
                           </div>
                           <div className="sm:col-span-2">
@@ -417,7 +417,7 @@ export default function JobsClient({
                               required
                               rows={2}
                               className={`${inputCls} resize-none`}
-                              style={{ background: 'rgba(255,255,255,.03)' }}
+                              style={{ background: 'var(--inp)' }}
                             />
                           </div>
                         </div>
@@ -433,7 +433,7 @@ export default function JobsClient({
                           <button
                             type="button"
                             onClick={() => setApplyingTo(null)}
-                            className="rounded-xl border border-white/[0.08] px-4 py-2 text-xs text-slate-500 hover:text-slate-300"
+                            className="rounded-xl border border-slate-200 px-4 py-2 text-xs text-slate-500 hover:border-slate-300 hover:text-slate-700"
                           >
                             ביטול
                           </button>

@@ -10,7 +10,7 @@ type Props = {
   publishNews: (prev: { error?: string } | null, formData: FormData) => Promise<{ error?: string } | null>
 }
 
-const inputCls = 'w-full rounded-xl border bg-white/[0.04] px-4 py-2.5 text-sm text-slate-100 outline-none transition-all placeholder:text-slate-600 focus:bg-white/[0.06] focus:ring-2 focus:ring-purple-500/20'
+const inputCls = 'w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition-all placeholder:text-slate-400 hover:border-slate-300 focus:border-purple-400 focus:ring-2 focus:ring-purple-100'
 
 export default function NewsSection({ news, isAdmin, publishNews }: Props) {
   const [showForm, setShowForm] = useState(false)
@@ -25,7 +25,7 @@ export default function NewsSection({ news, isAdmin, publishNews }: Props) {
       <div className="mb-5 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Newspaper size={18} className="text-purple-400" />
-          <h2 className="text-lg font-bold text-white">חדשות הקהילה</h2>
+          <h2 className="text-lg font-bold" style={{ color: 'var(--tx)' }}>חדשות הקהילה</h2>
         </div>
         {isAdmin && (
           <button
@@ -46,7 +46,7 @@ export default function NewsSection({ news, isAdmin, publishNews }: Props) {
           className="mb-6 animate-fade-up rounded-2xl p-5"
           style={{ background: 'rgba(124,58,237,.06)', border: '1px solid rgba(124,58,237,.2)' }}
         >
-          <h3 className="mb-4 text-sm font-bold text-purple-300">פרסום עדכון חדש</h3>
+          <h3 className="mb-4 text-sm font-bold text-purple-700">פרסום עדכון חדש</h3>
           {state?.error && (
             <p className="mb-3 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">{state.error}</p>
           )}
@@ -56,22 +56,19 @@ export default function NewsSection({ news, isAdmin, publishNews }: Props) {
               required
               placeholder="כותרת העדכון"
               className={inputCls}
-              style={{ borderColor: 'rgba(124,58,237,.3)' }}
-            />
+              />
             <textarea
               name="content"
               required
               rows={3}
               placeholder="תוכן ההודעה..."
               className={`${inputCls} resize-none`}
-              style={{ borderColor: 'rgba(124,58,237,.3)' }}
             />
             <input
               name="image_url"
               type="url"
               placeholder="קישור לתמונה (אופציונלי)"
               className={inputCls}
-              style={{ borderColor: 'rgba(124,58,237,.3)' }}
               dir="ltr"
             />
           </div>
@@ -92,8 +89,8 @@ export default function NewsSection({ news, isAdmin, publishNews }: Props) {
           className="flex flex-col items-center gap-3 rounded-2xl py-12 text-center"
           style={{ border: '2px dashed var(--bd)', background: 'var(--inp)' }}
         >
-          <Newspaper size={28} className="text-slate-600" />
-          <p className="text-sm text-slate-500">אין עדכונים עדיין</p>
+          <Newspaper size={28} style={{ color: 'var(--tx3)' }} />
+          <p className="text-sm" style={{ color: 'var(--tx3)' }}>אין עדכונים עדיין</p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -115,8 +112,8 @@ export default function NewsSection({ news, isAdmin, publishNews }: Props) {
               <div className="p-5">
                 <div className="mb-2 flex items-center gap-2">
                   <span
-                    className="rounded-full px-2.5 py-0.5 text-xs font-bold text-purple-300"
-                    style={{ background: 'rgba(124,58,237,.15)' }}
+                    className="rounded-full px-2.5 py-0.5 text-xs font-bold text-purple-700"
+                    style={{ background: 'rgba(124,58,237,.08)' }}
                   >
                     📢 עדכון קהילה
                   </span>
@@ -125,10 +122,10 @@ export default function NewsSection({ news, isAdmin, publishNews }: Props) {
                     {new Date(item.created_at).toLocaleDateString('he-IL', { day: 'numeric', month: 'long', year: 'numeric' })}
                   </span>
                 </div>
-                <h3 className="text-base font-bold text-white">{item.title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-slate-400">{item.content}</p>
+                <h3 className="text-base font-bold" style={{ color: 'var(--tx)' }}>{item.title}</h3>
+                <p className="mt-2 text-sm leading-relaxed" style={{ color: 'var(--tx2)' }}>{item.content}</p>
                 {item.profiles?.full_name && (
-                  <p className="mt-3 text-xs text-slate-600">
+                  <p className="mt-3 text-xs" style={{ color: 'var(--tx3)' }}>
                     — {item.profiles.full_name}
                   </p>
                 )}

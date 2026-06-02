@@ -151,9 +151,9 @@ export default async function DashboardPage() {
             {profileIncomplete && (
               <div
                 className="rounded-2xl p-4"
-                style={{ background: 'rgba(234,179,8,.06)', border: '1px solid rgba(234,179,8,.2)' }}
+                style={{ background: 'rgba(234,179,8,.08)', border: '1px solid rgba(234,179,8,.25)' }}
               >
-                <p className="text-sm font-semibold text-amber-300">השלם את הפרופיל שלך</p>
+                <p className="text-sm font-semibold text-amber-700">השלם את הפרופיל שלך</p>
                 <p className="mt-1 text-xs" style={{ color: 'var(--tx3)' }}>
                   {!profile?.avatar_url && !profile?.bio
                     ? 'חסרה תמונת פרופיל ו-bio'
@@ -163,7 +163,7 @@ export default async function DashboardPage() {
                 </p>
                 <Link
                   href="/profile"
-                  className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-amber-400 transition hover:text-amber-300"
+                  className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-amber-700 transition hover:text-amber-800"
                 >
                   עדכן עכשיו <ArrowLeft size={11} />
                 </Link>
