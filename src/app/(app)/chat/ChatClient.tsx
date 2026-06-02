@@ -215,7 +215,7 @@ export default function ChatClient({
     const ch = supabase.channel('rt-topics')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'topics' }, async (payload) => {
         const newTopic = payload.new as Topic
-        const { data: profile } = await supabase.from('profiles').select('*').eq('id', newTopic.created_by).single()
+        const { data: profile } = await supabase.from('profiles').select('id, full_name, username, avatar_url').eq('id', newTopic.created_by).single()
         setTopics(prev => [{ ...newTopic, profiles: profile ?? undefined }, ...prev])
       })
       .subscribe()
@@ -229,7 +229,7 @@ export default function ChatClient({
     const ch = supabase.channel(`rt-messages-${topicId}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `channel_id=eq.${topicId}` }, async (payload) => {
         const newMsg = payload.new as Message
-        const { data: profile } = await supabase.from('profiles').select('*').eq('id', newMsg.user_id).single()
+        const { data: profile } = await supabase.from('profiles').select('id, full_name, username, avatar_url').eq('id', newMsg.user_id).single()
         setCommunityMsgs(prev => {
           const withoutTemp = prev.filter(
             m => !(m.id.startsWith('temp-') && m.user_id === newMsg.user_id && m.content === newMsg.content)
@@ -263,8 +263,8 @@ export default function ChatClient({
         if (newMsg.sender_id !== currentUserId && newMsg.receiver_id !== currentUserId) return
 
         const [{ data: senderProfile }, { data: receiverProfile }] = await Promise.all([
-          supabase.from('profiles').select('*').eq('id', newMsg.sender_id).single(),
-          supabase.from('profiles').select('*').eq('id', newMsg.receiver_id).single(),
+          supabase.from('profiles').select('id, full_name, username, avatar_url').eq('id', newMsg.sender_id).single(),
+          supabase.from('profiles').select('id, full_name, username, avatar_url').eq('id', newMsg.receiver_id).single(),
         ])
         const fullMsg: PrivateMessage = { ...newMsg, sender: senderProfile ?? undefined, receiver: receiverProfile ?? undefined }
 
@@ -313,7 +313,7 @@ export default function ChatClient({
   const openTopic = async (topic: Topic) => {
     setSelectedTopic(topic)
     setCommunityView('chat')
-    const { data } = await supabase.from('messages').select('*, profiles(id, full_name, username, avatar_url)').eq('channel_id', topic.id).order('created_at', { ascending: true }).limit(50)
+    const { data } = await supabase.from('messages').select('id, content, created_at, user_id, channel_id, profiles(id, full_name, username, avatar_url)').eq('channel_id', topic.id).order('created_at', { ascending: true }).limit(50)
     setCommunityMsgs((data as Message[]) ?? [])
   }
 
