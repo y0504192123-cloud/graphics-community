@@ -2,10 +2,9 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Briefcase, MessageSquare, Library, Menu, X, Sparkles, Moon, Sun, ShieldCheck, Palette, Globe } from 'lucide-react'
+import { LayoutDashboard, Briefcase, MessageSquare, Library, Menu, X, Sparkles, ShieldCheck, Palette, Globe } from 'lucide-react'
 import { useState, useEffect, useMemo } from 'react'
 import LogoutButton from './LogoutButton'
-import { useTheme } from '@/components/ThemeProvider'
 import { useLanguage } from '@/components/LanguageProvider'
 import { createClient } from '@/lib/supabase/client'
 import type { Profile } from '@/types'
@@ -17,21 +16,18 @@ const labels = {
   he: {
     home: 'ראשי', jobs: 'לוח עבודות', chat: "צ'אטים",
     inspiration: 'ספריית השראה', assets: 'נכסים', admin: 'פאנל ניהול',
-    appName: 'גרפיקס קהילה', appSub: 'פלטפורמה לגרפיקאים',
-    lightMode: 'מצב בהיר', darkMode: 'מצב כהה', designer: 'גרפיקאי',
+    appName: 'גרפיקס קהילה', appSub: 'פלטפורמה לגרפיקאים', designer: 'גרפיקאי',
   },
   en: {
     home: 'Home', jobs: 'Job Board', chat: 'Chats',
     inspiration: 'Inspiration', assets: 'Assets', admin: 'Admin Panel',
-    appName: 'Graphics Community', appSub: 'Platform for Designers',
-    lightMode: 'Light mode', darkMode: 'Dark mode', designer: 'Designer',
+    appName: 'Graphics Community', appSub: 'Platform for Designers', designer: 'Designer',
   },
 }
 
 export default function Sidebar({ profile, email, currentUserId }: Props) {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
-  const { theme, toggle } = useTheme()
   const { lang, toggleLang } = useLanguage()
   const t = labels[lang]
   const [unreadCount, setUnreadCount] = useState(0)
@@ -39,7 +35,6 @@ export default function Sidebar({ profile, email, currentUserId }: Props) {
 
   useEffect(() => {
     if (!currentUserId) return
-
     const fetchCount = async () => {
       const { count } = await supabase
         .from('private_messages')
@@ -48,25 +43,20 @@ export default function Sidebar({ profile, email, currentUserId }: Props) {
         .eq('is_read', false)
       setUnreadCount(count ?? 0)
     }
-
     fetchCount()
-
     const ch = supabase
       .channel('sidebar-pm-count')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'private_messages' }, () => {
-        fetchCount()
-      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'private_messages' }, () => fetchCount())
       .subscribe()
-
     return () => { supabase.removeChannel(ch) }
   }, [currentUserId, supabase])
 
   const navItems: NavItem[] = [
-    { href: '/dashboard',   label: t.home,        icon: <LayoutDashboard size={17} /> },
-    { href: '/jobs',        label: t.jobs,         icon: <Briefcase size={17} /> },
-    { href: '/chat',        label: t.chat,         icon: <MessageSquare size={17} /> },
-    { href: '/inspiration', label: t.inspiration,  icon: <Palette size={17} /> },
-    { href: '/assets',      label: t.assets,       icon: <Library size={17} /> },
+    { href: '/dashboard',   label: t.home,       icon: <LayoutDashboard size={17} /> },
+    { href: '/jobs',        label: t.jobs,        icon: <Briefcase size={17} /> },
+    { href: '/chat',        label: t.chat,        icon: <MessageSquare size={17} /> },
+    { href: '/inspiration', label: t.inspiration, icon: <Palette size={17} /> },
+    { href: '/assets',      label: t.assets,      icon: <Library size={17} /> },
   ]
 
   const displayName = profile?.full_name ?? profile?.username ?? email.split('@')[0]
@@ -79,8 +69,8 @@ export default function Sidebar({ profile, email, currentUserId }: Props) {
       <div className="px-4 pb-4 pt-5">
         <div className="flex items-center gap-3">
           <div
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
-            style={{ background: 'linear-gradient(135deg, #7c3aed, #ec4899)' }}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl shadow-sm"
+            style={{ background: 'linear-gradient(135deg, #7c3aed, #a855f7)' }}
           >
             <svg viewBox="0 0 32 32" className="h-5 w-5" fill="none">
               <path d="M7 25 L16 7 L25 25" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -89,7 +79,7 @@ export default function Sidebar({ profile, email, currentUserId }: Props) {
           </div>
           <div>
             <p className="text-sm font-bold" style={{ color: 'var(--tx)' }}>{t.appName}</p>
-            <p className="flex items-center gap-1 text-[10px] text-purple-400">
+            <p className="flex items-center gap-1 text-[10px]" style={{ color: 'var(--purple-light)' }}>
               <Sparkles size={9} />
               {t.appSub}
             </p>
@@ -109,27 +99,28 @@ export default function Sidebar({ profile, email, currentUserId }: Props) {
               key={item.href}
               href={item.href}
               onClick={() => setOpen(false)}
-              className={`group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 ${active ? 'text-white' : 'hover:text-slate-100'}`}
+              className="group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200"
               style={{
-                color: active ? 'white' : 'var(--tx2)',
-                ...(active ? {
-                  background: 'linear-gradient(135deg, rgba(124,58,237,.2), rgba(236,72,153,.1))',
-                  border: '1px solid rgba(124,58,237,.3)',
-                } : {}),
+                color: active ? '#6b21a8' : 'var(--tx2)',
+                background: active ? 'rgba(107,33,168,.08)' : 'transparent',
+                border: active ? '1px solid rgba(107,33,168,.15)' : '1px solid transparent',
               }}
             >
               {!active && (
-                <span className="absolute inset-0 rounded-xl transition-all duration-200 group-hover:bg-white/[0.04]" />
+                <span className="absolute inset-0 rounded-xl transition-all duration-200 group-hover:bg-slate-100" />
               )}
               {active && (
-                <span className="absolute end-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-s-full bg-purple-400" />
+                <span className="absolute end-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-s-full bg-purple-600" />
               )}
-              <span className={`relative transition-colors duration-200 ${active ? 'text-purple-400' : 'text-slate-500 group-hover:text-slate-300'}`}>
+              <span
+                className="relative transition-colors duration-200"
+                style={{ color: active ? '#7c3aed' : 'var(--tx3)' }}
+              >
                 {item.icon}
               </span>
-              <span className="relative">{item.label}</span>
+              <span className="relative" style={{ color: active ? '#6b21a8' : 'var(--tx2)' }}>{item.label}</span>
               {isChat && unreadCount > 0 && (
-                <span className="relative ms-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">
+                <span className="relative ms-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white" style={{ color: 'white !important' }}>
                   {unreadCount > 9 ? '9+' : unreadCount}
                 </span>
               )}
@@ -144,24 +135,20 @@ export default function Sidebar({ profile, email, currentUserId }: Props) {
           <Link
             href="/admin"
             onClick={() => setOpen(false)}
-            className={`group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
-              pathname.startsWith('/admin') ? 'text-white' : 'hover:text-slate-100'
-            }`}
+            className="group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200"
             style={{
-              color: pathname.startsWith('/admin') ? 'white' : 'var(--tx2)',
-              ...(pathname.startsWith('/admin') ? {
-                background: 'linear-gradient(135deg, rgba(236,72,153,.2), rgba(236,72,153,.08))',
-                border: '1px solid rgba(236,72,153,.3)',
-              } : {}),
+              color: pathname.startsWith('/admin') ? '#be185d' : 'var(--tx2)',
+              background: pathname.startsWith('/admin') ? 'rgba(236,72,153,.08)' : 'transparent',
+              border: pathname.startsWith('/admin') ? '1px solid rgba(236,72,153,.18)' : '1px solid transparent',
             }}
           >
             {!pathname.startsWith('/admin') && (
-              <span className="absolute inset-0 rounded-xl transition-all duration-200 group-hover:bg-white/[0.04]" />
+              <span className="absolute inset-0 rounded-xl transition-all duration-200 group-hover:bg-slate-100" />
             )}
             {pathname.startsWith('/admin') && (
-              <span className="absolute end-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-s-full bg-pink-400" />
+              <span className="absolute end-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-s-full bg-pink-500" />
             )}
-            <span className={`relative transition-colors duration-200 ${pathname.startsWith('/admin') ? 'text-pink-400' : 'text-slate-500 group-hover:text-slate-300'}`}>
+            <span className="relative" style={{ color: pathname.startsWith('/admin') ? '#ec4899' : 'var(--tx3)' }}>
               <ShieldCheck size={17} />
             </span>
             <span className="relative">{t.admin}</span>
@@ -169,45 +156,18 @@ export default function Sidebar({ profile, email, currentUserId }: Props) {
         </div>
       )}
 
-      {/* Theme + Language toggles */}
-      <div className="mx-3 mb-1 mt-1 space-y-1.5">
-        {/* Theme */}
-        <button
-          onClick={toggle}
-          className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200"
-          style={{ border: '1px solid var(--bd)', background: 'var(--inp)', color: 'var(--tx2)' }}
-        >
-          {theme === 'dark' ? (
-            <Sun size={15} className="shrink-0 text-amber-400" />
-          ) : (
-            <Moon size={15} className="shrink-0 text-indigo-500" />
-          )}
-          <span>{theme === 'dark' ? t.lightMode : t.darkMode}</span>
-          <span
-            className="relative me-auto h-5 w-9 shrink-0 rounded-full transition-colors duration-300"
-            style={{ background: theme === 'dark' ? 'rgba(100,116,139,.25)' : '#7c3aed' }}
-          >
-            <span
-              className="absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-300"
-              style={{
-                insetInlineStart: '2px',
-                transform: theme === 'dark' ? 'translateX(0)' : 'translateX(-16px)',
-              }}
-            />
-          </span>
-        </button>
-
-        {/* Language */}
+      {/* Language toggle */}
+      <div className="mx-3 mb-1 mt-1">
         <button
           onClick={toggleLang}
-          className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200"
+          className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 hover:bg-slate-100"
           style={{ border: '1px solid var(--bd)', background: 'var(--inp)', color: 'var(--tx2)' }}
         >
-          <Globe size={15} className="shrink-0 text-blue-400" />
+          <Globe size={15} className="shrink-0" style={{ color: '#3b82f6' }} />
           <span>{lang === 'he' ? 'English' : 'עברית'}</span>
           <span
             className="me-auto rounded-full px-2 py-0.5 text-[10px] font-bold"
-            style={{ background: 'rgba(59,130,246,.15)', color: '#93c5fd' }}
+            style={{ background: 'rgba(59,130,246,.1)', color: '#3b82f6' }}
           >
             {lang === 'he' ? 'HE' : 'EN'}
           </span>
@@ -221,16 +181,16 @@ export default function Sidebar({ profile, email, currentUserId }: Props) {
         <Link
           href="/profile"
           onClick={() => setOpen(false)}
-          className="mb-1 flex items-center gap-3 rounded-xl p-2.5 transition-all hover:bg-white/[0.04]"
+          className="mb-1 flex items-center gap-3 rounded-xl p-2.5 transition-all hover:bg-slate-100"
         >
           <div
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white shadow-lg"
-            style={{ background: 'linear-gradient(135deg, #7c3aed, #ec4899)' }}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold shadow-sm"
+            style={{ background: 'linear-gradient(135deg, #7c3aed, #a855f7)', color: 'white' }}
           >
             {profile?.avatar_url ? (
               <img src={profile.avatar_url} alt={displayName} className="h-9 w-9 rounded-full object-cover" />
             ) : (
-              initials
+              <span style={{ color: 'white' }}>{initials}</span>
             )}
           </div>
           <div className="min-w-0">
@@ -245,8 +205,11 @@ export default function Sidebar({ profile, email, currentUserId }: Props) {
 
   return (
     <>
-      {/* Desktop */}
-      <aside className="hidden h-screen w-60 shrink-0 flex-col lg:flex" style={{ background: 'var(--s1)', borderLeft: '1px solid var(--bd)' }}>
+      {/* Desktop sidebar */}
+      <aside
+        className="hidden h-screen w-60 shrink-0 flex-col lg:flex"
+        style={{ background: 'var(--s1)', borderInlineStart: '1px solid var(--bd)', boxShadow: '1px 0 0 var(--bd)' }}
+      >
         {sidebarContent}
       </aside>
 
@@ -256,7 +219,7 @@ export default function Sidebar({ profile, email, currentUserId }: Props) {
         style={{ background: 'var(--hdr)', borderBottom: '1px solid var(--bd)', backdropFilter: 'blur(20px)' }}
       >
         <div className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-xl" style={{ background: 'linear-gradient(135deg, #7c3aed, #ec4899)' }}>
+          <div className="flex h-8 w-8 items-center justify-center rounded-xl" style={{ background: 'linear-gradient(135deg, #7c3aed, #a855f7)' }}>
             <svg viewBox="0 0 32 32" className="h-4 w-4" fill="none">
               <path d="M7 25 L16 7 L25 25" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
@@ -264,20 +227,21 @@ export default function Sidebar({ profile, email, currentUserId }: Props) {
           <span className="text-sm font-bold" style={{ color: 'var(--tx)' }}>{t.appName}</span>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={toggleLang} className="rounded-lg p-1.5 text-xs font-bold text-blue-400 transition hover:bg-blue-500/10">
+          <button
+            onClick={toggleLang}
+            className="rounded-lg px-2 py-1 text-xs font-bold transition hover:bg-slate-100"
+            style={{ color: '#3b82f6', border: '1px solid var(--bd)' }}
+          >
             {lang === 'he' ? 'EN' : 'עב'}
           </button>
           <button
-            onClick={toggle}
-            className="rounded-lg p-1.5 transition-all duration-200"
+            onClick={() => setOpen((o) => !o)}
+            className="relative rounded-lg p-1.5 transition hover:bg-slate-100"
             style={{ color: 'var(--tx2)' }}
           >
-            {theme === 'dark' ? <Sun size={18} className="text-amber-400" /> : <Moon size={18} className="text-indigo-500" />}
-          </button>
-          <button onClick={() => setOpen((o) => !o)} className="relative rounded-lg p-1.5 transition hover:bg-white/[0.06]" style={{ color: 'var(--tx2)' }}>
             {open ? <X size={20} /> : <Menu size={20} />}
             {!open && unreadCount > 0 && (
-              <span className="absolute -end-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[8px] font-bold text-white">
+              <span className="absolute -end-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[8px] font-bold" style={{ color: 'white' }}>
                 {unreadCount > 9 ? '9+' : unreadCount}
               </span>
             )}
@@ -288,8 +252,11 @@ export default function Sidebar({ profile, email, currentUserId }: Props) {
       {/* Mobile drawer */}
       {open && (
         <>
-          <div className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm lg:hidden" onClick={() => setOpen(false)} />
-          <aside className="fixed inset-y-0 end-0 z-50 w-64 lg:hidden" style={{ background: 'var(--s1)', borderLeft: '1px solid var(--bd)' }}>
+          <div className="fixed inset-0 z-40 bg-black/20 backdrop-blur-sm lg:hidden" onClick={() => setOpen(false)} />
+          <aside
+            className="fixed inset-y-0 end-0 z-50 w-64 lg:hidden"
+            style={{ background: 'var(--s1)', borderInlineStart: '1px solid var(--bd)' }}
+          >
             {sidebarContent}
           </aside>
         </>

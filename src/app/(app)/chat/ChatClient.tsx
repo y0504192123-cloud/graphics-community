@@ -112,12 +112,12 @@ function InputBar({ value, onChange, onKeyDown, onSend, isSending, textRef }: In
   )
 }
 
-const headerBg: React.CSSProperties = { background: 'linear-gradient(135deg, #0a0a18 0%, var(--bg) 70%)' }
+const headerBg: React.CSSProperties = { background: 'var(--hero)' }
 
 function BgDecorations() {
   return (
     <>
-      <div className="pointer-events-none absolute -top-16 start-0 h-48 w-48 rounded-full opacity-25" style={{ background: 'radial-gradient(circle, rgba(52,211,153,.5) 0%, transparent 70%)', filter: 'blur(40px)' }} />
+      <div className="pointer-events-none absolute -top-16 start-0 h-48 w-48 rounded-full opacity-30" style={{ background: 'radial-gradient(circle, rgba(168,85,247,.35) 0%, transparent 70%)', filter: 'blur(40px)' }} />
       <div className="grid-pattern absolute inset-0" />
     </>
   )
@@ -537,19 +537,20 @@ export default function ChatClient({
         <div className="shrink-0 flex items-center gap-3 px-5 py-3.5" style={{ background: 'var(--hdr)', borderBottom: '1px solid var(--bd)', backdropFilter: 'blur(20px)' }}>
           <button
             onClick={() => { setCommunityView('list'); setSelectedTopic(null); setCommunityMsgs([]) }}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-slate-400 transition hover:bg-white/[0.07] hover:text-slate-200"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition hover:bg-slate-100"
+            style={{ color: 'var(--tx3)' }}
           >
             <ArrowRight size={17} />
           </button>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <Hash size={14} className="shrink-0 text-purple-400" />
-              <h2 className="truncate text-sm font-bold text-white">{selectedTopic?.title}</h2>
+              <Hash size={14} className="shrink-0 text-purple-500" />
+              <h2 className="truncate text-sm font-bold" style={{ color: 'var(--tx)' }}>{selectedTopic?.title}</h2>
             </div>
             {selectedTopic && <CategoryBadge cat={selectedTopic.category} />}
           </div>
-          <div className="flex items-center gap-1.5 text-xs text-emerald-400 shrink-0">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
+          <div className="flex items-center gap-1.5 text-xs shrink-0" style={{ color: '#10b981' }}>
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
             פעיל
           </div>
         </div>
@@ -722,12 +723,13 @@ export default function ChatClient({
       <div className="shrink-0 flex items-center gap-3 px-5 py-3.5" style={{ background: 'var(--hdr)', borderBottom: '1px solid var(--bd)', backdropFilter: 'blur(20px)' }}>
         <button
           onClick={() => { setDmView('list'); setSelectedPartner(null) }}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-slate-400 transition hover:bg-white/[0.07] hover:text-slate-200"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition hover:bg-slate-100"
+          style={{ color: 'var(--tx3)' }}
         >
           <ArrowRight size={17} />
         </button>
         {selectedPartner && (
-          <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${avatarGrad(selectedPartner)} text-xs font-bold text-white shadow-md`}>
+          <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${avatarGrad(selectedPartner)} text-xs font-bold shadow-sm`} style={{ color: 'white' }}>
             {partnerProfile?.avatar_url
               ? <img src={partnerProfile.avatar_url} alt={dName(partnerProfile)} className="h-9 w-9 rounded-full object-cover" />
               : initials(dName(partnerProfile))
@@ -735,12 +737,12 @@ export default function ChatClient({
           </div>
         )}
         <div className="min-w-0 flex-1">
-          <h2 className="truncate text-sm font-bold text-white">{dName(partnerProfile)}</h2>
+          <h2 className="truncate text-sm font-bold" style={{ color: 'var(--tx)' }}>{dName(partnerProfile)}</h2>
           {partnerProfile?.specialization && (
-            <p className="text-xs text-slate-500">{partnerProfile.specialization}</p>
+            <p className="text-xs" style={{ color: 'var(--tx3)' }}>{partnerProfile.specialization}</p>
           )}
         </div>
-        <Lock size={14} className="shrink-0 text-slate-600" />
+        <Lock size={14} style={{ color: 'var(--tx3)' }} className="shrink-0" />
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-4 lg:px-6">

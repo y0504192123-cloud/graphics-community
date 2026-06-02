@@ -17,15 +17,8 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="he" dir="rtl" className={`${rubik.variable} h-full`} data-theme="dark" suppressHydrationWarning>
-      <head>
-        {/* Anti-flicker: set theme before React hydration */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `(function(){var t=localStorage.getItem('gc-theme')||'dark';document.documentElement.setAttribute('data-theme',t);var l=localStorage.getItem('gc-lang')||'he';document.documentElement.lang=l;})();`,
-          }}
-        />
-      </head>
+    <html lang="he" dir="rtl" className={`${rubik.variable} h-full`} data-theme="light">
+      <head />
       <body className="min-h-full antialiased" style={{ fontFamily: 'var(--font-rubik), Segoe UI, Arial, sans-serif' }}>
         <ThemeProvider><LanguageProvider>{children}</LanguageProvider></ThemeProvider>
       </body>
