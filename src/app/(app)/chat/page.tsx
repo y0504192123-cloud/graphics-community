@@ -32,7 +32,7 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
   const admin = createAdminClient()
   const isAdmin = profileData?.role === 'admin'
 
-  const [topicsRes, categoriesRes, privMsgsRes] = await Promise.all([
+  const [topicsRes, categoriesRes, privMsgsRes, usersRes] = await Promise.all([
     supabase.from('topics').select('*, profiles(*)').order('created_at', { ascending: false }),
     supabase.from('chat_categories').select('name').order('created_at', { ascending: true }),
     admin
@@ -40,11 +40,18 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
       .select('*, sender:profiles!sender_id(*), receiver:profiles!receiver_id(*)')
       .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
       .order('created_at', { ascending: true }),
+    admin
+      .from('profiles')
+      .select('id, full_name, username, avatar_url, specialization')
+      .eq('status', 'active')
+      .neq('id', user.id)
+      .order('full_name', { ascending: true }),
   ])
 
   const topics = (topicsRes.data ?? []) as Topic[]
   const categories = (categoriesRes.data ?? []).map((c: { name: string }) => c.name)
   const privateMessages = (privMsgsRes.data ?? []) as PrivateMessage[]
+  const activeUsers = (usersRes.data ?? []) as Profile[]
 
   let dmProfile: Profile | null = null
   if (dmUserId) {
@@ -77,6 +84,7 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
       initialDmUserId={dmUserId}
       initialDmProfile={dmProfile}
       initialJobQuote={initialJobQuote}
+      activeUsers={activeUsers}
     />
   )
 }

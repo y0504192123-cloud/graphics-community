@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { Send, ArrowRight, Plus, X, Hash, Clock, Smile, MessageSquare, Lock, Trash2 } from 'lucide-react'
+import { Send, ArrowRight, Plus, X, Hash, Clock, Smile, MessageSquare, Lock, Trash2, Search, UserPlus } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { Topic, Message, Profile, PrivateMessage } from '@/types'
 
@@ -11,6 +11,7 @@ type Props = {
   currentUserId: string
   currentProfile: Profile | null
   isAdmin: boolean
+  activeUsers: Profile[]
   createTopic: (formData: FormData) => Promise<void>
   sendMessage: (topicId: string, content: string) => Promise<void>
   deleteMessage: (messageId: string) => Promise<void>
@@ -125,7 +126,7 @@ function BgDecorations() {
 
 export default function ChatClient({
   topics: initialTopics, categories,
-  currentUserId, currentProfile, isAdmin,
+  currentUserId, currentProfile, isAdmin, activeUsers,
   createTopic, sendMessage, deleteMessage,
   initialPrivateMessages,
   sendPrivateMessage, deletePrivateMessage, markMessagesRead,
@@ -151,6 +152,9 @@ export default function ChatClient({
   const [dmView, setDmView]             = useState<'list' | 'chat'>(initialDmUserId ? 'chat' : 'list')
   const [privateText, setPrivateText]   = useState(initialJobQuote ?? '')
   const [isSendingP, setIsSendingP]     = useState(false)
+
+  const [showNewChat, setShowNewChat] = useState(false)
+  const [userSearch, setUserSearch] = useState('')
 
   const communityBottomRef = useRef<HTMLDivElement>(null)
   const privateBottomRef   = useRef<HTMLDivElement>(null)
@@ -205,8 +209,10 @@ export default function ChatClient({
   const partnerProfile = useMemo(() => {
     if (!selectedPartner) return null
     if (selectedPartner === initialDmUserId && initialDmProfile) return initialDmProfile
-    return convos.find(c => c.partnerId === selectedPartner)?.profile ?? null
-  }, [selectedPartner, convos, initialDmUserId, initialDmProfile])
+    return convos.find(c => c.partnerId === selectedPartner)?.profile
+      ?? activeUsers.find(u => u.id === selectedPartner)
+      ?? null
+  }, [selectedPartner, convos, initialDmUserId, initialDmProfile, activeUsers])
 
   // ── Realtime ──
 
@@ -644,6 +650,12 @@ export default function ChatClient({
 
   // ── PRIVATE LIST ──
   if (mainTab === 'private' && dmView === 'list') {
+    const filteredUsers = activeUsers.filter(u => {
+      const q = userSearch.trim().toLowerCase()
+      if (!q) return true
+      return (u.full_name ?? '').toLowerCase().includes(q) || (u.username ?? '').toLowerCase().includes(q)
+    })
+
     return (
       <div className="min-h-full" style={{ background: 'var(--bg)' }}>
         <div className="relative overflow-hidden px-6 py-8" style={headerBg}>
@@ -658,12 +670,95 @@ export default function ChatClient({
         </div>
 
         <div className="mx-auto max-w-5xl px-6 py-6">
-          {convos.length === 0 ? (
+
+          {/* New chat button */}
+          <div className="mb-5 flex items-center justify-between">
+            <p className="text-sm font-semibold" style={{ color: 'var(--tx2)' }}>
+              {convos.length > 0 ? `${convos.length} שיחות` : 'אין שיחות עדיין'}
+            </p>
+            <button
+              onClick={() => { setShowNewChat(s => !s); setUserSearch('') }}
+              className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold text-white transition hover:opacity-90"
+              style={{ background: 'linear-gradient(135deg, #7c3aed, #6d28d9)' }}
+            >
+              {showNewChat ? <X size={14} /> : <UserPlus size={14} />}
+              {showNewChat ? 'ביטול' : 'צ׳אט חדש'}
+            </button>
+          </div>
+
+          {/* User picker */}
+          {showNewChat && (
+            <div className="mb-5 animate-fade-up rounded-2xl overflow-hidden" style={{ border: '1px solid var(--bd)', background: 'var(--s2)', boxShadow: '0 4px 24px rgba(0,0,0,.08)' }}>
+              <div className="p-3 border-b" style={{ borderColor: 'var(--bd)' }}>
+                <div className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: 'var(--inp)', border: '1px solid var(--bd)' }}>
+                  <Search size={14} style={{ color: 'var(--tx3)' }} className="shrink-0" />
+                  <input
+                    autoFocus
+                    value={userSearch}
+                    onChange={e => setUserSearch(e.target.value)}
+                    placeholder="חפש משתמש..."
+                    className="flex-1 bg-transparent text-sm outline-none placeholder:text-slate-400"
+                    style={{ color: 'var(--tx)' }}
+                  />
+                  {userSearch && (
+                    <button onClick={() => setUserSearch('')} style={{ color: 'var(--tx3)' }}>
+                      <X size={13} />
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="max-h-72 overflow-y-auto">
+                {filteredUsers.length === 0 ? (
+                  <p className="py-8 text-center text-sm" style={{ color: 'var(--tx3)' }}>לא נמצאו משתמשים</p>
+                ) : (
+                  filteredUsers.map(u => {
+                    const name = dName(u)
+                    const existingConvo = convos.find(c => c.partnerId === u.id)
+                    return (
+                      <button
+                        key={u.id}
+                        onClick={() => {
+                          setShowNewChat(false)
+                          setUserSearch('')
+                          if (existingConvo) {
+                            openConversation(u.id)
+                          } else {
+                            setSelectedPartner(u.id)
+                            setDmView('chat')
+                          }
+                        }}
+                        className="flex w-full items-center gap-3 px-4 py-3 text-start transition hover:bg-slate-50"
+                      >
+                        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${avatarGrad(u.id)} text-xs font-bold text-white`}>
+                          {u.avatar_url
+                            ? <img src={u.avatar_url} alt={name} className="h-9 w-9 rounded-full object-cover" />
+                            : initials(name)
+                          }
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold" style={{ color: 'var(--tx)' }}>{name}</p>
+                          {u.specialization && (
+                            <p className="truncate text-xs" style={{ color: 'var(--tx3)' }}>{u.specialization}</p>
+                          )}
+                        </div>
+                        {existingConvo && (
+                          <span className="shrink-0 text-xs text-purple-600 font-medium">שיחה קיימת</span>
+                        )}
+                      </button>
+                    )
+                  })
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Convo list */}
+          {!showNewChat && convos.length === 0 ? (
             <div className="flex flex-col items-center gap-4 rounded-2xl py-20 text-center" style={{ border: '2px dashed var(--bd)', background: 'var(--inp)' }}>
-              <Lock size={32} className="text-slate-600" />
+              <Lock size={32} className="text-slate-400" />
               <div>
-                <p className="font-semibold text-slate-400">אין שיחות פרטיות</p>
-                <p className="mt-1 text-sm text-slate-600">לחץ &apos;פנה למפרסם&apos; בלוח העבודות כדי להתחיל שיחה</p>
+                <p className="font-semibold" style={{ color: 'var(--tx2)' }}>אין שיחות פרטיות</p>
+                <p className="mt-1 text-sm" style={{ color: 'var(--tx3)' }}>לחץ &ldquo;צ׳אט חדש&rdquo; כדי להתחיל שיחה</p>
               </div>
             </div>
           ) : (
@@ -679,7 +774,7 @@ export default function ChatClient({
                     style={{
                       background: 'var(--s2)',
                       border: hasUnread ? '1px solid rgba(124,58,237,.3)' : '1px solid var(--bd)',
-                      boxShadow: '0 2px 12px rgba(0,0,0,.14)',
+                      boxShadow: '0 2px 12px rgba(0,0,0,.08)',
                     }}
                   >
                     <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${avatarGrad(convo.partnerId)} text-sm font-bold text-white shadow-md`}>
