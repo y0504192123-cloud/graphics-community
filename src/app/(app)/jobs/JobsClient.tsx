@@ -17,9 +17,9 @@ type Props = {
 }
 
 const statusConfig: Record<string, { label: string; color: string; bg: string; border: string; dot: string }> = {
-  open:        { label: 'פתוח',    color: 'text-emerald-400', bg: 'rgba(52,211,153,.12)',  border: 'rgba(52,211,153,.3)',  dot: '#34d399' },
-  in_progress: { label: 'בתהליך', color: 'text-amber-400',   bg: 'rgba(251,191,36,.12)',  border: 'rgba(251,191,36,.3)',  dot: '#fbbf24' },
-  closed:      { label: 'נסגר',   color: 'text-red-400',     bg: 'rgba(248,113,113,.12)', border: 'rgba(248,113,113,.3)', dot: '#f87171' },
+  open:        { label: 'פתוח',    color: 'text-emerald-700', bg: 'rgba(52,211,153,.12)',  border: 'rgba(52,211,153,.35)',  dot: '#059669' },
+  in_progress: { label: 'בתהליך', color: 'text-amber-700',   bg: 'rgba(251,191,36,.12)',  border: 'rgba(251,191,36,.35)',  dot: '#d97706' },
+  closed:      { label: 'נסגר',   color: 'text-red-600',     bg: 'rgba(248,113,113,.12)', border: 'rgba(248,113,113,.35)', dot: '#dc2626' },
 }
 
 const accentColor: Record<string, string> = {
@@ -81,7 +81,7 @@ export default function JobsClient({
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <div className="mb-1 flex items-center gap-2">
-                <span className="flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold text-emerald-400" style={{ background: 'rgba(52,211,153,.1)', border: '1px solid rgba(52,211,153,.2)' }}>
+                <span className="flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold text-emerald-700" style={{ background: 'rgba(52,211,153,.12)', border: '1px solid rgba(52,211,153,.35)' }}>
                   <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
                   {openCount} פתוחות
                 </span>
@@ -250,15 +250,15 @@ export default function JobsClient({
 
                           {job.category && (
                             <span
-                              className="rounded-full px-2.5 py-0.5 text-xs text-slate-400"
-                              style={{ background: 'var(--inp)', border: '1px solid var(--bd)' }}
+                              className="rounded-full px-2.5 py-0.5 text-xs"
+                              style={{ background: 'var(--inp)', border: '1px solid var(--bd)', color: 'var(--tx2)' }}
                             >
                               {categoryIcons[job.category] ?? ''} {job.category}
                             </span>
                           )}
 
                           {isOwn && (
-                            <span className="rounded-full px-2.5 py-0.5 text-xs text-purple-400" style={{ background: 'rgba(124,58,237,.1)' }}>
+                            <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold text-purple-700" style={{ background: 'rgba(124,58,237,.1)', border: '1px solid rgba(124,58,237,.2)' }}>
                               הפרסום שלך
                             </span>
                           )}
@@ -280,7 +280,7 @@ export default function JobsClient({
                           {job.deadline && (
                             <>
                               <span>·</span>
-                              <span className="flex items-center gap-1 text-amber-400">
+                              <span className="flex items-center gap-1 text-amber-700">
                                 <Calendar size={11} />
                                 דדליין: {formatDate(job.deadline)}
                               </span>

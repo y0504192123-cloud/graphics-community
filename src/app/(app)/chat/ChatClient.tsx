@@ -32,13 +32,13 @@ type Convo = {
 }
 
 const categoryColors: Record<string, { bg: string; text: string; border: string }> = {
-  'כללי':               { bg: 'rgba(124,58,237,.15)',  text: '#c084fc', border: 'rgba(124,58,237,.3)'  },
-  'עזרה בפוטושופ':      { bg: 'rgba(59,130,246,.15)',  text: '#60a5fa', border: 'rgba(59,130,246,.3)'  },
-  'עזרה באילוסטרייטור': { bg: 'rgba(234,179,8,.15)',   text: '#fbbf24', border: 'rgba(234,179,8,.3)'   },
-  'עזרה ב-InDesign':    { bg: 'rgba(236,72,153,.15)',  text: '#f472b6', border: 'rgba(236,72,153,.3)'  },
-  'השראה':              { bg: 'rgba(52,211,153,.15)',  text: '#34d399', border: 'rgba(52,211,153,.3)'  },
-  'שיתוף עבודות':       { bg: 'rgba(245,158,11,.15)',  text: '#fbbf24', border: 'rgba(245,158,11,.3)'  },
-  'כלים וטכניקות':      { bg: 'rgba(99,102,241,.15)',  text: '#818cf8', border: 'rgba(99,102,241,.3)'  },
+  'כללי':               { bg: 'rgba(124,58,237,.1)',  text: '#7c3aed', border: 'rgba(124,58,237,.3)'  },
+  'עזרה בפוטושופ':      { bg: 'rgba(59,130,246,.1)',  text: '#2563eb', border: 'rgba(59,130,246,.3)'  },
+  'עזרה באילוסטרייטור': { bg: 'rgba(234,179,8,.1)',   text: '#d97706', border: 'rgba(234,179,8,.3)'   },
+  'עזרה ב-InDesign':    { bg: 'rgba(236,72,153,.1)',  text: '#be185d', border: 'rgba(236,72,153,.3)'  },
+  'השראה':              { bg: 'rgba(52,211,153,.1)',  text: '#059669', border: 'rgba(52,211,153,.3)'  },
+  'שיתוף עבודות':       { bg: 'rgba(245,158,11,.1)',  text: '#d97706', border: 'rgba(245,158,11,.3)'  },
+  'כלים וטכניקות':      { bg: 'rgba(99,102,241,.1)',  text: '#4f46e5', border: 'rgba(99,102,241,.3)'  },
 }
 
 const avatarGradients = [
@@ -64,7 +64,7 @@ function CategoryBadge({ cat }: { cat: string }) {
   )
 }
 
-const inputCls = 'w-full rounded-xl border bg-white/[0.04] px-4 py-2.5 text-sm text-slate-100 outline-none transition-all placeholder:text-slate-600 focus:bg-white/[0.06] focus:ring-2 focus:ring-purple-500/20'
+const inputCls = 'w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition-all placeholder:text-slate-400 hover:border-slate-300 focus:border-purple-400 focus:ring-2 focus:ring-purple-100'
 
 type InputBarProps = {
   value: string
@@ -84,7 +84,7 @@ function InputBar({ value, onChange, onKeyDown, onSend, isSending, textRef }: In
   return (
     <div className="shrink-0 px-4 py-3 lg:px-5" style={{ background: 'var(--hdr)', borderTop: '1px solid var(--bd)' }}>
       <div className="flex items-end gap-2 rounded-2xl p-2" style={{ background: 'var(--inp)', border: '1px solid var(--bd)' }}>
-        <button className="mb-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-slate-600 transition hover:bg-white/[0.07] hover:text-slate-400">
+        <button className="mb-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100">
           <Smile size={17} />
         </button>
         <textarea
@@ -396,8 +396,8 @@ export default function ChatClient({
           onClick={() => setMainTab(tab.id)}
           className="flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-semibold transition-all duration-200"
           style={mainTab === tab.id
-            ? { background: 'rgba(255,255,255,.15)', color: 'white' }
-            : { background: 'rgba(0,0,0,.25)', color: 'rgba(255,255,255,.55)', border: '1px solid rgba(255,255,255,.08)' }
+            ? { background: 'linear-gradient(135deg, #7c3aed, #6d28d9)', color: 'white' }
+            : { background: 'var(--inp)', border: '1px solid var(--bd)', color: 'var(--tx2)' }
           }
         >
           {tab.icon}
@@ -444,7 +444,7 @@ export default function ChatClient({
               className="mb-6 animate-fade-up rounded-2xl p-5"
               style={{ background: 'rgba(124,58,237,.06)', border: '1px solid rgba(124,58,237,.2)' }}
             >
-              <h3 className="mb-4 text-sm font-bold text-purple-300">פתח נושא חדש לשיחה</h3>
+              <h3 className="mb-4 text-sm font-bold text-purple-700">פתח נושא חדש לשיחה</h3>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="sm:col-span-2">
                   <label className="mb-1.5 block text-xs font-semibold uppercase tracking-widest text-slate-500">כותרת הנושא</label>
@@ -508,7 +508,7 @@ export default function ChatClient({
                           {new Date(topic.created_at).toLocaleDateString('he-IL')}
                         </span>
                       </div>
-                      <h3 className="mb-3 font-bold text-slate-100 transition-colors group-hover:text-white line-clamp-2">{topic.title}</h3>
+                      <h3 className="mb-3 font-bold line-clamp-2 transition-colors" style={{ color: 'var(--tx)' }}>{topic.title}</h3>
                       <div className="flex items-center gap-2">
                         <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${avatarGrad(topic.created_by)} text-[9px] font-bold text-white`}>
                           {initials(creator)}
@@ -562,7 +562,7 @@ export default function ChatClient({
                 <MessageSquare size={26} className="text-purple-400" />
               </div>
               <div>
-                <p className="font-bold text-slate-200">{selectedTopic?.title}</p>
+                <p className="font-bold" style={{ color: 'var(--tx)' }}>{selectedTopic?.title}</p>
                 <p className="mt-1 text-sm text-slate-600">היה הראשון לכתוב הודעה בנושא זה</p>
               </div>
             </div>
@@ -585,8 +585,8 @@ export default function ChatClient({
                   <div className={`flex max-w-[72%] flex-col gap-0.5 ${isOwn ? 'items-end' : 'items-start'}`}>
                     {!sameUser && (
                       <div className={`flex items-center gap-2 px-1 ${isOwn ? 'flex-row-reverse' : ''}`}>
-                        <span className="text-xs font-semibold text-slate-300">{isOwn ? 'אתה' : name}</span>
-                        <span className="text-[10px] text-slate-600">
+                        <span className="text-xs font-semibold" style={{ color: 'var(--tx2)' }}>{isOwn ? 'אתה' : name}</span>
+                        <span className="text-[10px]" style={{ color: 'var(--tx3)' }}>
                           {new Date(msg.created_at).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
@@ -690,14 +690,14 @@ export default function ChatClient({
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between">
-                        <span className={`text-sm font-semibold ${hasUnread ? 'text-white' : 'text-slate-200'}`}>{name}</span>
-                        <span className="text-[11px] text-slate-500">
+                        <span className="text-sm font-semibold" style={{ color: hasUnread ? '#6b21a8' : 'var(--tx)' }}>{name}</span>
+                        <span className="text-[11px]" style={{ color: 'var(--tx3)' }}>
                           {new Date(convo.lastMsg.created_at).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
                       <div className="mt-0.5 flex items-center justify-between gap-2">
-                        <p className={`truncate text-xs ${hasUnread ? 'text-slate-300' : 'text-slate-500'}`}>
-                          {convo.lastMsg.sender_id === currentUserId && <span className="text-slate-600">אתה: </span>}
+                        <p className="truncate text-xs" style={{ color: hasUnread ? 'var(--tx2)' : 'var(--tx3)' }}>
+                          {convo.lastMsg.sender_id === currentUserId && <span style={{ color: 'var(--tx3)' }}>אתה: </span>}
                           {convo.lastMsg.content}
                         </p>
                         {hasUnread && (
@@ -752,7 +752,7 @@ export default function ChatClient({
               <Lock size={26} className="text-purple-400" />
             </div>
             <div>
-              <p className="font-bold text-slate-200">{dName(partnerProfile)}</p>
+              <p className="font-bold" style={{ color: 'var(--tx)' }}>{dName(partnerProfile)}</p>
               <p className="mt-1 text-sm text-slate-600">שלח הודעה ראשונה לפתוח את השיחה</p>
             </div>
           </div>
@@ -781,8 +781,8 @@ export default function ChatClient({
                 <div className={`flex max-w-[72%] flex-col gap-0.5 ${isOwn ? 'items-end' : 'items-start'}`}>
                   {!sameUser && (
                     <div className={`flex items-center gap-2 px-1 ${isOwn ? 'flex-row-reverse' : ''}`}>
-                      <span className="text-xs font-semibold text-slate-300">{isOwn ? 'אתה' : name}</span>
-                      <span className="text-[10px] text-slate-600">
+                      <span className="text-xs font-semibold" style={{ color: 'var(--tx2)' }}>{isOwn ? 'אתה' : name}</span>
+                      <span className="text-[10px]" style={{ color: 'var(--tx3)' }}>
                         {new Date(msg.created_at).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
                       </span>
                     </div>

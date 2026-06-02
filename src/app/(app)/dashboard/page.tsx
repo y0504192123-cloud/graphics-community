@@ -90,7 +90,7 @@ export default async function DashboardPage() {
 
         <div className="relative mx-auto max-w-6xl">
           <div className="animate-fade-up">
-            <p className="mb-1 text-sm font-medium text-purple-400">{greeting} ☀️</p>
+            <p className="mb-1 text-sm font-medium text-purple-600">{greeting} ☀️</p>
             <h1 className="text-3xl font-bold lg:text-4xl" style={{ color: 'var(--tx)' }}>
               שלום,{' '}
               <Link href="/profile" className="gradient-text hover:opacity-80 transition-opacity">
