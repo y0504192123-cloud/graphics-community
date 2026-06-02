@@ -15,7 +15,7 @@ export default async function AdminPage() {
   if (profileData?.role !== 'admin') redirect('/dashboard')
 
   const admin = createAdminClient()
-  const [pendingRes, activeRes, newsRes, catRes, specsRes, inspCatsRes, jobCatsRes, assetCatsRes] = await Promise.all([
+  const [pendingRes, activeRes, newsRes, catRes, specsRes, inspCatsRes, jobCatsRes, assetCatsRes, logoRes] = await Promise.all([
     admin.from('profiles').select('*').eq('status', 'pending').order('created_at', { ascending: false }),
     admin.from('profiles').select('*').eq('status', 'active').order('created_at', { ascending: false }),
     supabase.from('news').select('*, profiles(*)').order('created_at', { ascending: false }),
@@ -24,6 +24,7 @@ export default async function AdminPage() {
     supabase.from('inspiration_categories').select('*').order('name', { ascending: true }),
     supabase.from('job_categories').select('*').order('name', { ascending: true }),
     supabase.from('assets_categories').select('*').order('name', { ascending: true }),
+    supabase.from('site_settings').select('value').eq('key', 'logo_url').single(),
   ])
 
   const pendingUsers          = (pendingRes.data    ?? []) as Profile[]
@@ -34,6 +35,7 @@ export default async function AdminPage() {
   const inspirationCategories = (inspCatsRes.data   ?? []) as InspirationCategory[]
   const jobCategories         = (jobCatsRes.data    ?? []) as JobCategory[]
   const assetCategories       = (assetCatsRes.data  ?? []) as AssetCategory[]
+  const currentLogoUrl: string | null = logoRes.data?.value ?? null
 
   /* ── Server Actions ── */
 
@@ -47,7 +49,8 @@ export default async function AdminPage() {
     console.log('[approveUser] status updated to active')
     if (profile?.email) {
       try {
-        await sendApprovalEmail(profile.email, profile.full_name)
+        const { data: logoData } = await admin.from('site_settings').select('value').eq('key', 'logo_url').single()
+        await sendApprovalEmail(profile.email, profile.full_name, logoData?.value ?? null)
       } catch (err) {
         console.error('[approveUser] sendApprovalEmail failed:', err)
       }
@@ -55,6 +58,29 @@ export default async function AdminPage() {
       console.warn('[approveUser] no email on profile, skipping email send')
     }
     revalidatePath('/admin')
+  }
+
+  async function getLogoUploadUrl(): Promise<{ signedUrl?: string; publicUrl?: string; error?: string }> {
+    'use server'
+    const adminClient = createAdminClient()
+    const path = `logo_${Date.now()}.png`
+    const { data, error } = await adminClient.storage.from('logos').createSignedUploadUrl(path)
+    if (error) return { error: error.message }
+    const { data: { publicUrl } } = adminClient.storage.from('logos').getPublicUrl(path)
+    return { signedUrl: data.signedUrl, publicUrl }
+  }
+
+  async function saveLogoUrl(url: string): Promise<void> {
+    'use server'
+    const adminClient = createAdminClient()
+    const { data: existing } = await adminClient.from('site_settings').select('id').eq('key', 'logo_url').single()
+    if (existing) {
+      await adminClient.from('site_settings').update({ value: url }).eq('key', 'logo_url')
+    } else {
+      await adminClient.from('site_settings').insert({ key: 'logo_url', value: url })
+    }
+    revalidatePath('/admin')
+    revalidatePath('/')
   }
 
   async function rejectUser(userId: string) {
@@ -245,6 +271,9 @@ export default async function AdminPage() {
       assetCategories={assetCategories}
       addAssetCategory={addAssetCategory}
       deleteAssetCategory={deleteAssetCategory}
+      logoUrl={currentLogoUrl}
+      getLogoUploadUrl={getLogoUploadUrl}
+      saveLogoUrl={saveLogoUrl}
     />
   )
 }

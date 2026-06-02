@@ -7,6 +7,7 @@ import type { AuthState } from './actions'
 type Props = {
   urlError?: string
   urlMessage?: string
+  logoUrl?: string | null
 }
 
 const supabaseErrors: Record<string, string> = {
@@ -27,7 +28,7 @@ function resolveError(raw?: string) {
 const fieldCls = 'w-full rounded-xl border border-white/[0.07] bg-white/[0.04] px-4 py-2.5 text-sm text-slate-100 placeholder-slate-600 outline-none transition-all duration-200 focus:border-purple-500/50 focus:bg-white/[0.06] focus:ring-2 focus:ring-purple-500/20'
 const labelCls = 'mb-1.5 block text-xs font-semibold uppercase tracking-widest text-slate-500'
 
-export default function LoginForm({ urlError, urlMessage }: Props) {
+export default function LoginForm({ urlError, urlMessage, logoUrl }: Props) {
   const [mode, setMode] = useState<'login' | 'signup'>('login')
 
   const [signInState, signInAction, signInPending] = useActionState<AuthState, FormData>(signIn, null)
@@ -53,20 +54,26 @@ export default function LoginForm({ urlError, urlMessage }: Props) {
 
       {/* Logo */}
       <div className="mb-7 text-center">
-        <div className="relative mx-auto mb-4 w-fit">
-          <div
-            className="animate-pulse-glow flex h-14 w-14 items-center justify-center rounded-2xl"
-            style={{ background: 'linear-gradient(135deg, #7c3aed, #ec4899)' }}
-          >
-            <svg viewBox="0 0 32 32" className="h-7 w-7" fill="none">
-              <path d="M7 25 L16 7 L25 25" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-              <path d="M10 19.5 L22 19.5" stroke="white" strokeWidth="2" strokeLinecap="round" />
-              <circle cx="16" cy="7" r="2.5" fill="white" />
-            </svg>
+        {logoUrl ? (
+          <div className="mb-4 flex justify-center">
+            <img src={logoUrl} alt="Grafi" className="h-14 max-w-[200px] object-contain" />
           </div>
-          <div className="absolute -inset-2 -z-10 rounded-3xl opacity-40 blur-xl" style={{ background: 'linear-gradient(135deg, #7c3aed, #ec4899)' }} />
-        </div>
-        <h1 className="text-2xl font-bold text-white">גרפיקס קהילה</h1>
+        ) : (
+          <div className="relative mx-auto mb-4 w-fit">
+            <div
+              className="animate-pulse-glow flex h-14 w-14 items-center justify-center rounded-2xl"
+              style={{ background: 'linear-gradient(135deg, #7c3aed, #ec4899)' }}
+            >
+              <svg viewBox="0 0 32 32" className="h-7 w-7" fill="none">
+                <path d="M7 25 L16 7 L25 25" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M10 19.5 L22 19.5" stroke="white" strokeWidth="2" strokeLinecap="round" />
+                <circle cx="16" cy="7" r="2.5" fill="white" />
+              </svg>
+            </div>
+            <div className="absolute -inset-2 -z-10 rounded-3xl opacity-40 blur-xl" style={{ background: 'linear-gradient(135deg, #7c3aed, #ec4899)' }} />
+          </div>
+        )}
+        <h1 className="text-2xl font-bold text-white">Grafi</h1>
         <p className="mt-1 text-sm text-slate-400">הפלטפורמה המובילה לגרפיקאים</p>
       </div>
 

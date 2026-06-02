@@ -10,22 +10,22 @@ import { createClient } from '@/lib/supabase/client'
 import type { Profile } from '@/types'
 
 type NavItem = { href: string; label: string; icon: React.ReactNode }
-type Props = { profile: Profile | null; email: string; currentUserId?: string }
+type Props = { profile: Profile | null; email: string; currentUserId?: string; logoUrl?: string | null }
 
 const labels = {
   he: {
     home: 'ראשי', jobs: 'לוח עבודות', chat: "צ'אטים",
     inspiration: 'ספריית השראה', assets: 'חומרים לשימוש', admin: 'פאנל ניהול',
-    appName: 'גרפיקס קהילה', appSub: 'פלטפורמה לגרפיקאים', designer: 'גרפיקאי',
+    appName: 'Grafi', appSub: 'קהילת גרפיקאים', designer: 'גרפיקאי',
   },
   en: {
     home: 'Home', jobs: 'Job Board', chat: 'Chats',
     inspiration: 'Inspiration', assets: 'Resources', admin: 'Admin Panel',
-    appName: 'Graphics Community', appSub: 'Platform for Designers', designer: 'Designer',
+    appName: 'Grafi', appSub: 'Designers Community', designer: 'Designer',
   },
 }
 
-export default function Sidebar({ profile, email, currentUserId }: Props) {
+export default function Sidebar({ profile, email, currentUserId, logoUrl }: Props) {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
   const { lang, toggleLang } = useLanguage()
@@ -67,24 +67,28 @@ export default function Sidebar({ profile, email, currentUserId }: Props) {
 
       {/* Logo */}
       <div className="px-4 pb-4 pt-5">
-        <div className="flex items-center gap-3">
-          <div
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl shadow-sm"
-            style={{ background: 'linear-gradient(135deg, #7c3aed, #a855f7)' }}
-          >
-            <svg viewBox="0 0 32 32" className="h-5 w-5" fill="none">
-              <path d="M7 25 L16 7 L25 25" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-              <path d="M10 19.5 L22 19.5" stroke="white" strokeWidth="2" strokeLinecap="round" />
-            </svg>
+        {logoUrl ? (
+          <img src={logoUrl} alt="Grafi" className="h-9 max-w-[160px] object-contain" />
+        ) : (
+          <div className="flex items-center gap-3">
+            <div
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl shadow-sm"
+              style={{ background: 'linear-gradient(135deg, #7c3aed, #a855f7)' }}
+            >
+              <svg viewBox="0 0 32 32" className="h-5 w-5" fill="none">
+                <path d="M7 25 L16 7 L25 25" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M10 19.5 L22 19.5" stroke="white" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm font-bold" style={{ color: 'var(--tx)' }}>{t.appName}</p>
+              <p className="flex items-center gap-1 text-[10px]" style={{ color: 'var(--purple-light)' }}>
+                <Sparkles size={9} />
+                {t.appSub}
+              </p>
+            </div>
           </div>
-          <div>
-            <p className="text-sm font-bold" style={{ color: 'var(--tx)' }}>{t.appName}</p>
-            <p className="flex items-center gap-1 text-[10px]" style={{ color: 'var(--purple-light)' }}>
-              <Sparkles size={9} />
-              {t.appSub}
-            </p>
-          </div>
-        </div>
+        )}
       </div>
 
       <div className="mx-4 mb-3 h-px" style={{ background: 'var(--bd)' }} />
@@ -219,12 +223,18 @@ export default function Sidebar({ profile, email, currentUserId }: Props) {
         style={{ background: 'var(--hdr)', borderBottom: '1px solid var(--bd)', backdropFilter: 'blur(20px)' }}
       >
         <div className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-xl" style={{ background: 'linear-gradient(135deg, #7c3aed, #a855f7)' }}>
-            <svg viewBox="0 0 32 32" className="h-4 w-4" fill="none">
-              <path d="M7 25 L16 7 L25 25" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </div>
-          <span className="text-sm font-bold" style={{ color: 'var(--tx)' }}>{t.appName}</span>
+          {logoUrl ? (
+            <img src={logoUrl} alt="Grafi" className="h-8 max-w-[120px] object-contain" />
+          ) : (
+            <>
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl" style={{ background: 'linear-gradient(135deg, #7c3aed, #a855f7)' }}>
+                <svg viewBox="0 0 32 32" className="h-4 w-4" fill="none">
+                  <path d="M7 25 L16 7 L25 25" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
+              <span className="text-sm font-bold" style={{ color: 'var(--tx)' }}>{t.appName}</span>
+            </>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <button

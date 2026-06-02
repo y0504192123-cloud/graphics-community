@@ -1,13 +1,13 @@
 'use client'
 
-import { useState, useTransition, useActionState } from 'react'
+import { useState, useTransition, useActionState, useRef } from 'react'
 import {
   ShieldCheck, Users, Clock, CheckCircle2, XCircle, Newspaper,
-  Hash, Plus, Trash2, ExternalLink, Phone, MapPin, Briefcase, Star, X, Palette, FolderOpen
+  Hash, Plus, Trash2, ExternalLink, Phone, MapPin, Briefcase, Star, X, Palette, FolderOpen, ImageIcon
 } from 'lucide-react'
 import type { Profile, NewsItem, ChatCategory, Specialization, InspirationCategory, JobCategory, AssetCategory } from '@/types'
 
-type Tab = 'pending' | 'users' | 'news' | 'categories' | 'specializations' | 'insp_cats' | 'job_cats' | 'asset_cats'
+type Tab = 'pending' | 'users' | 'news' | 'categories' | 'specializations' | 'insp_cats' | 'job_cats' | 'asset_cats' | 'branding'
 
 type Props = {
   pendingUsers:    Profile[]
@@ -18,6 +18,7 @@ type Props = {
   inspirationCategories:       InspirationCategory[]
   jobCategories:               JobCategory[]
   assetCategories:             AssetCategory[]
+  logoUrl:                     string | null
   approveUser:     (id: string) => Promise<void>
   rejectUser:      (id: string) => Promise<void>
   makeAdmin:       (id: string) => Promise<void>
@@ -35,6 +36,8 @@ type Props = {
   deleteJobCategory:           (id: string) => Promise<void>
   addAssetCategory:            (prev: { error?: string } | null, fd: FormData) => Promise<{ error?: string } | null>
   deleteAssetCategory:         (id: string) => Promise<void>
+  getLogoUploadUrl:            () => Promise<{ signedUrl?: string; publicUrl?: string; error?: string }>
+  saveLogoUrl:                 (url: string) => Promise<void>
 }
 
 const inputCls = 'w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition-all placeholder:text-slate-400 hover:border-slate-300 focus:border-purple-400 focus:ring-2 focus:ring-purple-100'
@@ -46,23 +49,29 @@ const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'news',            label: 'חדשות',              icon: <Newspaper size={15} /> },
   { id: 'categories',      label: "קטגוריות צ'אט",     icon: <Hash size={15} /> },
   { id: 'specializations', label: 'תחומי התמחות',      icon: <Star size={15} /> },
-  { id: 'insp_cats',       label: 'קטגוריות השראה',        icon: <Palette size={15} /> },
-  { id: 'job_cats',        label: 'קטגוריות עבודות',       icon: <FolderOpen size={15} /> },
-  { id: 'asset_cats',      label: 'קטגוריות חומרים',       icon: <FolderOpen size={15} /> },
+  { id: 'insp_cats',       label: 'קטגוריות השראה',    icon: <Palette size={15} /> },
+  { id: 'job_cats',        label: 'קטגוריות עבודות',   icon: <FolderOpen size={15} /> },
+  { id: 'asset_cats',      label: 'קטגוריות חומרים',   icon: <FolderOpen size={15} /> },
+  { id: 'branding',        label: 'מיתוג',              icon: <ImageIcon size={15} /> },
 ]
 
 export default function AdminClient({
   pendingUsers, activeUsers, newsItems, categories, specializations,
-  inspirationCategories, jobCategories, assetCategories,
+  inspirationCategories, jobCategories, assetCategories, logoUrl: initialLogoUrl,
   approveUser, rejectUser, makeAdmin, removeAdmin,
   publishNews, deleteNews, addCategory, deleteCategory,
   addSpecialization, deleteSpecialization, deleteUser,
   addInspirationCategory, deleteInspirationCategory,
   addJobCategory, deleteJobCategory,
   addAssetCategory, deleteAssetCategory,
+  getLogoUploadUrl, saveLogoUrl,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('pending')
   const [isPending, startTransition] = useTransition()
+  const [currentLogoUrl, setCurrentLogoUrl] = useState<string | null>(initialLogoUrl)
+  const [logoUploading, setLogoUploading] = useState(false)
+  const [logoError, setLogoError] = useState<string | null>(null)
+  const logoInputRef = useRef<HTMLInputElement>(null)
 
   const [newsState,      newsAction,      newsPending]     = useActionState(publishNews, null)
   const [catState,       catAction,       catPending]      = useActionState(addCategory, null)
@@ -479,8 +488,7 @@ export default function AdminClient({
                 <input
                   name="name"
                   required
-                  className="flex-1 rounded-xl border bg-white/[0.04] px-4 py-2.5 text-sm text-slate-100 outline-none transition-all focus:bg-white/[0.06] focus:ring-2 focus:ring-purple-500/20"
-                  style={{ borderColor: 'rgba(124,58,237,.3)' }}
+                  className="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition-all hover:border-slate-300 focus:border-purple-400 focus:ring-2 focus:ring-purple-100"
                 />
                 <button
                   type="submit"
@@ -534,8 +542,7 @@ export default function AdminClient({
                 <input
                   name="name"
                   required
-                  className="flex-1 rounded-xl border bg-white/[0.04] px-4 py-2.5 text-sm text-slate-100 outline-none transition-all focus:bg-white/[0.06] focus:ring-2 focus:ring-purple-500/20"
-                  style={{ borderColor: 'rgba(124,58,237,.3)' }}
+                  className="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition-all hover:border-slate-300 focus:border-purple-400 focus:ring-2 focus:ring-purple-100"
                 />
                 <button
                   type="submit"
@@ -675,6 +682,68 @@ export default function AdminClient({
                   </div>
                 ))
               )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Branding ── */}
+        {activeTab === 'branding' && (
+          <div>
+            <div className="mb-6 rounded-2xl p-6" style={{ background: 'var(--s2)', border: '1px solid var(--bd)' }}>
+              <h3 className="mb-1 text-base font-bold" style={{ color: 'var(--tx)' }}>לוגו האתר</h3>
+              <p className="mb-5 text-sm" style={{ color: 'var(--tx3)' }}>
+                הלוגו יופיע בסרגל הניווט, בדף ההתחברות ובמייל האישור לנרשמים חדשים.
+              </p>
+
+              {currentLogoUrl && (
+                <div className="mb-5 flex items-center gap-4 rounded-xl p-4" style={{ background: 'var(--inp)', border: '1px solid var(--bd)' }}>
+                  <img src={currentLogoUrl} alt="לוגו נוכחי" className="h-12 max-w-[180px] object-contain" />
+                  <span className="text-sm" style={{ color: 'var(--tx2)' }}>לוגו נוכחי</span>
+                </div>
+              )}
+
+              {logoError && (
+                <p className="mb-3 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-500">{logoError}</p>
+              )}
+
+              <input
+                ref={logoInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  setLogoUploading(true)
+                  setLogoError(null)
+                  try {
+                    const { signedUrl, publicUrl, error } = await getLogoUploadUrl()
+                    if (error || !signedUrl || !publicUrl) {
+                      setLogoError(error ?? 'שגיאה בקבלת URL להעלאה')
+                      return
+                    }
+                    const res = await fetch(signedUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } })
+                    if (!res.ok) { setLogoError('העלאה נכשלה'); return }
+                    await saveLogoUrl(publicUrl)
+                    setCurrentLogoUrl(publicUrl)
+                  } catch (err) {
+                    setLogoError('שגיאה בהעלאת הלוגו')
+                  } finally {
+                    setLogoUploading(false)
+                    if (logoInputRef.current) logoInputRef.current.value = ''
+                  }
+                }}
+              />
+
+              <button
+                onClick={() => logoInputRef.current?.click()}
+                disabled={logoUploading}
+                className="flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold text-white transition hover:opacity-90 disabled:opacity-50"
+                style={{ background: 'linear-gradient(135deg, #7c3aed, #6d28d9)' }}
+              >
+                <ImageIcon size={15} />
+                {logoUploading ? 'מעלה...' : currentLogoUrl ? 'החלף לוגו' : 'העלה לוגו'}
+              </button>
             </div>
           </div>
         )}
