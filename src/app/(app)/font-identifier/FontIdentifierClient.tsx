@@ -4,14 +4,11 @@ import React, { useState, useRef, useEffect } from 'react'
 import { Send, ImagePlus, X, ScanText } from 'lucide-react'
 import type { FontConversationRow } from './page'
 
-type HistoryEntry = { role: 'user' | 'assistant'; text: string }
-
 type Props = {
   identifyFont: (
     userText: string,
     imageBase64?: string,
     imageMimeType?: string,
-    history?: HistoryEntry[],
   ) => Promise<{ response?: string; error?: string }>
   initialHistory: FontConversationRow[]
 }
@@ -155,20 +152,11 @@ export default function FontIdentifierClient({ identifyFont, initialHistory }: P
     setMessages(prev => [...prev, { id: loadingId, role: 'ai', content: '', isLoading: true }])
     setIsLoading(true)
 
-    const history: HistoryEntry[] = messages
-      .filter(m => !m.isLoading)
-      .slice(-10)
-      .map(m => ({
-        role: m.role === 'user' ? 'user' : 'assistant',
-        text: m.content,
-      }))
-
     try {
       const result = await identifyFont(
         userContent,
         base64 ?? undefined,
         base64 ? mimeType : undefined,
-        history,
       )
       setMessages(prev => prev.map(m =>
         m.id === loadingId

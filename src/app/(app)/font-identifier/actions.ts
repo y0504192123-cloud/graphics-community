@@ -4,16 +4,27 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
-const SYSTEM_PROMPT = `You are an expert font identifier. When given an image with text, analyze it carefully and:
-1. Identify the EXACT font name (be very specific - include the exact font family name and weight if possible)
-2. Provide the EXACT direct URL to purchase or download the font from the official source
-3. Check these sources in order: Google Fonts (fonts.google.com), Adobe Fonts (fonts.adobe.com), MyFonts (myfonts.com), FontSquirrel (fontsquirrel.com)
-4. If it's a Hebrew font, check: Masterfont (masterfont.co.il), Fontef (fontef.com), Morisawa
-5. Suggest 2-3 similar alternative fonts with their direct URLs
-6. Answer ONLY about fonts - if asked about anything else, say you can only help with font identification
-Answer in Hebrew.`
+const SYSTEM_PROMPT = `You are an expert typographer and font identifier with encyclopedic knowledge of fonts.
 
-type HistoryEntry = { role: 'user' | 'assistant'; text: string }
+When given an image with text, analyze it with extreme care:
+- Examine every letterform detail: serifs vs sans-serif, stroke contrast, x-height, ascenders/descenders
+- Look for unique characteristics in specific letters: the 'a', 'g', 'Q', 'R', '&', 't', 'y'
+- Consider the overall style: geometric, humanist, transitional, old-style, slab serif, display, script
+- Note letter spacing, weight, and optical corrections
+
+START your response with ONLY the exact font name on the first line.
+Then provide:
+- **הורדה/רכישה:** Use these exact URL patterns (construct the real URL):
+  • Google Fonts (free): https://fonts.google.com/specimen/Font+Name  (replace spaces with +)
+  • MyFonts (paid): https://www.myfonts.com/search/font-name  (lowercase, spaces → hyphens)
+  • Adobe Fonts: https://fonts.adobe.com/fonts/font-name
+  • FontSquirrel (free): https://www.fontsquirrel.com/fonts/font-name
+  • Hebrew fonts → Masterfont: https://www.masterfont.co.il | Fontef: https://www.fontef.com
+- Whether it is free or paid
+- **חלופות דומות:** 2-3 similar fonts, each with a direct URL using the same patterns above
+
+Answer ONLY about fonts. If asked about anything else, say you can only help with font identification.
+Answer in Hebrew.`
 
 type AnthropicContentBlock =
   | { type: 'text'; text: string }
@@ -28,7 +39,6 @@ export async function identifyFont(
   userText: string,
   imageBase64?: string,
   imageMimeType?: string,
-  history?: HistoryEntry[],
 ): Promise<{ response?: string; error?: string }> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -39,7 +49,15 @@ export async function identifyFont(
 
   const admin = createAdminClient()
 
-  // Upload image to storage if provided, save public URL for history
+  // Load full conversation history from DB
+  const { data: dbHistory } = await admin
+    .from('font_conversations')
+    .select('role, content')
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: true })
+    .limit(40)
+
+  // Upload image to storage (non-blocking on failure)
   let imageUrl: string | null = null
   if (imageBase64 && imageMimeType) {
     try {
@@ -55,19 +73,14 @@ export async function identifyFont(
           .getPublicUrl(path)
         imageUrl = publicUrl
       }
-    } catch {
-      // Storage upload failing should not block the API call
-    }
+    } catch { /* storage failure does not block the API call */ }
   }
 
-  // Build Anthropic messages array
-  const messages: AnthropicMessage[] = []
-
-  if (history?.length) {
-    for (const h of history) {
-      messages.push({ role: h.role, content: h.text })
-    }
-  }
+  // Build messages: history (text-only) + current user message (may include image)
+  const messages: AnthropicMessage[] = (dbHistory ?? []).map(h => ({
+    role: h.role as 'user' | 'assistant',
+    content: h.content as string,
+  }))
 
   const userContent: AnthropicContentBlock[] = []
   if (imageBase64 && imageMimeType) {
@@ -99,8 +112,8 @@ export async function identifyFont(
     const text: string | undefined = data.content?.[0]?.text
     if (!text) return { error: 'לא התקבלה תשובה מהמודל' }
 
-    // Save conversation to DB (fire-and-forget, don't block response)
-    admin.from('font_conversations').insert([
+    // Persist turn to DB
+    await admin.from('font_conversations').insert([
       { user_id: user.id, role: 'user',      content: userText, image_url: imageUrl },
       { user_id: user.id, role: 'assistant', content: text,     image_url: null },
     ])
