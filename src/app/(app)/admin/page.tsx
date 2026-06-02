@@ -3,7 +3,8 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import AdminClient from './AdminClient'
-import type { Profile, NewsItem, ChatCategory, Specialization, InspirationCategory, JobCategory, AssetCategory } from '@/types'
+import { addForumCategory, deleteForumCategory } from '../forum/actions'
+import type { Profile, NewsItem, ChatCategory, Specialization, InspirationCategory, JobCategory, AssetCategory, ForumCategory } from '@/types'
 import { sendApprovalEmail } from '@/lib/email'
 
 export default async function AdminPage() {
@@ -15,7 +16,7 @@ export default async function AdminPage() {
   if (profileData?.role !== 'admin') redirect('/dashboard')
 
   const admin = createAdminClient()
-  const [pendingRes, activeRes, newsRes, catRes, specsRes, inspCatsRes, jobCatsRes, assetCatsRes, logoRes] = await Promise.all([
+  const [pendingRes, activeRes, newsRes, catRes, specsRes, inspCatsRes, jobCatsRes, assetCatsRes, logoRes, forumCatsRes] = await Promise.all([
     admin.from('profiles').select('*').eq('status', 'pending').order('created_at', { ascending: false }),
     admin.from('profiles').select('*').eq('status', 'active').order('created_at', { ascending: false }),
     supabase.from('news').select('*, profiles(*)').order('created_at', { ascending: false }),
@@ -25,6 +26,7 @@ export default async function AdminPage() {
     supabase.from('job_categories').select('*').order('name', { ascending: true }),
     supabase.from('assets_categories').select('*').order('name', { ascending: true }),
     supabase.from('site_settings').select('value').eq('key', 'logo_url').single(),
+    admin.from('forum_categories').select('*').order('sort_order', { ascending: true }),
   ])
 
   const pendingUsers          = (pendingRes.data    ?? []) as Profile[]
@@ -36,6 +38,7 @@ export default async function AdminPage() {
   const jobCategories         = (jobCatsRes.data    ?? []) as JobCategory[]
   const assetCategories       = (assetCatsRes.data  ?? []) as AssetCategory[]
   const currentLogoUrl: string | null = logoRes.data?.value ?? null
+  const forumCategories       = (forumCatsRes.data  ?? []) as ForumCategory[]
 
   /* ── Server Actions ── */
 
@@ -272,6 +275,9 @@ export default async function AdminPage() {
       logoUrl={currentLogoUrl}
       getLogoUploadUrl={getLogoUploadUrl}
       saveLogoUrl={saveLogoUrl}
+      forumCategories={forumCategories}
+      addForumCategory={addForumCategory}
+      deleteForumCategory={deleteForumCategory}
     />
   )
 }

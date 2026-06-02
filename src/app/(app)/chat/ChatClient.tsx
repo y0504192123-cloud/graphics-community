@@ -2,12 +2,12 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import {
-  Send, ArrowRight, Plus, X, Hash, Lock, Trash2,
+  Send, ArrowRight, X, Lock, Trash2,
   Search, UserPlus, Pin, Paperclip, Check, CheckCheck,
   MessageSquare, File as FileIcon, Edit2, CornerUpLeft, Smile,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import type { Topic, Message, Profile, PrivateMessage } from '@/types'
+import type { Message, Profile, PrivateMessage } from '@/types'
 
 // ─────────────────────────────────────────────────────────
 // Types
@@ -17,13 +17,11 @@ type ReactionGroup = { emoji: string; count: number; hasReacted: boolean }
 type ReactionsMap = Record<string, ReactionGroup[]>
 
 type Props = {
-  topics: Topic[]
-  categories: string[]
+  generalTopicId: string | null
   currentUserId: string
   currentProfile: Profile | null
   isAdmin: boolean
   activeUsers: Profile[]
-  createTopic: (fd: FormData) => Promise<void>
   sendMessage: (topicId: string, content: string) => Promise<void>
   deleteMessage: (id: string) => Promise<void>
   initialPrivateMessages: PrivateMessage[]
@@ -49,16 +47,6 @@ type Convo = {
 // ─────────────────────────────────────────────────────────
 // Constants
 // ─────────────────────────────────────────────────────────
-
-const catColors: Record<string, { bg: string; text: string; border: string }> = {
-  'כללי':               { bg: 'rgba(124,58,237,.1)',  text: '#7c3aed', border: 'rgba(124,58,237,.3)'  },
-  'עזרה בפוטושופ':      { bg: 'rgba(59,130,246,.1)',  text: '#2563eb', border: 'rgba(59,130,246,.3)'  },
-  'עזרה באילוסטרייטור': { bg: 'rgba(234,179,8,.1)',   text: '#d97706', border: 'rgba(234,179,8,.3)'   },
-  'עזרה ב-InDesign':    { bg: 'rgba(236,72,153,.1)',  text: '#be185d', border: 'rgba(236,72,153,.3)'  },
-  'השראה':              { bg: 'rgba(52,211,153,.1)',  text: '#059669', border: 'rgba(52,211,153,.3)'  },
-  'שיתוף עבודות':       { bg: 'rgba(245,158,11,.1)',  text: '#d97706', border: 'rgba(245,158,11,.3)'  },
-  'כלים וטכניקות':      { bg: 'rgba(99,102,241,.1)',  text: '#4f46e5', border: 'rgba(99,102,241,.3)'  },
-}
 
 const GRADIENTS = [
   'from-violet-500 to-purple-700',
@@ -154,15 +142,6 @@ function TypingDots() {
         <span key={i} className="h-1.5 w-1.5 rounded-full bg-slate-400 animate-bounce" style={{ animationDelay: `${i * 150}ms` }} />
       ))}
     </div>
-  )
-}
-
-function CatBadge({ cat }: { cat: string }) {
-  const c = catColors[cat] ?? catColors['כללי']
-  return (
-    <span className="rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: c.bg, color: c.text, border: `1px solid ${c.border}` }}>
-      {cat}
-    </span>
   )
 }
 
@@ -272,9 +251,9 @@ function InputBar({ value, onChange, onKeyDown, onSend, isSending, textRef, onAt
 // ─────────────────────────────────────────────────────────
 
 export default function ChatClient({
-  topics: initialTopics, categories,
+  generalTopicId,
   currentUserId, currentProfile, isAdmin, activeUsers,
-  createTopic, sendMessage, deleteMessage,
+  sendMessage, deleteMessage,
   initialPrivateMessages,
   sendPrivateMessage, deletePrivateMessage, editPrivateMessage, toggleReaction,
   markMessagesRead, getChatUploadUrl,
@@ -286,13 +265,9 @@ export default function ChatClient({
   const [mainTab, setMainTab] = useState<'community' | 'private'>(initialDmUserId ? 'private' : 'community')
 
   // ── Community state ──
-  const [topics, setTopics] = useState<Topic[]>(initialTopics)
-  const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null)
   const [communityMsgs, setCommunityMsgs] = useState<Message[]>([])
   const [communityText, setCommunityText] = useState('')
   const [isSendingC, setIsSendingC] = useState(false)
-  const [showCreateTopic, setShowCreateTopic] = useState(false)
-  const [filterCat, setFilterCat] = useState('הכל')
 
   // ── Private state ──
   const [privateMsgs, setPrivateMsgs] = useState<PrivateMessage[]>(initialPrivateMessages)
@@ -450,24 +425,20 @@ export default function ChatClient({
     typingChannelRef.current?.send({ type: 'broadcast', event: 'typing', payload: { userId: currentUserId } })
   }, [currentUserId])
 
-  // ── Realtime: new topics ──
+  // ── Auto-load general community topic ──
   useEffect(() => {
-    const ch = supabase.channel('rt-topics')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'topics' }, async (payload) => {
-        const t = payload.new as Topic
-        const { data: prof } = await supabase.from('profiles').select('id,full_name,username,avatar_url').eq('id', t.created_by).single()
-        setTopics(prev => [{ ...t, profiles: prof as Profile | undefined ?? undefined }, ...prev])
-      })
-      .subscribe()
-    return () => { supabase.removeChannel(ch) }
-  }, [supabase])
+    if (!generalTopicId) return
+    supabase.from('messages')
+      .select('id,content,created_at,user_id,channel_id,profiles(id,full_name,username,avatar_url)')
+      .eq('channel_id', generalTopicId).order('created_at', { ascending: true }).limit(100)
+      .then(({ data }) => { setCommunityMsgs((data as unknown as Message[]) ?? []) })
+  }, [generalTopicId, supabase])
 
   // ── Realtime: community messages ──
   useEffect(() => {
-    if (!selectedTopic) return
-    const topicId = selectedTopic.id
-    const ch = supabase.channel(`rt-msgs-${topicId}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `channel_id=eq.${topicId}` }, async (payload) => {
+    if (!generalTopicId) return
+    const ch = supabase.channel(`rt-msgs-${generalTopicId}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `channel_id=eq.${generalTopicId}` }, async (payload) => {
         const m = payload.new as Message
         const { data: prof } = await supabase.from('profiles').select('id,full_name,username,avatar_url').eq('id', m.user_id).single()
         setCommunityMsgs(prev => {
@@ -476,13 +447,13 @@ export default function ChatClient({
           return [...deduped, { ...m, profiles: prof as Profile | undefined ?? undefined }]
         })
       })
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages', filter: `channel_id=eq.${topicId}` }, (payload) => {
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages', filter: `channel_id=eq.${generalTopicId}` }, (payload) => {
         const old = payload.old as { id: string }
         setCommunityMsgs(prev => prev.filter(m => m.id !== old.id))
       })
       .subscribe()
     return () => { supabase.removeChannel(ch) }
-  }, [selectedTopic?.id, supabase])
+  }, [generalTopicId, supabase])
 
   // ── Realtime: private messages ──
   useEffect(() => {
@@ -523,6 +494,7 @@ export default function ChatClient({
   // ── Auto-scroll ──
   useEffect(() => { communityBottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [communityMsgs])
   useEffect(() => { privateBottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [privateMsgs, selectedPartner])
+
 
   // ── Computed ──
   const convos: Convo[] = useMemo(() => {
@@ -573,22 +545,12 @@ export default function ChatClient({
     [pinnedMsgId, currentConvMsgs]
   )
 
-  const filteredTopics = filterCat === 'הכל' ? topics : topics.filter(t => t.category === filterCat)
   const filteredUsers = activeUsers.filter(u => {
     const q = userSearch.toLowerCase()
     return !q || (u.full_name ?? '').toLowerCase().includes(q) || (u.username ?? '').toLowerCase().includes(q)
   })
 
   // ── Handlers ──
-
-  const openTopic = async (topic: Topic) => {
-    setSelectedTopic(topic)
-    setMobileShowChat(true)
-    const { data } = await supabase.from('messages')
-      .select('id,content,created_at,user_id,channel_id,profiles(id,full_name,username,avatar_url)')
-      .eq('channel_id', topic.id).order('created_at', { ascending: true }).limit(50)
-    setCommunityMsgs((data as unknown as Message[]) ?? [])
-  }
 
   const openConversation = async (partnerId: string) => {
     setSelectedPartner(partnerId)
@@ -625,13 +587,13 @@ export default function ChatClient({
   }
 
   const handleCommunitySend = async () => {
-    if (!communityText.trim() || !selectedTopic || isSendingC) return
+    if (!communityText.trim() || !generalTopicId || isSendingC) return
     const content = communityText.trim()
     setCommunityText('')
     if (communityTextRef.current) communityTextRef.current.style.height = 'auto'
-    setCommunityMsgs(prev => [...prev, { id: `temp-${Date.now()}`, channel_id: selectedTopic.id, user_id: currentUserId, content, created_at: new Date().toISOString(), profiles: currentProfile ?? undefined }])
+    setCommunityMsgs(prev => [...prev, { id: `temp-${Date.now()}`, channel_id: generalTopicId, user_id: currentUserId, content, created_at: new Date().toISOString(), profiles: currentProfile ?? undefined }])
     setIsSendingC(true)
-    try { await sendMessage(selectedTopic.id, content) } finally { setIsSendingC(false) }
+    try { await sendMessage(generalTopicId, content) } finally { setIsSendingC(false) }
   }
 
   const handlePrivateSend = async () => {
@@ -785,77 +747,26 @@ export default function ChatClient({
         </div>
       </div>
 
-      {/* Community list */}
+      {/* Community room */}
       {mainTab === 'community' && (
         <div className="flex flex-1 flex-col overflow-hidden">
-          <div className="shrink-0 overflow-x-auto px-3 py-2" style={{ borderBottom: '1px solid var(--bd)' }}>
-            <div className="flex gap-1.5">
-              {['הכל', ...categories].map(cat => (
-                <button
-                  key={cat}
-                  onClick={() => setFilterCat(cat)}
-                  className="shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold transition"
-                  style={filterCat === cat
-                    ? { background: 'linear-gradient(135deg,#7c3aed,#6d28d9)', color: 'white' }
-                    : { background: 'var(--inp)', border: '1px solid var(--bd)', color: 'var(--tx2)' }
-                  }
-                >
-                  {cat}
-                </button>
-              ))}
+          <button
+            onClick={() => setMobileShowChat(true)}
+            className="flex w-full items-center gap-3 px-4 py-4 text-start transition hover:bg-purple-50/40"
+            style={{ borderBottom: '1px solid var(--bd)', background: 'rgba(124,58,237,.04)' }}
+          >
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ background: 'rgba(124,58,237,.1)', border: '1px solid rgba(124,58,237,.2)' }}>
+              <MessageSquare size={18} className="text-purple-600" />
             </div>
-          </div>
-
-          <div className="shrink-0 px-3 py-2" style={{ borderBottom: '1px solid var(--bd)' }}>
-            <button
-              onClick={() => setShowCreateTopic(s => !s)}
-              className="flex w-full items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold text-white transition hover:opacity-90"
-              style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)' }}
-            >
-              {showCreateTopic ? <X size={13} /> : <Plus size={13} />}
-              {showCreateTopic ? 'ביטול' : 'נושא חדש'}
-            </button>
-            {showCreateTopic && (
-              <form
-                action={(fd) => { createTopic(fd); setShowCreateTopic(false) }}
-                className="mt-2 space-y-2"
-              >
-                <input name="title" required placeholder="כותרת הנושא" className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-100" />
-                <select name="category" className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-purple-400">
-                  {(categories.length ? categories : ['כללי']).map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-                <button type="submit" className="w-full rounded-xl py-1.5 text-xs font-bold text-white" style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)' }}>פתח נושא</button>
-              </form>
-            )}
-          </div>
-
-          <div className="flex-1 overflow-y-auto">
-            {filteredTopics.length === 0 ? (
-              <div className="flex flex-col items-center gap-2 py-12 text-center">
-                <MessageSquare size={24} className="text-slate-300" />
-                <p className="text-xs" style={{ color: 'var(--tx3)' }}>אין נושאים עדיין</p>
-              </div>
-            ) : filteredTopics.map(topic => {
-              const c = catColors[topic.category] ?? catColors['כללי']
-              const active = selectedTopic?.id === topic.id
-              return (
-                <button
-                  key={topic.id}
-                  onClick={() => openTopic(topic)}
-                  className="flex w-full items-start gap-3 px-3 py-3 text-start transition hover:bg-slate-50"
-                  style={{ borderBottom: '1px solid var(--bd)', background: active ? 'rgba(124,58,237,.06)' : undefined }}
-                >
-                  <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl" style={{ background: c.bg, border: `1px solid ${c.border}` }}>
-                    <Hash size={14} style={{ color: c.text }} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold" style={{ color: active ? '#7c3aed' : 'var(--tx)' }}>{topic.title}</p>
-                    <p className="mt-0.5 text-[11px]" style={{ color: 'var(--tx3)' }}>{new Date(topic.created_at).toLocaleDateString('he-IL')}</p>
-                  </div>
-                  {active && <div className="mt-1 h-4 w-1 shrink-0 rounded-full bg-purple-600" />}
-                </button>
-              )
-            })}
+            <div className="min-w-0 flex-1">
+              <p className="font-bold text-sm" style={{ color: '#7c3aed' }}>חדר הקהילה</p>
+              <p className="mt-0.5 text-[11px]" style={{ color: 'var(--tx3)' }}>צ׳אט כללי לכולם</p>
+            </div>
+            <div className="h-2 w-2 shrink-0 rounded-full bg-purple-500" />
+          </button>
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center px-4">
+            <MessageSquare size={28} className="text-slate-300" />
+            <p className="text-xs font-medium" style={{ color: 'var(--tx3)' }}>לחץ על חדר הקהילה כדי להיכנס</p>
           </div>
         </div>
       )}
@@ -975,26 +886,26 @@ export default function ChatClient({
   // COMMUNITY CHAT
   // ─────────────────────────────────────────────────────────
 
-  const communityChat = selectedTopic && (
+  const communityChat = (
     <div className="flex h-full flex-col" style={{ background: 'var(--bg)' }}>
       <div className="shrink-0 flex items-center gap-3 px-4 py-3" style={{ background: 'var(--hdr)', borderBottom: '1px solid var(--bd)' }}>
-        <button onClick={() => { setSelectedTopic(null); setMobileShowChat(false) }} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition hover:bg-slate-100 lg:hidden" style={{ color: 'var(--tx3)' }}>
+        <button onClick={() => setMobileShowChat(false)} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition hover:bg-slate-100 lg:hidden" style={{ color: 'var(--tx3)' }}>
           <ArrowRight size={17} />
         </button>
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl" style={{ background: (catColors[selectedTopic.category] ?? catColors['כללי']).bg }}>
-          <Hash size={16} style={{ color: (catColors[selectedTopic.category] ?? catColors['כללי']).text }} />
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl" style={{ background: 'rgba(124,58,237,.1)', border: '1px solid rgba(124,58,237,.2)' }}>
+          <MessageSquare size={16} className="text-purple-600" />
         </div>
         <div className="min-w-0 flex-1">
-          <h2 className="truncate text-sm font-bold" style={{ color: 'var(--tx)' }}>{selectedTopic.title}</h2>
-          <CatBadge cat={selectedTopic.category} />
+          <h2 className="truncate text-sm font-bold" style={{ color: 'var(--tx)' }}>חדר הקהילה</h2>
+          <p className="text-[11px]" style={{ color: 'var(--tx3)' }}>צ׳אט כללי לכל חברי הקהילה</p>
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-0.5">
         {communityMsgs.length === 0 && (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-            <Hash size={28} className="text-slate-300" />
-            <p className="text-sm" style={{ color: 'var(--tx3)' }}>היה הראשון לכתוב הודעה בנושא זה</p>
+            <MessageSquare size={28} className="text-slate-300" />
+            <p className="text-sm" style={{ color: 'var(--tx3)' }}>היה הראשון לכתוב בחדר הקהילה</p>
           </div>
         )}
         {communityMsgs.map((msg, i) => {
@@ -1356,7 +1267,7 @@ export default function ChatClient({
   // ─────────────────────────────────────────────────────────
 
   const rightContent = mainTab === 'community'
-    ? (selectedTopic ? communityChat : welcomeScreen)
+    ? communityChat
     : (selectedPartner ? privateChat : welcomeScreen)
 
   return (

@@ -166,3 +166,41 @@ export type AssetCategory = {
   name: string
   created_at: string
 }
+
+export type ForumCategory = {
+  id: string
+  name: string
+  description: string | null
+  icon: string | null
+  sort_order: number
+  created_at: string
+  thread_count?: number
+}
+
+export type ForumThread = {
+  id: string
+  category_id: string
+  user_id: string
+  title: string
+  content: string
+  views: number
+  is_pinned: boolean
+  is_locked: boolean
+  created_at: string
+  updated_at: string
+  profiles?: Profile
+  reply_count?: number
+}
+
+export type ForumReply = {
+  id: string
+  thread_id: string
+  user_id: string
+  content: string
+  is_best_answer: boolean
+  edited_at: string | null
+  created_at: string
+  profiles?: Profile
+  like_count?: number
+  user_liked?: boolean
+}

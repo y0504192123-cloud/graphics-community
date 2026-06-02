@@ -3,11 +3,11 @@
 import { useState, useTransition, useActionState, useRef } from 'react'
 import {
   ShieldCheck, Users, Clock, CheckCircle2, XCircle, Newspaper,
-  Hash, Plus, Trash2, ExternalLink, Phone, MapPin, Briefcase, Star, X, Palette, FolderOpen, ImageIcon
+  Hash, Plus, Trash2, ExternalLink, Phone, MapPin, Briefcase, Star, X, Palette, FolderOpen, ImageIcon, MessagesSquare
 } from 'lucide-react'
-import type { Profile, NewsItem, ChatCategory, Specialization, InspirationCategory, JobCategory, AssetCategory } from '@/types'
+import type { Profile, NewsItem, ChatCategory, Specialization, InspirationCategory, JobCategory, AssetCategory, ForumCategory } from '@/types'
 
-type Tab = 'pending' | 'users' | 'news' | 'categories' | 'specializations' | 'insp_cats' | 'job_cats' | 'asset_cats' | 'branding'
+type Tab = 'pending' | 'users' | 'news' | 'categories' | 'specializations' | 'insp_cats' | 'job_cats' | 'asset_cats' | 'branding' | 'forum_cats'
 
 type Props = {
   pendingUsers:    Profile[]
@@ -18,6 +18,7 @@ type Props = {
   inspirationCategories:       InspirationCategory[]
   jobCategories:               JobCategory[]
   assetCategories:             AssetCategory[]
+  forumCategories:             ForumCategory[]
   logoUrl:                     string | null
   approveUser:     (id: string) => Promise<void>
   rejectUser:      (id: string) => Promise<void>
@@ -36,6 +37,8 @@ type Props = {
   deleteJobCategory:           (id: string) => Promise<void>
   addAssetCategory:            (prev: { error?: string } | null, fd: FormData) => Promise<{ error?: string } | null>
   deleteAssetCategory:         (id: string) => Promise<void>
+  addForumCategory:            (prev: { error?: string } | null, fd: FormData) => Promise<{ error?: string } | null>
+  deleteForumCategory:         (id: string) => Promise<void>
   getLogoUploadUrl:            () => Promise<{ signedUrl?: string; publicUrl?: string; error?: string }>
   saveLogoUrl:                 (url: string) => Promise<void>
 }
@@ -52,18 +55,21 @@ const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'insp_cats',       label: 'קטגוריות השראה',    icon: <Palette size={15} /> },
   { id: 'job_cats',        label: 'קטגוריות עבודות',   icon: <FolderOpen size={15} /> },
   { id: 'asset_cats',      label: 'קטגוריות חומרים',   icon: <FolderOpen size={15} /> },
+  { id: 'forum_cats',      label: 'קטגוריות פורום',     icon: <MessagesSquare size={15} /> },
   { id: 'branding',        label: 'מיתוג',              icon: <ImageIcon size={15} /> },
 ]
 
 export default function AdminClient({
   pendingUsers, activeUsers, newsItems, categories, specializations,
-  inspirationCategories, jobCategories, assetCategories, logoUrl: initialLogoUrl,
+  inspirationCategories, jobCategories, assetCategories, forumCategories,
+  logoUrl: initialLogoUrl,
   approveUser, rejectUser, makeAdmin, removeAdmin,
   publishNews, deleteNews, addCategory, deleteCategory,
   addSpecialization, deleteSpecialization, deleteUser,
   addInspirationCategory, deleteInspirationCategory,
   addJobCategory, deleteJobCategory,
   addAssetCategory, deleteAssetCategory,
+  addForumCategory, deleteForumCategory,
   getLogoUploadUrl, saveLogoUrl,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('pending')
@@ -79,6 +85,7 @@ export default function AdminClient({
   const [inspCatState,   inspCatAction,   inspCatPending]  = useActionState(addInspirationCategory, null)
   const [jobCatState,    jobCatAction,    jobCatPending]   = useActionState(addJobCategory, null)
   const [assetCatState,  assetCatAction,  assetCatPending] = useActionState(addAssetCategory, null)
+  const [forumCatState,  forumCatAction,  forumCatPending] = useActionState(addForumCategory, null)
   const [showNewsForm, setShowNewsForm] = useState(false)
 
   return (
@@ -677,6 +684,63 @@ export default function AdminClient({
                     </div>
                     <button disabled={isPending} onClick={() => startTransition(async () => { await deleteAssetCategory(cat.id) })}
                       className="rounded-lg p-1.5 transition hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50" style={{ color: 'var(--tx3)' }}>
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Forum Categories ── */}
+        {activeTab === 'forum_cats' && (
+          <div>
+            <form action={forumCatAction} className="mb-6 space-y-3">
+              <label className={`${labelCls} mb-2`}>קטגוריה חדשה לפורום</label>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <input name="name" required className={inputCls} placeholder="שם הקטגוריה (חובה)" />
+                <input name="description" className={inputCls} placeholder="תיאור קצר (אופציונלי)" />
+                <input name="icon" className={inputCls} placeholder="אמוג׳י (ברירת מחדל: 💬)" />
+                <input name="sort_order" type="number" className={inputCls} placeholder="סדר (0, 1, 2...)" defaultValue="0" />
+              </div>
+              <button
+                type="submit"
+                disabled={forumCatPending}
+                className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-white transition hover:opacity-90 disabled:opacity-50"
+                style={{ background: 'linear-gradient(135deg, #7c3aed, #6d28d9)' }}
+              >
+                <Plus size={15} />
+                הוסף קטגוריה
+              </button>
+              {forumCatState?.error && (
+                <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">{forumCatState.error}</p>
+              )}
+            </form>
+            <div className="space-y-2">
+              {forumCategories.length === 0 ? (
+                <div className="rounded-2xl py-12 text-center text-sm text-slate-500" style={{ border: '2px dashed var(--bd)', background: 'var(--inp)' }}>
+                  אין קטגוריות פורום עדיין
+                </div>
+              ) : (
+                forumCategories.map((cat) => (
+                  <div key={cat.id} className="flex items-center justify-between rounded-xl px-4 py-3" style={{ background: 'var(--s2)', border: '1px solid var(--bd)' }}>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xl">{cat.icon ?? '💬'}</span>
+                      <div>
+                        <p className="text-sm font-semibold" style={{ color: 'var(--tx)' }}>{cat.name}</p>
+                        {cat.description && <p className="text-xs" style={{ color: 'var(--tx3)' }}>{cat.description}</p>}
+                      </div>
+                      <span className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: 'rgba(124,58,237,.1)', color: '#7c3aed' }}>
+                        סדר: {cat.sort_order}
+                      </span>
+                    </div>
+                    <button
+                      disabled={isPending}
+                      onClick={() => startTransition(async () => { await deleteForumCategory(cat.id) })}
+                      className="rounded-lg p-1.5 transition hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50"
+                      style={{ color: 'var(--tx3)' }}
+                    >
                       <Trash2 size={14} />
                     </button>
                   </div>

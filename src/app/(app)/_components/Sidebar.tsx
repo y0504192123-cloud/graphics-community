@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Briefcase, MessageSquare, Library, Menu, X, ShieldCheck, Palette, Globe } from 'lucide-react'
+import { LayoutDashboard, Briefcase, MessageSquare, Library, Menu, X, ShieldCheck, Palette, Globe, MessagesSquare } from 'lucide-react'
 import { useState, useEffect, useMemo } from 'react'
 import LogoutButton from './LogoutButton'
 import { useLanguage } from '@/components/LanguageProvider'
@@ -14,12 +14,12 @@ type Props = { profile: Profile | null; email: string; currentUserId?: string; l
 
 const labels = {
   he: {
-    home: 'ראשי', jobs: 'לוח עבודות', chat: "צ'אטים",
+    home: 'ראשי', jobs: 'לוח עבודות', chat: "צ'אטים", forum: 'פורום',
     inspiration: 'ספריית השראה', assets: 'חומרים לשימוש', admin: 'פאנל ניהול',
     designer: 'גרפיקאי',
   },
   en: {
-    home: 'Home', jobs: 'Job Board', chat: 'Chats',
+    home: 'Home', jobs: 'Job Board', chat: 'Chats', forum: 'Forum',
     inspiration: 'Inspiration', assets: 'Resources', admin: 'Admin Panel',
     designer: 'Designer',
   },
@@ -55,6 +55,7 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
     { href: '/dashboard',   label: t.home,       icon: <LayoutDashboard size={17} /> },
     { href: '/jobs',        label: t.jobs,        icon: <Briefcase size={17} /> },
     { href: '/chat',        label: t.chat,        icon: <MessageSquare size={17} /> },
+    { href: '/forum',       label: t.forum,       icon: <MessagesSquare size={17} /> },
     { href: '/inspiration', label: t.inspiration, icon: <Palette size={17} /> },
     { href: '/assets',      label: t.assets,      icon: <Library size={17} /> },
   ]

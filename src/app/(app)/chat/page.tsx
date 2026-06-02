@@ -3,7 +3,6 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import ChatClient from './ChatClient'
 import {
-  createTopic,
   sendMessage,
   deleteMessage,
   sendPrivateMessage,
@@ -13,7 +12,7 @@ import {
   editPrivateMessage,
   toggleReaction,
 } from './actions'
-import type { Topic, Profile, PrivateMessage } from '@/types'
+import type { Profile, PrivateMessage } from '@/types'
 
 interface ChatPageProps {
   searchParams: Promise<{ dm?: string; jobTitle?: string; jobBudget?: string; jobDesc?: string }>
@@ -35,9 +34,37 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
   const admin = createAdminClient()
   const isAdmin = profileData?.role === 'admin'
 
-  const [topicsRes, categoriesRes, privMsgsRes, usersRes] = await Promise.all([
-    supabase.from('topics').select('*, profiles(*)').order('created_at', { ascending: false }),
-    supabase.from('chat_categories').select('name').order('created_at', { ascending: true }),
+  // Find or create the single community topic
+  let { data: generalTopic } = await admin
+    .from('topics')
+    .select('id')
+    .eq('title', 'קהילה')
+    .maybeSingle()
+
+  if (!generalTopic) {
+    // Try to find any existing topic to use as the general room
+    const { data: anyTopic } = await admin
+      .from('topics')
+      .select('id')
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+    generalTopic = anyTopic
+  }
+
+  if (!generalTopic) {
+    // Create it
+    const { data: created } = await admin
+      .from('topics')
+      .insert({ title: 'קהילה', category: 'כללי', created_by: user.id })
+      .select('id')
+      .single()
+    generalTopic = created
+  }
+
+  const generalTopicId = generalTopic?.id ?? null
+
+  const [privMsgsRes, usersRes] = await Promise.all([
     admin
       .from('private_messages')
       .select('*, sender:profiles!sender_id(*), receiver:profiles!receiver_id(*), reply_to:private_messages!reply_to_id(id,content,sender_id)')
@@ -51,8 +78,6 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
       .order('full_name', { ascending: true }),
   ])
 
-  const topics = (topicsRes.data ?? []) as Topic[]
-  const categories = (categoriesRes.data ?? []).map((c: { name: string }) => c.name)
   const privateMessages = (privMsgsRes.data ?? []) as PrivateMessage[]
   const activeUsers = (usersRes.data ?? []) as Profile[]
 
@@ -72,12 +97,10 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
 
   return (
     <ChatClient
-      topics={topics}
-      categories={categories}
+      generalTopicId={generalTopicId}
       currentUserId={user.id}
       currentProfile={profileData}
       isAdmin={isAdmin}
-      createTopic={createTopic}
       sendMessage={sendMessage}
       deleteMessage={deleteMessage}
       initialPrivateMessages={privateMessages}
