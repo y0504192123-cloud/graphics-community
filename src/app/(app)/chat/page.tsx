@@ -71,11 +71,12 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) redirect('/login')
-    await createAdminClient().from('messages').insert({
+    const { error } = await createAdminClient().from('messages').insert({
       channel_id: topicId,
       user_id: user.id,
       content,
     })
+    if (error) console.error('[sendMessage] DB error:', error)
   }
 
   async function deleteMessage(messageId: string) {

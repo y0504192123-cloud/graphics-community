@@ -141,6 +141,7 @@ export default function ChatClient({
   const [communityMsgs, setCommunityMsgs] = useState<Message[]>([])
   const [communityText, setCommunityText] = useState('')
   const [isSendingC, setIsSendingC]     = useState(false)
+  const [sendError, setSendError]       = useState<string | null>(null)
   const [showCreate, setShowCreate]     = useState(false)
   const [filterCat, setFilterCat]       = useState('הכל')
 
@@ -329,8 +330,17 @@ export default function ChatClient({
       created_at: new Date().toISOString(),
       profiles: currentProfile ?? undefined,
     }])
+    setSendError(null)
     setIsSendingC(true)
-    try { await sendMessage(selectedTopic.id, content) } finally { setIsSendingC(false) }
+    try {
+      await sendMessage(selectedTopic.id, content)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error('[sendMessage] client error:', err)
+      setSendError(msg)
+    } finally {
+      setIsSendingC(false)
+    }
   }
 
   const handlePrivateSend = async () => {
@@ -614,6 +624,11 @@ export default function ChatClient({
           <div ref={communityBottomRef} />
         </div>
 
+        {sendError && (
+          <div className="shrink-0 px-4 py-2 text-xs text-red-400 bg-red-500/10 border-t border-red-500/20">
+            שגיאה: {sendError}
+          </div>
+        )}
         <InputBar
           value={communityText}
           onChange={makeTextareaHandler(setCommunityText)}
