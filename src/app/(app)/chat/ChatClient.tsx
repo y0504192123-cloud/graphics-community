@@ -413,17 +413,29 @@ export default function ChatClient({
     return () => { supabase.removeChannel(ch) }
   }, [currentUserId, supabase])
 
-  // ── Typing indicator ──
+  // ── Typing + per-conversation broadcast (delete / edit) ──
   useEffect(() => {
     if (!selectedPartner) { setPartnerTyping(false); return }
     const key = [currentUserId, selectedPartner].sort().join('_')
-    const ch = supabase.channel(`typing-${key}`)
+    const ch = supabase.channel(`conv-${key}`)
       .on('broadcast', { event: 'typing' }, ({ payload }) => {
         if (payload?.userId === selectedPartner) {
           setPartnerTyping(true)
           if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
           typingTimeoutRef.current = setTimeout(() => setPartnerTyping(false), 3000)
         }
+      })
+      .on('broadcast', { event: 'msg_delete' }, ({ payload }) => {
+        if (!payload?.msgId) return
+        setPrivateMsgs(prev => prev.map(m =>
+          m.id === payload.msgId ? { ...m, deleted_for_all: true, content: null, attachment_url: null } : m
+        ))
+      })
+      .on('broadcast', { event: 'msg_edit' }, ({ payload }) => {
+        if (!payload?.msgId) return
+        setPrivateMsgs(prev => prev.map(m =>
+          m.id === payload.msgId ? { ...m, content: payload.content, edited_at: payload.editedAt } : m
+        ))
       })
       .subscribe()
     typingChannelRef.current = ch
@@ -682,6 +694,7 @@ export default function ChatClient({
 
   const handleDeletePrivate = async (msgId: string) => {
     setPrivateMsgs(prev => prev.map(m => m.id === msgId ? { ...m, deleted_for_all: true, content: null, attachment_url: null } : m))
+    typingChannelRef.current?.send({ type: 'broadcast', event: 'msg_delete', payload: { msgId } })
     await deletePrivateMessage(msgId)
   }
 
@@ -689,9 +702,11 @@ export default function ChatClient({
     if (!editingMsgId || !editingText.trim()) return
     const id = editingMsgId
     const content = editingText.trim()
-    setPrivateMsgs(prev => prev.map(m => m.id === id ? { ...m, content, edited_at: new Date().toISOString() } : m))
+    const editedAt = new Date().toISOString()
+    setPrivateMsgs(prev => prev.map(m => m.id === id ? { ...m, content, edited_at: editedAt } : m))
     setEditingMsgId(null)
     setEditingText('')
+    typingChannelRef.current?.send({ type: 'broadcast', event: 'msg_edit', payload: { msgId: id, content, editedAt } })
     await editPrivateMessage(id, content)
   }
 
