@@ -2,24 +2,33 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, X, Briefcase, Clock, CheckCircle2, Flame, MapPin, ChevronDown } from 'lucide-react'
+import { Plus, X, Briefcase, Clock, ChevronDown, Trash2, Calendar } from 'lucide-react'
 import type { Job, Profile } from '@/types'
 
 type Props = {
   jobs: (Job & { profiles: Profile | null })[]
   currentUserId: string
+  isAdmin: boolean
   categories: string[]
   createJob: (formData: FormData) => Promise<void>
   applyToJob: (jobId: string, formData: FormData) => Promise<void>
+  changeJobStatus: (jobId: string, status: string) => Promise<void>
+  deleteJob: (jobId: string) => Promise<void>
 }
 
-const statusConfig: Record<string, { label: string; color: string; bg: string; dot: string }> = {
-  open:        { label: 'פתוח',   color: 'text-emerald-400', bg: 'rgba(52,211,153,.1)',  dot: '#34d399' },
-  closed:      { label: 'סגור',   color: 'text-red-400',     bg: 'rgba(248,113,113,.1)', dot: '#f87171' },
-  in_progress: { label: 'בתהליך', color: 'text-blue-400',    bg: 'rgba(96,165,250,.1)',  dot: '#60a5fa' },
+const statusConfig: Record<string, { label: string; color: string; bg: string; border: string; dot: string }> = {
+  open:        { label: 'פתוח',    color: 'text-emerald-400', bg: 'rgba(52,211,153,.12)',  border: 'rgba(52,211,153,.3)',  dot: '#34d399' },
+  in_progress: { label: 'בתהליך', color: 'text-amber-400',   bg: 'rgba(251,191,36,.12)',  border: 'rgba(251,191,36,.3)',  dot: '#fbbf24' },
+  closed:      { label: 'נסגר',   color: 'text-red-400',     bg: 'rgba(248,113,113,.12)', border: 'rgba(248,113,113,.3)', dot: '#f87171' },
 }
 
-const inputCls = 'w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-4 py-2.5 text-sm text-slate-100 outline-none transition-all focus:border-purple-500/50 focus:bg-white/[0.06] focus:ring-2 focus:ring-purple-500/20 placeholder:text-slate-600'
+const accentColor: Record<string, string> = {
+  open:        'linear-gradient(to bottom, #34d399, #059669)',
+  in_progress: 'linear-gradient(to bottom, #fbbf24, #d97706)',
+  closed:      'linear-gradient(to bottom, #f87171, #dc2626)',
+}
+
+const inputCls = 'w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-4 py-2.5 text-sm text-slate-100 outline-none transition-all focus:border-purple-500/50 focus:bg-white/[0.06] focus:ring-2 focus:ring-purple-500/20'
 const labelCls = 'mb-1.5 block text-xs font-semibold uppercase tracking-widest text-slate-500'
 
 const categoryIcons: Record<string, string> = {
@@ -33,7 +42,21 @@ const categoryIcons: Record<string, string> = {
   'אחר': '✦',
 }
 
-export default function JobsClient({ jobs, currentUserId, categories, createJob, applyToJob }: Props) {
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleDateString('he-IL', { day: 'numeric', month: 'long', year: 'numeric' })
+}
+
+function formatBudget(min: number | null, max: number | null) {
+  if (min != null && max != null) return `₪${min.toLocaleString()} – ₪${max.toLocaleString()}`
+  if (min != null) return `מ-₪${min.toLocaleString()}`
+  if (max != null) return `עד ₪${max.toLocaleString()}`
+  return null
+}
+
+export default function JobsClient({
+  jobs, currentUserId, isAdmin, categories,
+  createJob, applyToJob, changeJobStatus, deleteJob,
+}: Props) {
   const router = useRouter()
   const [showCreate, setShowCreate] = useState(false)
   const [applyingTo, setApplyingTo] = useState<string | null>(null)
@@ -54,7 +77,6 @@ export default function JobsClient({ jobs, currentUserId, categories, createJob,
         <div className="pointer-events-none absolute -top-20 start-0 h-60 w-60 rounded-full opacity-25" style={{ background: 'radial-gradient(circle, rgba(99,102,241,.6) 0%, transparent 70%)', filter: 'blur(50px)' }} />
         <div className="pointer-events-none absolute -bottom-10 end-20 h-40 w-40 rounded-full opacity-20" style={{ background: 'radial-gradient(circle, rgba(124,58,237,.5) 0%, transparent 70%)', filter: 'blur(40px)' }} />
         <div className="grid-pattern absolute inset-0 opacity-40" />
-
         <div className="relative mx-auto max-w-5xl">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -113,6 +135,10 @@ export default function JobsClient({ jobs, currentUserId, categories, createJob,
                 </select>
               </div>
               <div>
+                <label className={labelCls}>דדליין</label>
+                <input name="deadline" type="date" className={inputCls} />
+              </div>
+              <div>
                 <label className={labelCls}>תקציב מינימום (₪)</label>
                 <input
                   name="budget_min"
@@ -132,17 +158,9 @@ export default function JobsClient({ jobs, currentUserId, categories, createJob,
                   className={`${inputCls} [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none`}
                 />
               </div>
-              <div>
-                <label className={labelCls}>דדליין</label>
-                <input
-                  name="deadline"
-                  type="date"
-                  className={inputCls}
-                />
-              </div>
               <div className="sm:col-span-2">
                 <label className={labelCls}>תיאור מפורט</label>
-                <textarea name="description" required rows={3} className={`${inputCls} resize-none`} />
+                <textarea name="description" required rows={4} className={`${inputCls} resize-none`} />
               </div>
             </div>
             <button
@@ -163,23 +181,21 @@ export default function JobsClient({ jobs, currentUserId, categories, createJob,
               key={cat}
               onClick={() => setFilterCat(cat)}
               className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all duration-200 ${
-                filterCat === cat
-                  ? 'text-white shadow-lg'
-                  : 'text-slate-400 hover:text-slate-200'
+                filterCat === cat ? 'text-white shadow-lg' : 'text-slate-400 hover:text-slate-200'
               }`}
               style={filterCat === cat
                 ? { background: 'linear-gradient(135deg, #7c3aed, #6d28d9)', boxShadow: '0 2px 12px rgba(124,58,237,.4)' }
                 : { background: 'var(--inp)', border: '1px solid var(--bd)' }
               }
             >
-              {cat !== 'הכל' && <span>{categoryIcons[cat]}</span>}
+              {cat !== 'הכל' && <span>{categoryIcons[cat] ?? '•'}</span>}
               {cat}
             </button>
           ))}
         </div>
 
         {/* Job list */}
-        <div className="space-y-3">
+        <div className="space-y-4">
           {filtered.length === 0 && (
             <div
               className="flex flex-col items-center justify-center gap-4 rounded-2xl py-16 text-center"
@@ -194,9 +210,11 @@ export default function JobsClient({ jobs, currentUserId, categories, createJob,
           )}
 
           {filtered.map((job, i) => {
-            const status = statusConfig[job.status]
+            const st = statusConfig[job.status] ?? statusConfig.open
             const isOwn = job.client_id === currentUserId
+            const canDelete = isOwn || isAdmin
             const isApplying = applyingTo === job.id
+            const budget = formatBudget(job.budget_min, job.budget_max)
 
             return (
               <div
@@ -205,37 +223,40 @@ export default function JobsClient({ jobs, currentUserId, categories, createJob,
                 style={{
                   background: 'var(--s2)',
                   border: '1px solid var(--bd)',
-                  boxShadow: '0 2px 12px rgba(0,0,0,.12)',
+                  boxShadow: '0 2px 16px rgba(0,0,0,.14)',
                   animationDelay: `${i * 50}ms`,
                 }}
               >
-                {/* Card hover left accent */}
                 <div className="flex">
-                  <div
-                    className="w-1 shrink-0 rounded-s-2xl transition-all duration-300 group-hover:opacity-100"
-                    style={{ background: job.status === 'open' ? 'linear-gradient(to bottom, #34d399, #059669)' : job.status === 'in_progress' ? 'linear-gradient(to bottom, #60a5fa, #3b82f6)' : 'rgba(255,255,255,.1)' }}
-                  />
+                  {/* Left accent bar */}
+                  <div className="w-1 shrink-0 rounded-s-2xl" style={{ background: accentColor[job.status] ?? accentColor.open }} />
 
                   <div className="flex-1 p-5">
-                    <div className="mb-3 flex items-start justify-between gap-4">
-                      <div className="flex-1">
+
+                    {/* Top row: title + badges + budget */}
+                    <div className="mb-3 flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
                         <div className="mb-2 flex flex-wrap items-center gap-2">
                           <h3 className="font-bold text-slate-100 group-hover:text-white">{job.title}</h3>
+
+                          {/* Status badge */}
                           <span
-                            className={`flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ${status.color}`}
-                            style={{ background: status.bg }}
+                            className={`flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ${st.color}`}
+                            style={{ background: st.bg, border: `1px solid ${st.border}` }}
                           >
-                            <span className="h-1.5 w-1.5 rounded-full" style={{ background: status.dot }} />
-                            {status.label}
+                            <span className="h-1.5 w-1.5 rounded-full" style={{ background: st.dot }} />
+                            {st.label}
                           </span>
+
                           {job.category && (
                             <span
                               className="rounded-full px-2.5 py-0.5 text-xs text-slate-400"
                               style={{ background: 'var(--inp)', border: '1px solid var(--bd)' }}
                             >
-                              {categoryIcons[job.category]} {job.category}
+                              {categoryIcons[job.category] ?? ''} {job.category}
                             </span>
                           )}
+
                           {isOwn && (
                             <span className="rounded-full px-2.5 py-0.5 text-xs text-purple-400" style={{ background: 'rgba(124,58,237,.1)' }}>
                               הפרסום שלך
@@ -243,9 +264,10 @@ export default function JobsClient({ jobs, currentUserId, categories, createJob,
                           )}
                         </div>
 
-                        <div className="flex items-center gap-3 text-xs text-slate-500">
+                        {/* Publisher + date */}
+                        <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
                           <span className="flex items-center gap-1">
-                            <div className="flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold" style={{ background: 'var(--inph)', color: 'var(--tx2)' }}>
+                            <div className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-bold" style={{ background: 'var(--inph)', color: 'var(--tx2)' }}>
                               {(job.profiles?.full_name ?? 'א')[0]}
                             </div>
                             {job.profiles?.full_name ?? 'לקוח אנונימי'}
@@ -253,63 +275,95 @@ export default function JobsClient({ jobs, currentUserId, categories, createJob,
                           <span>·</span>
                           <span className="flex items-center gap-1">
                             <Clock size={11} />
-                            {new Date(job.created_at).toLocaleDateString('he-IL')}
+                            פורסם {formatDate(job.created_at)}
                           </span>
-                          <span className="flex items-center gap-1">
-                            <MapPin size={11} />
-                            ישראל
-                          </span>
+                          {job.deadline && (
+                            <>
+                              <span>·</span>
+                              <span className="flex items-center gap-1 text-amber-400">
+                                <Calendar size={11} />
+                                דדליין: {formatDate(job.deadline)}
+                              </span>
+                            </>
+                          )}
                         </div>
                       </div>
 
-                      {(job.budget_min != null || job.budget_max != null) && (
+                      {/* Budget box */}
+                      {budget && (
                         <div
                           className="shrink-0 rounded-xl px-4 py-2 text-center"
                           style={{ background: 'rgba(124,58,237,.1)', border: '1px solid rgba(124,58,237,.2)' }}
                         >
                           <p className="text-xs text-slate-500">תקציב</p>
-                          <p className="text-lg font-bold text-purple-300">
-                            {job.budget_min != null && job.budget_max != null
-                              ? `₪${job.budget_min.toLocaleString()}–₪${job.budget_max.toLocaleString()}`
-                              : job.budget_min != null
-                              ? `₪${job.budget_min.toLocaleString()}+`
-                              : `עד ₪${job.budget_max!.toLocaleString()}`}
-                          </p>
+                          <p className="whitespace-nowrap text-base font-bold text-purple-300">{budget}</p>
                         </div>
                       )}
                     </div>
 
-                    <p className="mb-4 text-sm leading-relaxed text-slate-400 line-clamp-2">{job.description}</p>
+                    {/* Full description */}
+                    <p className="mb-4 text-sm leading-relaxed text-slate-400">{job.description}</p>
 
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        {job.status === 'open' && !isOwn && (
-                          <span className="flex items-center gap-1 text-xs text-amber-400">
-                            <Flame size={11} />
-                            פעיל
-                          </span>
+                    {/* Bottom row: status changer (owner) + apply (other) + delete */}
+                    <div className="flex flex-wrap items-center gap-2">
+
+                      {/* Status change — owner only */}
+                      {isOwn && (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs text-slate-500">שנה סטטוס:</span>
+                          {(['open', 'in_progress', 'closed'] as const).map((s) => {
+                            const cfg = statusConfig[s]
+                            const active = job.status === s
+                            return (
+                              <button
+                                key={s}
+                                disabled={active || isPending}
+                                onClick={() => startTransition(async () => { await changeJobStatus(job.id, s); router.refresh() })}
+                                className="rounded-lg px-2.5 py-1 text-xs font-semibold transition-all disabled:cursor-default"
+                                style={active
+                                  ? { background: cfg.bg, border: `1px solid ${cfg.border}`, color: cfg.dot }
+                                  : { background: 'var(--inp)', border: '1px solid var(--bd)', color: 'var(--tx2)', opacity: isPending ? 0.5 : 1 }
+                                }
+                              >
+                                {cfg.label}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      )}
+
+                      <div className="ms-auto flex items-center gap-2">
+                        {/* Apply button — non-owners, open jobs */}
+                        {!isOwn && job.status === 'open' && (
+                          <button
+                            onClick={() => setApplyingTo(isApplying ? null : job.id)}
+                            className="flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold transition-all duration-200 hover:scale-[1.03]"
+                            style={isApplying
+                              ? { background: 'rgba(124,58,237,.2)', border: '1px solid rgba(124,58,237,.4)', color: '#c084fc' }
+                              : { background: 'rgba(124,58,237,.1)', border: '1px solid rgba(124,58,237,.25)', color: '#a78bfa' }
+                            }
+                          >
+                            {isApplying ? 'סגור' : 'הגש הצעה'}
+                            <ChevronDown size={12} className={`transition-transform duration-200 ${isApplying ? 'rotate-180' : ''}`} />
+                          </button>
                         )}
-                        {isOwn && (
-                          <span className="flex items-center gap-1 text-xs text-slate-500">
-                            <CheckCircle2 size={12} />
-                            פרסמת את זה
-                          </span>
+
+                        {/* Delete button — owner or admin */}
+                        {canDelete && (
+                          <button
+                            disabled={isPending}
+                            onClick={() => {
+                              if (confirm('למחוק את המשרה הזו?')) {
+                                startTransition(async () => { await deleteJob(job.id); router.refresh() })
+                              }
+                            }}
+                            className="rounded-xl border p-2 text-slate-500 transition hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50"
+                            style={{ borderColor: 'var(--bd)' }}
+                          >
+                            <Trash2 size={14} />
+                          </button>
                         )}
                       </div>
-
-                      {!isOwn && job.status === 'open' && (
-                        <button
-                          onClick={() => setApplyingTo(isApplying ? null : job.id)}
-                          className="flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold transition-all duration-200 hover:scale-[1.03]"
-                          style={isApplying
-                            ? { background: 'rgba(124,58,237,.2)', border: '1px solid rgba(124,58,237,.4)', color: '#c084fc' }
-                            : { background: 'rgba(124,58,237,.1)', border: '1px solid rgba(124,58,237,.25)', color: '#a78bfa' }
-                          }
-                        >
-                          {isApplying ? 'סגור' : 'הגש הצעה'}
-                          <ChevronDown size={12} className={`transition-transform duration-200 ${isApplying ? 'rotate-180' : ''}`} />
-                        </button>
-                      )}
                     </div>
 
                     {/* Apply form */}
@@ -368,6 +422,7 @@ export default function JobsClient({ jobs, currentUserId, categories, createJob,
                         </div>
                       </form>
                     )}
+
                   </div>
                 </div>
               </div>

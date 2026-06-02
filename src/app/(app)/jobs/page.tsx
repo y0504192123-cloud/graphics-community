@@ -11,15 +11,17 @@ export default async function JobsPage() {
   if (!user) redirect('/login')
 
   const admin = createAdminClient()
-  const [jobsRes, catsRes] = await Promise.all([
+  const [jobsRes, catsRes, profileRes] = await Promise.all([
     admin.from('jobs').select('*, profiles!client_id(*)').order('created_at', { ascending: false }),
     admin.from('job_categories').select('name').order('name', { ascending: true }),
+    admin.from('profiles').select('role').eq('id', user.id).single(),
   ])
 
   if (jobsRes.error) console.error('[JobsPage] jobs fetch error:', jobsRes.error.message)
   if (catsRes.error) console.error('[JobsPage] categories fetch error:', catsRes.error.message)
   console.log('[JobsPage] jobs count:', jobsRes.data?.length ?? 0)
 
+  const isAdmin = profileRes.data?.role === 'admin'
   const categories: string[] = (catsRes.data ?? []).map((c) => c.name)
 
   async function createJob(formData: FormData) {
@@ -85,13 +87,44 @@ export default async function JobsPage() {
     }
   }
 
+  async function changeJobStatus(jobId: string, status: string) {
+    'use server'
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    const { error } = await createAdminClient()
+      .from('jobs')
+      .update({ status })
+      .eq('id', jobId)
+      .eq('client_id', user.id)
+    if (error) console.error('[changeJobStatus] error:', error.message)
+    revalidatePath('/jobs')
+  }
+
+  async function deleteJob(jobId: string) {
+    'use server'
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    const profile = await createAdminClient().from('profiles').select('role').eq('id', user.id).single()
+    const isAdmin = profile.data?.role === 'admin'
+    const query = createAdminClient().from('jobs').delete().eq('id', jobId)
+    if (!isAdmin) query.eq('client_id', user.id)
+    const { error } = await query
+    if (error) console.error('[deleteJob] error:', error.message)
+    revalidatePath('/jobs')
+  }
+
   return (
     <JobsClient
       jobs={(jobsRes.data ?? []) as (Job & { profiles: Profile | null })[]}
       currentUserId={user.id}
+      isAdmin={isAdmin}
       categories={categories}
       createJob={createJob}
       applyToJob={applyToJob}
+      changeJobStatus={changeJobStatus}
+      deleteJob={deleteJob}
     />
   )
 }
