@@ -313,7 +313,7 @@ export default function ChatClient({
   const openTopic = async (topic: Topic) => {
     setSelectedTopic(topic)
     setCommunityView('chat')
-    const { data } = await supabase.from('messages').select('*, profiles(*)').eq('channel_id', topic.id).order('created_at', { ascending: true }).limit(50)
+    const { data } = await supabase.from('messages').select('*, profiles(id, full_name, username, avatar_url)').eq('channel_id', topic.id).order('created_at', { ascending: true }).limit(50)
     setCommunityMsgs((data as Message[]) ?? [])
   }
 
