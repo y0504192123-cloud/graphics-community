@@ -327,6 +327,8 @@ export default function ChatClient({
   const fileInputRef       = useRef<HTMLInputElement>(null)
   const selectedPartnerRef = useRef<string | null>(selectedPartner)
   selectedPartnerRef.current = selectedPartner
+  const privateMsgsRef = useRef<PrivateMessage[]>(privateMsgs)
+  privateMsgsRef.current = privateMsgs
   const markReadRef = useRef(markMessagesRead)
   markReadRef.current = markMessagesRead
   const typingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
@@ -351,15 +353,49 @@ export default function ChatClient({
 
   // ── Realtime: reactions ──
   useEffect(() => {
+    let active = true
     const ch = supabase.channel('rt-reactions')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'message_reactions' }, async (payload) => {
-        const msgId = (payload.new as { message_id?: string })?.message_id ?? (payload.old as { message_id?: string })?.message_id
-        if (!msgId) return
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_reactions' }, async (payload) => {
+        const msgId = (payload.new as { message_id?: string })?.message_id
+        if (!msgId || !active) return
         const { data } = await supabase.from('message_reactions').select('emoji, user_id').eq('message_id', msgId)
-        setReactionsMap(prev => ({ ...prev, [msgId]: groupReactions(data ?? [], currentUserId) }))
+        if (active) setReactionsMap(prev => ({ ...prev, [msgId]: groupReactions(data ?? [], currentUserId) }))
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'message_reactions' }, async (payload) => {
+        const msgId = (payload.new as { message_id?: string })?.message_id
+        if (!msgId || !active) return
+        const { data } = await supabase.from('message_reactions').select('emoji, user_id').eq('message_id', msgId)
+        if (active) setReactionsMap(prev => ({ ...prev, [msgId]: groupReactions(data ?? [], currentUserId) }))
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'message_reactions' }, async (payload) => {
+        // DELETE payload.old may be empty without REPLICA IDENTITY FULL — fall back to reloading current conversation
+        const msgId = (payload.old as { message_id?: string })?.message_id
+        if (!active) return
+        if (msgId) {
+          const { data } = await supabase.from('message_reactions').select('emoji, user_id').eq('message_id', msgId)
+          if (active) setReactionsMap(prev => ({ ...prev, [msgId]: groupReactions(data ?? [], currentUserId) }))
+        } else {
+          // Reload reactions for entire current conversation
+          const partner = selectedPartnerRef.current
+          if (!partner) return
+          const ids = privateMsgsRef.current
+            .filter(m => !String(m.id).startsWith('temp-') && (
+              (m.sender_id === currentUserId && m.receiver_id === partner) ||
+              (m.sender_id === partner && m.receiver_id === currentUserId)
+            ))
+            .map(m => m.id)
+          if (!ids.length) return
+          const { data } = await supabase.from('message_reactions').select('message_id, emoji, user_id').in('message_id', ids)
+          if (!active || !data) return
+          const patch: ReactionsMap = {}
+          for (const id of ids) {
+            patch[id] = groupReactions(data.filter(r => r.message_id === id), currentUserId)
+          }
+          setReactionsMap(prev => ({ ...prev, ...patch }))
+        }
       })
       .subscribe()
-    return () => { supabase.removeChannel(ch) }
+    return () => { active = false; supabase.removeChannel(ch) }
   }, [supabase, currentUserId])
 
   // ── Online presence ──
@@ -391,7 +427,11 @@ export default function ChatClient({
       })
       .subscribe()
     typingChannelRef.current = ch
-    return () => { supabase.removeChannel(ch); typingChannelRef.current = null }
+    return () => {
+      supabase.removeChannel(ch)
+      typingChannelRef.current = null
+      if (typingTimeoutRef.current) { clearTimeout(typingTimeoutRef.current); typingTimeoutRef.current = null }
+    }
   }, [selectedPartner, currentUserId, supabase])
 
   const broadcastTyping = useCallback(() => {
@@ -434,8 +474,10 @@ export default function ChatClient({
 
   // ── Realtime: private messages ──
   useEffect(() => {
+    let active = true
     const ch = supabase.channel('rt-private')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'private_messages' }, (payload) => {
+        if (!active) return
         const u = payload.new as PrivateMessage
         setPrivateMsgs(prev => prev.map(m => m.id === u.id ? { ...m, ...u } : m))
       })
@@ -446,6 +488,7 @@ export default function ChatClient({
           supabase.from('profiles').select('id,full_name,username,avatar_url').eq('id', m.sender_id).single(),
           supabase.from('profiles').select('id,full_name,username,avatar_url').eq('id', m.receiver_id).single(),
         ])
+        if (!active) return
         setPrivateMsgs(prev => {
           const replyToMsg = m.reply_to_id ? (prev.find(x => x.id === m.reply_to_id) ?? null) : null
           const full: PrivateMessage = { ...m, sender: sp as Profile | undefined ?? undefined, receiver: rp as Profile | undefined ?? undefined, reply_to: replyToMsg }
@@ -462,7 +505,7 @@ export default function ChatClient({
         }
       })
       .subscribe()
-    return () => { supabase.removeChannel(ch) }
+    return () => { active = false; supabase.removeChannel(ch) }
   }, [supabase, currentUserId])
 
   // ── Auto-scroll ──
@@ -1112,8 +1155,8 @@ export default function ChatClient({
                         <span style={{ fontStyle: 'italic' }}>🚫 הודעה נמחקה</span>
                       ) : (
                         <>
-                          {/* Reply quote */}
-                          {msg.reply_to && (
+                          {/* Reply quote — only when reply_to_id is set AND join returned a real row */}
+                          {msg.reply_to_id && msg.reply_to && 'id' in msg.reply_to && (
                             <div
                               className="mb-2 rounded-lg px-2.5 py-1.5 text-xs border-s-2 border-purple-400"
                               style={{ background: isOwn ? 'rgba(255,255,255,.15)' : 'var(--inp)' }}
