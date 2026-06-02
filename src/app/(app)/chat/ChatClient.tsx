@@ -249,6 +249,10 @@ export default function ChatClient({
   // Private messages
   useEffect(() => {
     const ch = supabase.channel('rt-private-messages')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'private_messages' }, (payload) => {
+        const updated = payload.new as { id: string; is_read: boolean }
+        setPrivateMsgs(prev => prev.map(m => m.id === updated.id ? { ...m, is_read: updated.is_read } : m))
+      })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'private_messages' }, (payload) => {
         const old = payload.old as { id: string }
         setPrivateMsgs(prev => prev.filter(m => m.id !== old.id))
