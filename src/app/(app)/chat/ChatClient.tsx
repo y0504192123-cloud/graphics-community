@@ -232,9 +232,9 @@ export default function ChatClient({
         const { data: profile } = await supabase.from('profiles').select('id, full_name, username, avatar_url').eq('id', newMsg.user_id).single()
         setCommunityMsgs(prev => {
           const withoutTemp = prev.filter(
-            m => !(m.id.startsWith('temp-') && m.user_id === newMsg.user_id && m.content === newMsg.content)
+            m => !(String(m.id).startsWith('temp-') && m.user_id === newMsg.user_id && m.content === newMsg.content)
           )
-          if (withoutTemp.some(m => m.id === newMsg.id)) return withoutTemp
+          if (withoutTemp.some(m => String(m.id) === String(newMsg.id))) return withoutTemp
           return [...withoutTemp, { ...newMsg, profiles: profile as Profile | undefined ?? undefined }]
         })
       })
@@ -269,11 +269,11 @@ export default function ChatClient({
         const fullMsg: PrivateMessage = { ...newMsg, sender: senderProfile as Profile | undefined ?? undefined, receiver: receiverProfile as Profile | undefined ?? undefined }
 
         setPrivateMsgs(prev => {
-          if (prev.some(m => m.id === newMsg.id)) return prev
+          if (prev.some(m => String(m.id) === String(newMsg.id))) return prev
           // Replace matching temp message (own sent messages)
           if (newMsg.sender_id === currentUserId) {
             const withoutTemp = prev.filter(
-              m => !(m.id.startsWith('temp-') && m.sender_id === currentUserId && m.receiver_id === newMsg.receiver_id && m.content === newMsg.content)
+              m => !(String(m.id).startsWith('temp-') && m.sender_id === currentUserId && m.receiver_id === newMsg.receiver_id && m.content === newMsg.content)
             )
             return [...withoutTemp, fullMsg]
           }
@@ -571,7 +571,7 @@ export default function ChatClient({
               const isOwn = msg.user_id === currentUserId
               const prevMsg = communityMsgs[i - 1]
               const sameUser = prevMsg?.user_id === msg.user_id
-              const isTemp = msg.id.startsWith('temp-')
+              const isTemp = String(msg.id).startsWith('temp-')
               const name = dName(msg.profiles)
               const gradient = avatarGrad(msg.user_id)
               return (
@@ -761,7 +761,7 @@ export default function ChatClient({
             const isOwn = msg.sender_id === currentUserId
             const prev = currentConvMsgs[i - 1]
             const sameUser = prev?.sender_id === msg.sender_id
-            const isTemp = msg.id.startsWith('temp-')
+            const isTemp = String(msg.id).startsWith('temp-')
             const profile = isOwn ? currentProfile : partnerProfile
             const name = dName(profile)
 
