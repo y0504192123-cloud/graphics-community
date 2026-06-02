@@ -3,39 +3,12 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import type { Font } from '@/types'
 
-const SYSTEM_PROMPT = `You are a font identification expert. Analyze the image carefully.
-
-Start your response with EXACTLY one of these three lines (nothing else on that line):
-CONFIDENCE: HIGH
-CONFIDENCE: MEDIUM
-CONFIDENCE: LOW
-
-Then answer in Hebrew with:
-- Description of visual characteristics: serif/sans-serif, weight, style, unique details
-- Your best guess for the font name, and clearly state if confidence is low
-- Links — ONLY use search URLs (never make up direct /specimen/ or /fonts/ paths unless 100% certain they exist):
-  * Google Fonts search: https://fonts.google.com/?query=fontname
-  * MyFonts search: https://www.myfonts.com/search/?query=fontname
-  * Hebrew fonts: https://www.masterfont.co.il/search?q=fontname
-- 2-3 similar alternative fonts with their search URLs
-
-Answer ONLY about fonts. If asked about anything else, say you can only help with font identification.`
-
-type AnthropicContentBlock =
-  | { type: 'text'; text: string }
-  | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
-
-type AnthropicMessage = {
-  role: 'user' | 'assistant'
-  content: string | AnthropicContentBlock[]
-}
-
-export async function identifyFont(
-  userText: string,
-  imageBase64?: string,
-  imageMimeType?: string,
-): Promise<{ response?: string; error?: string }> {
+export async function identifyFontFromDB(
+  imageBase64: string,
+  imageMimeType: string,
+): Promise<{ matches?: string[]; description?: string; error?: string }> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
@@ -44,49 +17,35 @@ export async function identifyFont(
   if (!apiKey) return { error: 'ANTHROPIC_API_KEY חסר בהגדרות השרת' }
 
   const admin = createAdminClient()
+  const { data: fontsData } = await admin
+    .from('fonts')
+    .select('name, name_hebrew, category, style, description, tags')
+    .order('name', { ascending: true })
 
-  // Load full conversation history from DB
-  const { data: dbHistory } = await admin
-    .from('font_conversations')
-    .select('role, content')
-    .eq('user_id', user.id)
-    .order('created_at', { ascending: true })
-    .limit(40)
+  const fonts = (fontsData ?? []) as Partial<Font>[]
+  if (!fonts.length) return { error: 'מאגר הפונטים ריק. הוסף פונטים מפאנל הניהול.' }
 
-  // Upload image to storage (non-blocking on failure)
-  let imageUrl: string | null = null
-  if (imageBase64 && imageMimeType) {
-    try {
-      const ext = imageMimeType.split('/')[1]?.split('+')[0] ?? 'jpg'
-      const path = `font-images/${user.id}/${Date.now()}.${ext}`
-      const buffer = Buffer.from(imageBase64, 'base64')
-      const { error: uploadErr } = await admin.storage
-        .from('chat-attachments')
-        .upload(path, buffer, { contentType: imageMimeType })
-      if (!uploadErr) {
-        const { data: { publicUrl } } = admin.storage
-          .from('chat-attachments')
-          .getPublicUrl(path)
-        imageUrl = publicUrl
-      }
-    } catch { /* storage failure does not block the API call */ }
-  }
+  const fontList = fonts.map(f => {
+    const parts: string[] = [f.name ?? '']
+    if (f.name_hebrew) parts.push(`/ ${f.name_hebrew}`)
+    if (f.category) parts.push(`[${f.category}]`)
+    if (f.style) parts.push(f.style)
+    if (f.tags?.length) parts.push(f.tags.join(', '))
+    return parts.join(' ')
+  }).join('\n')
 
-  // Build messages: history (text-only) + current user message (may include image)
-  const messages: AnthropicMessage[] = (dbHistory ?? []).map(h => ({
-    role: h.role as 'user' | 'assistant',
-    content: h.content as string,
-  }))
+  const prompt = `Analyze the font used in this image.
 
-  const userContent: AnthropicContentBlock[] = []
-  if (imageBase64 && imageMimeType) {
-    userContent.push({
-      type: 'image',
-      source: { type: 'base64', media_type: imageMimeType, data: imageBase64 },
-    })
-  }
-  userContent.push({ type: 'text', text: userText })
-  messages.push({ role: 'user', content: userContent })
+Our Hebrew font database:
+${fontList}
+
+Reply in this exact format (nothing else):
+DESCRIPTION: one sentence in Hebrew describing the visual font characteristics
+MATCH: exact font name from list above (or NONE)
+MATCH: second closest match (or omit)
+MATCH: third closest match (or omit)
+
+Use only names that appear exactly in the list.`
 
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -98,23 +57,29 @@ export async function identifyFont(
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 1024,
-        system: SYSTEM_PROMPT,
-        messages,
+        max_tokens: 256,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: imageMimeType, data: imageBase64 } },
+            { type: 'text', text: prompt },
+          ],
+        }],
       }),
     })
     const data = await res.json()
     if (!res.ok) return { error: data.error?.message ?? 'שגיאה בתקשורת עם Claude' }
-    const text: string | undefined = data.content?.[0]?.text
-    if (!text) return { error: 'לא התקבלה תשובה מהמודל' }
 
-    // Persist turn to DB
-    await admin.from('font_conversations').insert([
-      { user_id: user.id, role: 'user',      content: userText, image_url: imageUrl },
-      { user_id: user.id, role: 'assistant', content: text,     image_url: null },
-    ])
+    const text: string = data.content?.[0]?.text ?? ''
+    const descLine = text.match(/DESCRIPTION:\s*(.+)/i)
+    const description = descLine?.[1]?.trim()
+    const matchLines = text.match(/MATCH:\s*(.+)/gi) ?? []
+    const matches = matchLines
+      .map(l => l.replace(/^MATCH:\s*/i, '').trim())
+      .filter(m => m && m.toUpperCase() !== 'NONE')
+      .slice(0, 3)
 
-    return { response: text }
+    return { matches, description }
   } catch {
     return { error: 'שגיאת רשת — לא ניתן להתחבר ל-Anthropic' }
   }

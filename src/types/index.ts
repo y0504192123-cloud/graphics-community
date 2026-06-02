@@ -208,6 +208,22 @@ export type ForumThread = {
   reply_count?: number
 }
 
+export type Font = {
+  id: string
+  name: string
+  name_hebrew: string | null
+  company: string | null
+  is_free: boolean
+  price: string | null
+  download_url: string | null
+  preview_image_url: string | null
+  category: string | null
+  style: string | null
+  description: string | null
+  tags: string[]
+  created_at: string
+}
+
 export type ForumReply = {
   id: string
   thread_id: string
