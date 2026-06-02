@@ -63,6 +63,52 @@ function CategoryBadge({ cat }: { cat: string }) {
 
 const inputCls = 'w-full rounded-xl border bg-white/[0.04] px-4 py-2.5 text-sm text-slate-100 outline-none transition-all placeholder:text-slate-600 focus:bg-white/[0.06] focus:ring-2 focus:ring-purple-500/20'
 
+type InputBarProps = {
+  value: string
+  onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void
+  onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void
+  onSend: () => void
+  isSending: boolean
+  textRef: React.RefObject<HTMLTextAreaElement | null>
+}
+
+function InputBar({ value, onChange, onKeyDown, onSend, isSending, textRef }: InputBarProps) {
+  const handleInput = (e: React.FormEvent<HTMLTextAreaElement>) => {
+    const el = e.currentTarget
+    el.style.height = 'auto'
+    el.style.height = el.scrollHeight + 'px'
+  }
+  return (
+    <div className="shrink-0 px-4 py-3 lg:px-5" style={{ background: 'var(--hdr)', borderTop: '1px solid var(--bd)' }}>
+      <div className="flex items-end gap-2 rounded-2xl p-2" style={{ background: 'var(--inp)', border: '1px solid var(--bd)' }}>
+        <button className="mb-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-slate-600 transition hover:bg-white/[0.07] hover:text-slate-400">
+          <Smile size={17} />
+        </button>
+        <textarea
+          ref={textRef}
+          value={value}
+          onChange={onChange}
+          onInput={handleInput}
+          onKeyDown={onKeyDown}
+          rows={1}
+          placeholder="כתוב הודעה..."
+          className="flex-1 resize-none bg-transparent py-1.5 text-sm leading-relaxed outline-none placeholder:text-slate-600"
+          style={{ color: 'var(--tx)', maxHeight: '210px', overflowY: 'auto' }}
+        />
+        <button
+          onClick={onSend}
+          disabled={!value.trim() || isSending}
+          className="mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white shadow-md transition-all duration-200 hover:scale-105 disabled:opacity-30"
+          style={{ background: value.trim() ? 'linear-gradient(135deg, #7c3aed, #6d28d9)' : 'var(--inp)' }}
+        >
+          <Send size={15} className={value.trim() ? '' : 'text-slate-600'} />
+        </button>
+      </div>
+      <p className="mt-1.5 text-center text-[10px] text-slate-700">Enter לשליחה · Shift+Enter לשורה חדשה</p>
+    </div>
+  )
+}
+
 const headerBg: React.CSSProperties = { background: 'linear-gradient(135deg, #0a0a18 0%, var(--bg) 70%)' }
 
 function BgDecorations() {
@@ -240,7 +286,7 @@ export default function ChatClient({
     if (!communityText.trim() || !selectedTopic || isSendingC) return
     const content = communityText.trim()
     setCommunityText('')
-    if (communityTextRef.current) communityTextRef.current.style.height = 'auto'
+    if (communityTextRef.current) { communityTextRef.current.style.height = 'auto' }
     setCommunityMsgs(prev => [...prev, {
       id: `temp-${Date.now()}`,
       channel_id: selectedTopic.id,
@@ -257,7 +303,7 @@ export default function ChatClient({
     if (!privateText.trim() || !selectedPartner || isSendingP) return
     const content = privateText.trim()
     setPrivateText('')
-    if (privateTextRef.current) privateTextRef.current.style.height = 'auto'
+    if (privateTextRef.current) { privateTextRef.current.style.height = 'auto' }
     setPrivateMsgs(prev => [...prev, {
       id: `temp-${Date.now()}`,
       sender_id: currentUserId,
@@ -277,8 +323,6 @@ export default function ChatClient({
 
   const makeTextareaHandler = (setter: (v: string) => void) => (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setter(e.target.value)
-    e.target.style.height = 'auto'
-    e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px'
   }
 
   const dName      = (p: Profile | null | undefined) => p?.full_name ?? p?.username ?? 'משתמש'
@@ -313,45 +357,6 @@ export default function ChatClient({
       ))}
     </div>
   )
-
-  // Shared input bar
-  function InputBar({ value, onChange, onKeyDown, onSend, isSending, textRef }: {
-    value: string
-    onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void
-    onKeyDown: (e: React.KeyboardEvent) => void
-    onSend: () => void
-    isSending: boolean
-    textRef: React.RefObject<HTMLTextAreaElement | null>
-  }) {
-    return (
-      <div className="shrink-0 px-4 py-3 lg:px-5" style={{ background: 'var(--hdr)', borderTop: '1px solid var(--bd)' }}>
-        <div className="flex items-end gap-2 rounded-2xl p-2" style={{ background: 'var(--inp)', border: '1px solid var(--bd)' }}>
-          <button className="mb-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-slate-600 transition hover:bg-white/[0.07] hover:text-slate-400">
-            <Smile size={17} />
-          </button>
-          <textarea
-            ref={textRef}
-            value={value}
-            onChange={onChange}
-            onKeyDown={onKeyDown}
-            rows={1}
-            placeholder="כתוב הודעה..."
-            className="flex-1 resize-none bg-transparent py-1.5 text-sm outline-none placeholder:text-slate-600"
-            style={{ color: 'var(--tx)', maxHeight: '120px' }}
-          />
-          <button
-            onClick={onSend}
-            disabled={!value.trim() || isSending}
-            className="mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white shadow-md transition-all duration-200 hover:scale-105 disabled:opacity-30"
-            style={{ background: value.trim() ? 'linear-gradient(135deg, #7c3aed, #6d28d9)' : 'var(--inp)' }}
-          >
-            <Send size={15} className={value.trim() ? '' : 'text-slate-600'} />
-          </button>
-        </div>
-        <p className="mt-1.5 text-center text-[10px] text-slate-700">Enter לשליחה · Shift+Enter לשורה חדשה</p>
-      </div>
-    )
-  }
 
   // ── COMMUNITY LIST ──
   if (mainTab === 'community' && communityView === 'list') {
