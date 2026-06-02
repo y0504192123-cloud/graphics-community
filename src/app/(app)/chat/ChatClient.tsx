@@ -154,6 +154,8 @@ export default function ChatClient({
   const privateTextRef     = useRef<HTMLTextAreaElement>(null)
   const selectedPartnerRef = useRef<string | null>(selectedPartner)
   selectedPartnerRef.current = selectedPartner
+  const markReadRef = useRef(markMessagesRead)
+  markReadRef.current = markMessagesRead
 
   const supabase = useMemo(() => createClient(), [])
 
@@ -204,8 +206,9 @@ export default function ChatClient({
 
   // ── Realtime ──
 
+  // New topics (community list)
   useEffect(() => {
-    const ch = supabase.channel('topics-feed')
+    const ch = supabase.channel('rt-topics')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'topics' }, async (payload) => {
         const newTopic = payload.new as Topic
         const { data: profile } = await supabase.from('profiles').select('*').eq('id', newTopic.created_by).single()
@@ -215,39 +218,56 @@ export default function ChatClient({
     return () => { supabase.removeChannel(ch) }
   }, [supabase])
 
+  // Community chat messages — no column filter (avoids REPLICA IDENTITY requirement), filter client-side
   useEffect(() => {
     if (!selectedTopic) return
-    const ch = supabase.channel(`room:${selectedTopic.id}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `channel_id=eq.${selectedTopic.id}` },
-        async (payload) => {
-          const newMsg = payload.new as Message
-          const { data: profile } = await supabase.from('profiles').select('*').eq('id', newMsg.user_id).single()
-          setCommunityMsgs(prev => {
-            const withoutTemp = prev.filter(m => !(m.id.startsWith('temp-') && m.user_id === newMsg.user_id && m.content === newMsg.content))
-            if (withoutTemp.some(m => m.id === newMsg.id)) return withoutTemp
-            return [...withoutTemp, { ...newMsg, profiles: profile ?? undefined }]
-          })
+    const topicId = selectedTopic.id
+    const ch = supabase.channel(`rt-messages-${topicId}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, async (payload) => {
+        const newMsg = payload.new as Message
+        if (newMsg.channel_id !== topicId) return
+        const { data: profile } = await supabase.from('profiles').select('*').eq('id', newMsg.user_id).single()
+        setCommunityMsgs(prev => {
+          const withoutTemp = prev.filter(
+            m => !(m.id.startsWith('temp-') && m.user_id === newMsg.user_id && m.content === newMsg.content)
+          )
+          if (withoutTemp.some(m => m.id === newMsg.id)) return withoutTemp
+          return [...withoutTemp, { ...newMsg, profiles: profile ?? undefined }]
         })
+      })
       .subscribe()
     return () => { supabase.removeChannel(ch) }
   }, [selectedTopic?.id, supabase])
 
+  // Private messages — no column filter, filter client-side for both sent and received
   useEffect(() => {
-    const ch = supabase.channel('pm-inbox')
-      .on('postgres_changes', {
-        event: 'INSERT', schema: 'public', table: 'private_messages',
-        filter: `receiver_id=eq.${currentUserId}`,
-      }, async (payload) => {
+    const ch = supabase.channel('rt-private-messages')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'private_messages' }, async (payload) => {
         const newMsg = payload.new as PrivateMessage
+        // Only care about messages involving the current user
+        if (newMsg.sender_id !== currentUserId && newMsg.receiver_id !== currentUserId) return
+
         const [{ data: senderProfile }, { data: receiverProfile }] = await Promise.all([
           supabase.from('profiles').select('*').eq('id', newMsg.sender_id).single(),
           supabase.from('profiles').select('*').eq('id', newMsg.receiver_id).single(),
         ])
         const fullMsg: PrivateMessage = { ...newMsg, sender: senderProfile ?? undefined, receiver: receiverProfile ?? undefined }
-        setPrivateMsgs(prev => [...prev, fullMsg])
-        // Auto mark as read if this conversation is open
-        if (selectedPartnerRef.current === newMsg.sender_id) {
-          markMessagesRead(newMsg.sender_id)
+
+        setPrivateMsgs(prev => {
+          if (prev.some(m => m.id === newMsg.id)) return prev
+          // Replace matching temp message (own sent messages)
+          if (newMsg.sender_id === currentUserId) {
+            const withoutTemp = prev.filter(
+              m => !(m.id.startsWith('temp-') && m.sender_id === currentUserId && m.receiver_id === newMsg.receiver_id && m.content === newMsg.content)
+            )
+            return [...withoutTemp, fullMsg]
+          }
+          return [...prev, fullMsg]
+        })
+
+        // Auto-mark as read if conversation with this sender is currently open
+        if (newMsg.receiver_id === currentUserId && selectedPartnerRef.current === newMsg.sender_id) {
+          markReadRef.current(newMsg.sender_id)
           setPrivateMsgs(prev => prev.map(m =>
             m.sender_id === newMsg.sender_id && m.receiver_id === currentUserId && !m.is_read
               ? { ...m, is_read: true }
@@ -257,7 +277,7 @@ export default function ChatClient({
       })
       .subscribe()
     return () => { supabase.removeChannel(ch) }
-  }, [supabase, currentUserId, markMessagesRead])
+  }, [supabase, currentUserId])
 
   useEffect(() => { communityBottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [communityMsgs])
   useEffect(() => { privateBottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [currentConvMsgs])
