@@ -68,15 +68,19 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
 
   async function sendMessage(topicId: string, content: string) {
     'use server'
+    console.log('[sendMessage] CALLED — topicId:', topicId, 'content:', content)
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) redirect('/login')
-    const { error } = await createAdminClient().from('messages').insert({
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    console.log('[sendMessage] auth — user:', user?.id ?? 'null', 'authError:', authError)
+    if (!user) { console.log('[sendMessage] no user, redirecting'); redirect('/login') }
+    const admin = createAdminClient()
+    console.log('[sendMessage] admin client created, inserting...')
+    const { data, error } = await admin.from('messages').insert({
       channel_id: topicId,
       user_id: user.id,
       content,
-    })
-    if (error) console.error('[sendMessage] DB error:', error)
+    }).select()
+    console.log('[sendMessage] result — data:', JSON.stringify(data), 'error:', JSON.stringify(error))
   }
 
   async function deleteMessage(messageId: string) {
