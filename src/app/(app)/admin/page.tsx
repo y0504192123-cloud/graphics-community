@@ -320,6 +320,98 @@ export default async function AdminPage() {
     revalidatePath('/font-identifier')
   }
 
+  async function getFontFileUploadUrl(
+    fileName: string,
+  ): Promise<{ signedUrl?: string; path?: string; error?: string }> {
+    'use server'
+    const a = createAdminClient()
+    await a.storage.createBucket('fonts-files', { public: false }).catch(() => {})
+    const ext   = fileName.split('.').pop()?.toLowerCase() ?? 'ttf'
+    const path  = `font_${Date.now()}.${ext}`
+    const { data, error } = await a.storage.from('fonts-files').createSignedUploadUrl(path)
+    if (error) return { error: error.message }
+    return { signedUrl: data.signedUrl, path }
+  }
+
+  async function generateFontPreview(
+    fontId: string,
+    fontFilePath: string,
+  ): Promise<{ error?: string; previewUrl?: string }> {
+    'use server'
+    const a = createAdminClient()
+
+    // Download font file from private storage
+    const { data: blob, error: dlErr } = await a.storage
+      .from('fonts-files')
+      .download(fontFilePath)
+    if (dlErr || !blob) return { error: dlErr?.message ?? 'שגיאה בטעינת קובץ הפונט' }
+
+    const fontArrayBuffer = await blob.arrayBuffer()
+
+    try {
+      const satori = (await import('satori')).default
+      const { createElement } = await import('react')
+      const { Resvg } = await import('@resvg/resvg-js')
+
+      const svg = await satori(
+        createElement('div', {
+          style: {
+            display: 'flex',
+            background: 'white',
+            width: '100%',
+            height: '100%',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '12px 28px',
+          },
+        },
+          createElement('p', {
+            style: {
+              fontFamily: 'PreviewFont',
+              fontSize: 52,
+              color: '#111111',
+              margin: 0,
+              direction: 'rtl',
+              textAlign: 'center' as const,
+              letterSpacing: '0.02em',
+            },
+          }, 'אבגדהוזחטיכלמנסעפצקרשת'),
+        ),
+        {
+          width: 860,
+          height: 110,
+          fonts: [{ name: 'PreviewFont', data: fontArrayBuffer, weight: 400, style: 'normal' as const }],
+        },
+      )
+
+      const resvg  = new Resvg(svg)
+      const pngBuf = Buffer.from(resvg.render().asPng())
+
+      // Ensure fonts-previews bucket exists
+      await a.storage.createBucket('fonts-previews', { public: true }).catch(() => {})
+
+      const previewPath = `auto_${fontId}_${Date.now()}.png`
+      const { error: upErr } = await a.storage
+        .from('fonts-previews')
+        .upload(previewPath, pngBuf, { contentType: 'image/png', upsert: true })
+      if (upErr) return { error: upErr.message }
+
+      const { data: { publicUrl } } = a.storage.from('fonts-previews').getPublicUrl(previewPath)
+
+      await a.from('fonts').update({
+        preview_image_url: publicUrl,
+        font_file_path: fontFilePath,
+      }).eq('id', fontId)
+
+      revalidatePath('/admin')
+      revalidatePath('/font-identifier')
+      return { previewUrl: publicUrl }
+    } catch (err) {
+      console.error('[generateFontPreview]', err)
+      return { error: 'שגיאה ביצירת תמונת preview' }
+    }
+  }
+
   async function getFontPreviewUploadUrl(): Promise<{ signedUrl?: string; publicUrl?: string; error?: string }> {
     'use server'
     const a = createAdminClient()
@@ -370,6 +462,8 @@ export default async function AdminPage() {
       saveFont={saveFont}
       deleteFont={deleteFont}
       getFontPreviewUploadUrl={getFontPreviewUploadUrl}
+      getFontFileUploadUrl={getFontFileUploadUrl}
+      generateFontPreview={generateFontPreview}
     />
   )
 }

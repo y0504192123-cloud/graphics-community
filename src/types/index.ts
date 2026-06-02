@@ -217,6 +217,7 @@ export type Font = {
   price: string | null
   download_url: string | null
   preview_image_url: string | null
+  font_file_path: string | null
   category: string | null
   style: string | null
   description: string | null

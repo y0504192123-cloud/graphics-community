@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition, useActionState, useRef } from 'react'
-import { Plus, Trash2, Pencil, X, ExternalLink, Search, Upload, ImageIcon } from 'lucide-react'
+import { Plus, Trash2, Pencil, X, ExternalLink, Search, Upload, ImageIcon, FileUp } from 'lucide-react'
 import type { Font, FontWeight } from '@/types'
 
 type SaveResult = { error?: string } | null
@@ -20,6 +20,8 @@ type Props = {
   saveFont: (prev: SaveResult, fd: FormData) => Promise<SaveResult>
   deleteFont: (id: string) => Promise<void>
   getFontPreviewUploadUrl: UploadFn
+  getFontFileUploadUrl: (fileName: string) => Promise<{ signedUrl?: string; path?: string; error?: string }>
+  generateFontPreview: (fontId: string, filePath: string) => Promise<{ error?: string; previewUrl?: string }>
 }
 
 const inp = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition placeholder:text-slate-400 focus:border-purple-400 focus:ring-2 focus:ring-purple-100'
@@ -131,6 +133,97 @@ function WeightRow({
       >
         <X size={13} />
       </button>
+    </div>
+  )
+}
+
+// ── Font file upload (TTF/OTF → auto preview) ─────────────────────────────
+type FontFileStatus = 'idle' | 'uploading' | 'generating' | 'done' | 'error'
+
+function FontFileUploadButton({
+  fontId,
+  hasFile,
+  getFontFileUploadUrl,
+  generateFontPreview,
+}: {
+  fontId: string
+  hasFile: boolean
+  getFontFileUploadUrl: (name: string) => Promise<{ signedUrl?: string; path?: string; error?: string }>
+  generateFontPreview: (fontId: string, filePath: string) => Promise<{ error?: string; previewUrl?: string }>
+}) {
+  const [status, setStatus]   = useState<FontFileStatus>('idle')
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const fileRef               = useRef<HTMLInputElement>(null)
+
+  const handleFile = async (file: File) => {
+    setStatus('uploading')
+    setErrorMsg(null)
+    try {
+      const { signedUrl, path, error } = await getFontFileUploadUrl(file.name)
+      if (error || !signedUrl || !path) { setStatus('error'); setErrorMsg(error ?? 'שגיאה'); return }
+
+      const res = await fetch(signedUrl, {
+        method: 'PUT',
+        body: file,
+        headers: { 'Content-Type': file.type || 'font/ttf' },
+      })
+      if (!res.ok) { setStatus('error'); setErrorMsg('העלאה נכשלה'); return }
+
+      setStatus('generating')
+      const result = await generateFontPreview(fontId, path)
+      if (result.error) { setStatus('error'); setErrorMsg(result.error); return }
+
+      setStatus('done')
+      setTimeout(() => setStatus('idle'), 3000)
+    } catch { setStatus('error'); setErrorMsg('שגיאת רשת') }
+  }
+
+  const busy = status === 'uploading' || status === 'generating'
+
+  const label: Record<FontFileStatus, string> = {
+    idle:       hasFile ? 'החלף קובץ פונט' : 'העלה קובץ פונט',
+    uploading:  'מעלה...',
+    generating: 'מחולל preview...',
+    done:       'Preview נוצר ✓',
+    error:      'נסה שנית',
+  }
+
+  return (
+    <div className="flex flex-col items-start gap-0.5">
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => fileRef.current?.click()}
+        title="העלה קובץ TTF/OTF — Preview נוצר אוטומטית"
+        className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition hover:opacity-80 disabled:opacity-40"
+        style={{
+          background: status === 'done'  ? 'rgba(16,185,129,.1)'
+                    : status === 'error' ? 'rgba(239,68,68,.08)'
+                    : 'var(--inp)',
+          border: `1px solid ${
+            status === 'done'  ? 'rgba(16,185,129,.3)'
+          : status === 'error' ? 'rgba(239,68,68,.3)'
+          : 'var(--bd)'}`,
+          color: status === 'done'  ? '#059669'
+               : status === 'error' ? '#ef4444'
+               : 'var(--tx2)',
+        }}
+      >
+        <FileUp size={12} />
+        {label[status]}
+      </button>
+      {errorMsg && <p className="max-w-[120px] text-[10px] leading-tight text-red-400">{errorMsg}</p>}
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".ttf,.otf"
+        className="hidden"
+        onChange={e => {
+          const file = e.target.files?.[0]
+          if (file) handleFile(file)
+          if (fileRef.current) fileRef.current.value = ''
+        }}
+      />
     </div>
   )
 }
@@ -361,7 +454,7 @@ function FontForm({
 }
 
 // ── Main tab component ─────────────────────────────────────────────────────
-export default function FontsTab({ fonts, fontWeights, saveFont, deleteFont, getFontPreviewUploadUrl }: Props) {
+export default function FontsTab({ fonts, fontWeights, saveFont, deleteFont, getFontPreviewUploadUrl, getFontFileUploadUrl, generateFontPreview }: Props) {
   const [saveState, saveAction, savePending] = useActionState(saveFont, null)
   const [isPending, startTransition]         = useTransition()
   const [showForm, setShowForm]              = useState(false)
@@ -485,7 +578,13 @@ export default function FontsTab({ fonts, fontWeights, saveFont, deleteFont, get
                   </div>
 
                   {/* Actions */}
-                  <div className="flex shrink-0 items-center gap-1">
+                  <div className="flex shrink-0 flex-wrap items-center gap-1">
+                    <FontFileUploadButton
+                      fontId={font.id}
+                      hasFile={!!font.font_file_path}
+                      getFontFileUploadUrl={getFontFileUploadUrl}
+                      generateFontPreview={generateFontPreview}
+                    />
                     {font.download_url && (
                       <a href={font.download_url} target="_blank" rel="noopener noreferrer"
                         className="rounded-lg p-1.5 transition hover:bg-purple-500/10"
