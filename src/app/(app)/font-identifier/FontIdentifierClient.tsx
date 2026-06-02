@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { Send, ImagePlus, X, ScanText } from 'lucide-react'
 import type { FontConversationRow } from './page'
 
@@ -35,20 +35,43 @@ function TypingDots() {
   )
 }
 
-function renderAI(text: string) {
-  return text.split('\n').map((line, li, arr) => {
-    const parts = line.split(/(\*\*[^*]+\*\*)/)
-    return (
-      <span key={li}>
-        {parts.map((p, pi) =>
-          p.startsWith('**') && p.endsWith('**')
-            ? <strong key={pi}>{p.slice(2, -2)}</strong>
-            : p
-        )}
-        {li < arr.length - 1 && <br />}
-      </span>
-    )
+// Split a line into segments: bold (**text**), URLs (https://...), or plain text
+function renderLine(line: string): React.ReactNode[] {
+  const segments = line.split(/(https?:\/\/[^\s)>\]"]+|\*\*[^*]+\*\*)/)
+  return segments.map((seg, i) => {
+    if (seg.startsWith('**') && seg.endsWith('**')) {
+      return <strong key={i}>{seg.slice(2, -2)}</strong>
+    }
+    if (seg.startsWith('http')) {
+      // Strip trailing punctuation that isn't part of the URL
+      const url = seg.replace(/[.,;:!?)]+$/, '')
+      const trailing = seg.slice(url.length)
+      return (
+        <span key={i}>
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline underline-offset-2 font-medium break-all"
+            style={{ color: '#a78bfa' }}
+          >
+            {url}
+          </a>
+          {trailing}
+        </span>
+      )
+    }
+    return seg
   })
+}
+
+function renderAI(text: string) {
+  return text.split('\n').map((line, li, arr) => (
+    <span key={li}>
+      {renderLine(line)}
+      {li < arr.length - 1 && <br />}
+    </span>
+  ))
 }
 
 export default function FontIdentifierClient({ identifyFont, initialHistory }: Props) {

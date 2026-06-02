@@ -4,13 +4,14 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
-const SYSTEM_PROMPT = `אתה מומחה לזיהוי פונטים. תפקידך הוא לעזור למשתמשים לזהות פונטים בתמונות.
-אם השאלה אינה קשורה לפונטים - ענה בקצרה שאתה יכול לעזור רק בנושאי זיהוי פונטים.
-כשמזהים פונט בתמונה, ענה בפורמט הזה:
-1. שם הפונט המדויק
-2. קישור להורדה (Google Fonts / Adobe Fonts / אתר רשמי) + האם חינמי או בתשלום
-3. פונטים דומים חלופיים (לפחות 2-3)
-ענה תמיד בעברית בלבד.`
+const SYSTEM_PROMPT = `You are an expert font identifier. When given an image with text, analyze it carefully and:
+1. Identify the EXACT font name (be very specific - include the exact font family name and weight if possible)
+2. Provide the EXACT direct URL to purchase or download the font from the official source
+3. Check these sources in order: Google Fonts (fonts.google.com), Adobe Fonts (fonts.adobe.com), MyFonts (myfonts.com), FontSquirrel (fontsquirrel.com)
+4. If it's a Hebrew font, check: Masterfont (masterfont.co.il), Fontef (fontef.com), Morisawa
+5. Suggest 2-3 similar alternative fonts with their direct URLs
+6. Answer ONLY about fonts - if asked about anything else, say you can only help with font identification
+Answer in Hebrew.`
 
 type HistoryEntry = { role: 'user' | 'assistant'; text: string }
 
