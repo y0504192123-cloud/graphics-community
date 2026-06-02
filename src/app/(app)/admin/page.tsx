@@ -415,13 +415,103 @@ export default async function AdminPage() {
   async function getFontPreviewUploadUrl(): Promise<{ signedUrl?: string; publicUrl?: string; error?: string }> {
     'use server'
     const a = createAdminClient()
-    // Create bucket if it doesn't exist yet (no-op if already exists)
     await a.storage.createBucket('fonts-previews', { public: true }).catch(() => {})
     const path = `font_${Date.now()}.jpg`
     const { data, error } = await a.storage.from('fonts-previews').createSignedUploadUrl(path)
     if (error) return { error: error.message }
     const { data: { publicUrl } } = a.storage.from('fonts-previews').getPublicUrl(path)
     return { signedUrl: data.signedUrl, publicUrl }
+  }
+
+  async function createFontWithPreview(
+    filePath: string,
+    fontName: string,
+  ): Promise<{ fontId?: string; fontName?: string; previewUrl?: string; error?: string }> {
+    'use server'
+    const a = createAdminClient()
+
+    const { data: fontData, error: insertErr } = await a
+      .from('fonts')
+      .insert({ name: fontName, is_free: true, tags: [] })
+      .select()
+      .single()
+    if (insertErr || !fontData) return { error: insertErr?.message ?? 'שגיאה ביצירת רשומה' }
+
+    const fontId = fontData.id as string
+
+    const { data: blob, error: dlErr } = await a.storage.from('fonts-files').download(filePath)
+    if (dlErr || !blob) {
+      await a.from('fonts').delete().eq('id', fontId)
+      return { error: dlErr?.message ?? 'שגיאה בטעינת קובץ הפונט' }
+    }
+
+    try {
+      const fontArrayBuffer = await blob.arrayBuffer()
+      const satori = (await import('satori')).default
+      const { createElement } = await import('react')
+      const { Resvg } = await import('@resvg/resvg-js')
+
+      const svg = await satori(
+        createElement('div', {
+          style: { display: 'flex', background: 'white', width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', padding: '12px 28px' },
+        },
+          createElement('p', {
+            style: { fontFamily: 'PreviewFont', fontSize: 52, color: '#111111', margin: 0, direction: 'rtl', textAlign: 'center' as const, letterSpacing: '0.02em' },
+          }, 'אבגדהוזחטיכלמנסעפצקרשת'),
+        ),
+        { width: 860, height: 110, fonts: [{ name: 'PreviewFont', data: fontArrayBuffer, weight: 400, style: 'normal' as const }] },
+      )
+
+      const pngBuf = Buffer.from(new Resvg(svg).render().asPng())
+      await a.storage.createBucket('fonts-previews', { public: true }).catch(() => {})
+
+      const previewPath = `auto_${fontId}_${Date.now()}.png`
+      const { error: upErr } = await a.storage.from('fonts-previews').upload(previewPath, pngBuf, { contentType: 'image/png', upsert: true })
+      if (upErr) {
+        await a.from('fonts').delete().eq('id', fontId)
+        return { error: upErr.message }
+      }
+
+      const { data: { publicUrl: previewUrl } } = a.storage.from('fonts-previews').getPublicUrl(previewPath)
+      await a.from('fonts').update({ preview_image_url: previewUrl, font_file_path: filePath }).eq('id', fontId)
+
+      revalidatePath('/admin')
+      revalidatePath('/font-identifier')
+      return { fontId, fontName, previewUrl }
+    } catch (err) {
+      console.error('[createFontWithPreview]', err)
+      await a.from('fonts').delete().eq('id', fontId)
+      return { error: 'שגיאה ביצירת תמונת preview' }
+    }
+  }
+
+  async function updateFontsCompany(
+    fontIds: string[],
+    company: string,
+    downloadUrl: string,
+  ): Promise<{ error?: string }> {
+    'use server'
+    const a = createAdminClient()
+    const updates: Record<string, string> = { company }
+    if (downloadUrl) updates.download_url = downloadUrl
+    const { error } = await a.from('fonts').update(updates).in('id', fontIds)
+    if (error) return { error: error.message }
+    revalidatePath('/admin')
+    revalidatePath('/font-identifier')
+    return {}
+  }
+
+  async function quickUpdateFont(
+    id: string,
+    updates: { name?: string; company?: string; download_url?: string; is_free?: boolean },
+  ): Promise<{ error?: string }> {
+    'use server'
+    const a = createAdminClient()
+    const { error } = await a.from('fonts').update(updates).eq('id', id)
+    if (error) return { error: error.message }
+    revalidatePath('/admin')
+    revalidatePath('/font-identifier')
+    return {}
   }
 
   return (
@@ -464,6 +554,9 @@ export default async function AdminPage() {
       getFontPreviewUploadUrl={getFontPreviewUploadUrl}
       getFontFileUploadUrl={getFontFileUploadUrl}
       generateFontPreview={generateFontPreview}
+      createFontWithPreview={createFontWithPreview}
+      updateFontsCompany={updateFontsCompany}
+      quickUpdateFont={quickUpdateFont}
     />
   )
 }
