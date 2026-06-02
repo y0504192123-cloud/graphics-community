@@ -62,6 +62,29 @@ function renderLine(line: string): React.ReactNode[] {
   })
 }
 
+type Confidence = 'high' | 'medium' | 'low' | null
+
+function parseConfidence(content: string): { confidence: Confidence; body: string } {
+  const first = content.split('\n')[0].trim().toUpperCase()
+  if (first === 'CONFIDENCE: HIGH')   return { confidence: 'high',   body: content.split('\n').slice(1).join('\n').trimStart() }
+  if (first === 'CONFIDENCE: MEDIUM') return { confidence: 'medium', body: content.split('\n').slice(1).join('\n').trimStart() }
+  if (first === 'CONFIDENCE: LOW')    return { confidence: 'low',    body: content.split('\n').slice(1).join('\n').trimStart() }
+  return { confidence: null, body: content }
+}
+
+function ConfidenceBadge({ level }: { level: Confidence }) {
+  if (!level) return null
+  const cfg = level === 'high'
+    ? { label: '✓ זיהוי בטוח',   bg: 'rgba(16,185,129,.12)', border: 'rgba(16,185,129,.35)', color: '#059669' }
+    : { label: '~ זיהוי משוער',  bg: 'rgba(245,158,11,.12)', border: 'rgba(245,158,11,.35)', color: '#b45309' }
+  return (
+    <span className="mb-2 inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
+      style={{ background: cfg.bg, border: `1px solid ${cfg.border}`, color: cfg.color }}>
+      {cfg.label}
+    </span>
+  )
+}
+
 function renderAI(text: string) {
   return text.split('\n').map((line, li, arr) => (
     <span key={li}>
@@ -247,20 +270,27 @@ export default function FontIdentifierClient({ identifyFont, initialHistory }: P
                     className="max-h-52 max-w-full rounded-2xl object-cover"
                     style={{ border: '2px solid rgba(124,58,237,.2)' }} />
                 )}
-                {(msg.isLoading || msg.content) && (
-                  <div className="rounded-2xl px-4 py-2.5 text-sm leading-relaxed"
-                    style={msg.role === 'user'
-                      ? { background: 'linear-gradient(135deg,#7c3aed,#6d28d9)', color: 'white' }
-                      : { background: 'var(--s1)', border: '1px solid var(--bd)', color: 'var(--tx)' }
-                    }>
-                    {msg.isLoading
-                      ? <TypingDots />
-                      : <span className="whitespace-pre-wrap">
-                          {msg.role === 'ai' ? renderAI(msg.content) : msg.content}
-                        </span>
-                    }
-                  </div>
-                )}
+                {(msg.isLoading || msg.content) && (() => {
+                  const { confidence, body } = msg.role === 'ai' && !msg.isLoading
+                    ? parseConfidence(msg.content)
+                    : { confidence: null, body: msg.content }
+                  return (
+                    <div className="rounded-2xl px-4 py-2.5 text-sm leading-relaxed"
+                      style={msg.role === 'user'
+                        ? { background: 'linear-gradient(135deg,#7c3aed,#6d28d9)', color: 'white' }
+                        : { background: 'var(--s1)', border: '1px solid var(--bd)', color: 'var(--tx)' }
+                      }>
+                      {msg.isLoading ? <TypingDots /> : (
+                        <>
+                          {confidence && <div><ConfidenceBadge level={confidence} /></div>}
+                          <span className="whitespace-pre-wrap">
+                            {msg.role === 'ai' ? renderAI(body) : msg.content}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  )
+                })()}
               </div>
             </div>
           ))}

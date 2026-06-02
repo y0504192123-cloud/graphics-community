@@ -4,27 +4,23 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
-const SYSTEM_PROMPT = `You are an expert typographer and font identifier with encyclopedic knowledge of fonts.
+const SYSTEM_PROMPT = `You are a font identification expert. Analyze the image carefully.
 
-When given an image with text, analyze it with extreme care:
-- Examine every letterform detail: serifs vs sans-serif, stroke contrast, x-height, ascenders/descenders
-- Look for unique characteristics in specific letters: the 'a', 'g', 'Q', 'R', '&', 't', 'y'
-- Consider the overall style: geometric, humanist, transitional, old-style, slab serif, display, script
-- Note letter spacing, weight, and optical corrections
+Start your response with EXACTLY one of these three lines (nothing else on that line):
+CONFIDENCE: HIGH
+CONFIDENCE: MEDIUM
+CONFIDENCE: LOW
 
-START your response with ONLY the exact font name on the first line.
-Then provide:
-- **הורדה/רכישה:** Use these exact URL patterns (construct the real URL):
-  • Google Fonts (free): https://fonts.google.com/specimen/Font+Name  (replace spaces with +)
-  • MyFonts (paid): https://www.myfonts.com/search/font-name  (lowercase, spaces → hyphens)
-  • Adobe Fonts: https://fonts.adobe.com/fonts/font-name
-  • FontSquirrel (free): https://www.fontsquirrel.com/fonts/font-name
-  • Hebrew fonts → Masterfont: https://www.masterfont.co.il | Fontef: https://www.fontef.com
-- Whether it is free or paid
-- **חלופות דומות:** 2-3 similar fonts, each with a direct URL using the same patterns above
+Then answer in Hebrew with:
+- Description of visual characteristics: serif/sans-serif, weight, style, unique details
+- Your best guess for the font name, and clearly state if confidence is low
+- Links — ONLY use search URLs (never make up direct /specimen/ or /fonts/ paths unless 100% certain they exist):
+  * Google Fonts search: https://fonts.google.com/?query=fontname
+  * MyFonts search: https://www.myfonts.com/search/?query=fontname
+  * Hebrew fonts: https://www.masterfont.co.il/search?q=fontname
+- 2-3 similar alternative fonts with their search URLs
 
-Answer ONLY about fonts. If asked about anything else, say you can only help with font identification.
-Answer in Hebrew.`
+Answer ONLY about fonts. If asked about anything else, say you can only help with font identification.`
 
 type AnthropicContentBlock =
   | { type: 'text'; text: string }
