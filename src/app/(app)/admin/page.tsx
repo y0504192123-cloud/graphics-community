@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import AdminClient from './AdminClient'
 import { addForumCategory, deleteForumCategory } from '../forum/actions'
-import type { Profile, NewsItem, ChatCategory, Specialization, InspirationCategory, JobCategory, AssetCategory, ForumCategory } from '@/types'
+import type { Profile, NewsItem, ChatCategory, Specialization, InspirationCategory, JobCategory, AssetCategory, ForumCategory, Font } from '@/types'
 import { sendApprovalEmail } from '@/lib/email'
 
 export default async function AdminPage() {
@@ -16,7 +16,7 @@ export default async function AdminPage() {
   if (profileData?.role !== 'admin') redirect('/dashboard')
 
   const admin = createAdminClient()
-  const [pendingRes, activeRes, newsRes, catRes, specsRes, inspCatsRes, jobCatsRes, assetCatsRes, logoRes, forumCatsRes] = await Promise.all([
+  const [pendingRes, activeRes, newsRes, catRes, specsRes, inspCatsRes, jobCatsRes, assetCatsRes, logoRes, forumCatsRes, fontsRes] = await Promise.all([
     admin.from('profiles').select('*').eq('status', 'pending').order('created_at', { ascending: false }),
     admin.from('profiles').select('*').eq('status', 'active').order('created_at', { ascending: false }),
     supabase.from('news').select('*, profiles(*)').order('created_at', { ascending: false }),
@@ -27,6 +27,7 @@ export default async function AdminPage() {
     supabase.from('assets_categories').select('*').order('name', { ascending: true }),
     supabase.from('site_settings').select('value').eq('key', 'logo_url').single(),
     admin.from('forum_categories').select('*').order('sort_order', { ascending: true }),
+    admin.from('fonts').select('*').order('name', { ascending: true }),
   ])
 
   const pendingUsers          = (pendingRes.data    ?? []) as Profile[]
@@ -39,6 +40,7 @@ export default async function AdminPage() {
   const assetCategories       = (assetCatsRes.data  ?? []) as AssetCategory[]
   const currentLogoUrl: string | null = logoRes.data?.value ?? null
   const forumCategories       = (forumCatsRes.data  ?? []) as ForumCategory[]
+  const fonts                 = (fontsRes.data      ?? []) as Font[]
 
   /* ── Server Actions ── */
 
@@ -245,6 +247,47 @@ export default async function AdminPage() {
     revalidatePath('/assets')
   }
 
+  async function saveFont(
+    _prev: { error?: string } | null,
+    formData: FormData,
+  ): Promise<{ error?: string } | null> {
+    'use server'
+    const id   = (formData.get('id') as string) || null
+    const name = (formData.get('name') as string)?.trim()
+    if (!name) return { error: 'שם הפונט חסר' }
+    const is_free  = formData.get('is_free') === 'on'
+    const tagsRaw  = (formData.get('tags') as string)?.trim()
+    const tags     = tagsRaw ? tagsRaw.split(',').map((t: string) => t.trim()).filter(Boolean) : []
+    const payload = {
+      name,
+      name_hebrew:        (formData.get('name_hebrew')        as string) || null,
+      company:            (formData.get('company')            as string) || null,
+      category:           (formData.get('category')           as string) || null,
+      style:              (formData.get('style')              as string) || null,
+      is_free,
+      price:              is_free ? null : ((formData.get('price') as string) || null),
+      download_url:       (formData.get('download_url')       as string) || null,
+      preview_image_url:  (formData.get('preview_image_url')  as string) || null,
+      description:        (formData.get('description')        as string) || null,
+      tags,
+    }
+    const a = createAdminClient()
+    const { error } = id
+      ? await a.from('fonts').update(payload).eq('id', id)
+      : await a.from('fonts').insert(payload)
+    if (error) return { error: error.message }
+    revalidatePath('/admin')
+    revalidatePath('/font-identifier')
+    return null
+  }
+
+  async function deleteFont(id: string): Promise<void> {
+    'use server'
+    await createAdminClient().from('fonts').delete().eq('id', id)
+    revalidatePath('/admin')
+    revalidatePath('/font-identifier')
+  }
+
   return (
     <AdminClient
       pendingUsers={pendingUsers}
@@ -278,6 +321,9 @@ export default async function AdminPage() {
       forumCategories={forumCategories}
       addForumCategory={addForumCategory}
       deleteForumCategory={deleteForumCategory}
+      fonts={fonts}
+      saveFont={saveFont}
+      deleteFont={deleteFont}
     />
   )
 }

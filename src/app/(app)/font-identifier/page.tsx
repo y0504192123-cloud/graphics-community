@@ -2,16 +2,8 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import FontIdentifierClient from './FontIdentifierClient'
-import { identifyFont } from './actions'
-
-export type FontConversationRow = {
-  id: string
-  user_id: string
-  role: 'user' | 'assistant'
-  content: string
-  image_url: string | null
-  created_at: string
-}
+import { identifyFontFromDB } from './actions'
+import type { Font } from '@/types'
 
 export default async function FontIdentifierPage() {
   const supabase = await createClient()
@@ -19,19 +11,17 @@ export default async function FontIdentifierPage() {
   if (!user) redirect('/login')
 
   const admin = createAdminClient()
-  const { data: historyData } = await admin
-    .from('font_conversations')
-    .select('id, role, content, image_url, created_at')
-    .eq('user_id', user.id)
-    .order('created_at', { ascending: true })
-    .limit(200)
+  const { data: fontsData } = await admin
+    .from('fonts')
+    .select('*')
+    .order('name', { ascending: true })
 
-  const initialHistory = (historyData ?? []) as FontConversationRow[]
+  const fonts = (fontsData ?? []) as Font[]
 
   return (
     <FontIdentifierClient
-      identifyFont={identifyFont}
-      initialHistory={initialHistory}
+      identifyFontFromDB={identifyFontFromDB}
+      fonts={fonts}
     />
   )
 }

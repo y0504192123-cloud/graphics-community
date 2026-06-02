@@ -3,11 +3,12 @@
 import { useState, useTransition, useActionState, useRef } from 'react'
 import {
   ShieldCheck, Users, Clock, CheckCircle2, XCircle, Newspaper,
-  Hash, Plus, Trash2, ExternalLink, Phone, MapPin, Briefcase, Star, X, Palette, FolderOpen, ImageIcon, MessagesSquare
+  Hash, Plus, Trash2, ExternalLink, Phone, MapPin, Briefcase, Star, X, Palette, FolderOpen, ImageIcon, MessagesSquare, ScanText
 } from 'lucide-react'
-import type { Profile, NewsItem, ChatCategory, Specialization, InspirationCategory, JobCategory, AssetCategory, ForumCategory } from '@/types'
+import type { Profile, NewsItem, ChatCategory, Specialization, InspirationCategory, JobCategory, AssetCategory, ForumCategory, Font } from '@/types'
+import FontsTab from './FontsTab'
 
-type Tab = 'pending' | 'users' | 'news' | 'categories' | 'specializations' | 'insp_cats' | 'job_cats' | 'asset_cats' | 'branding' | 'forum_cats'
+type Tab = 'pending' | 'users' | 'news' | 'categories' | 'specializations' | 'insp_cats' | 'job_cats' | 'asset_cats' | 'branding' | 'forum_cats' | 'fonts'
 
 type Props = {
   pendingUsers:    Profile[]
@@ -41,6 +42,9 @@ type Props = {
   deleteForumCategory:         (id: string) => Promise<void>
   getLogoUploadUrl:            () => Promise<{ signedUrl?: string; publicUrl?: string; error?: string }>
   saveLogoUrl:                 (url: string) => Promise<void>
+  fonts:                       Font[]
+  saveFont:                    (prev: { error?: string } | null, fd: FormData) => Promise<{ error?: string } | null>
+  deleteFont:                  (id: string) => Promise<void>
 }
 
 const inputCls = 'w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition-all placeholder:text-slate-400 hover:border-slate-300 focus:border-purple-400 focus:ring-2 focus:ring-purple-100'
@@ -56,6 +60,7 @@ const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'job_cats',        label: 'קטגוריות עבודות',   icon: <FolderOpen size={15} /> },
   { id: 'asset_cats',      label: 'קטגוריות חומרים',   icon: <FolderOpen size={15} /> },
   { id: 'forum_cats',      label: 'קטגוריות פורום',     icon: <MessagesSquare size={15} /> },
+  { id: 'fonts',           label: 'מאגר פונטים',        icon: <ScanText size={15} /> },
   { id: 'branding',        label: 'מיתוג',              icon: <ImageIcon size={15} /> },
 ]
 
@@ -71,6 +76,7 @@ export default function AdminClient({
   addAssetCategory, deleteAssetCategory,
   addForumCategory, deleteForumCategory,
   getLogoUploadUrl, saveLogoUrl,
+  fonts, saveFont, deleteFont,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('pending')
   const [isPending, startTransition] = useTransition()
@@ -748,6 +754,15 @@ export default function AdminClient({
               )}
             </div>
           </div>
+        )}
+
+        {/* ── Fonts ── */}
+        {activeTab === 'fonts' && (
+          <FontsTab
+            fonts={fonts}
+            saveFont={saveFont}
+            deleteFont={deleteFont}
+          />
         )}
 
         {/* ── Branding ── */}

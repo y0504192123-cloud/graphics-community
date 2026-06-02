@@ -1,123 +1,29 @@
 'use client'
 
-import React, { useState, useRef, useEffect } from 'react'
-import { Send, ImagePlus, X, ScanText } from 'lucide-react'
-import type { FontConversationRow } from './page'
+import React, { useState, useRef } from 'react'
+import { ScanText, X, Search, ExternalLink, ImagePlus } from 'lucide-react'
+import type { Font } from '@/types'
 
 type Props = {
-  identifyFont: (
-    userText: string,
-    imageBase64?: string,
-    imageMimeType?: string,
-  ) => Promise<{ response?: string; error?: string }>
-  initialHistory: FontConversationRow[]
+  identifyFontFromDB: (
+    imageBase64: string,
+    imageMimeType: string,
+  ) => Promise<{ matches?: string[]; description?: string; error?: string }>
+  fonts: Font[]
 }
 
-type Message = {
-  id: string
-  role: 'user' | 'ai'
-  content: string
-  imageUrl?: string
-  isLoading?: boolean
-}
-
-function TypingDots() {
-  return (
-    <div className="flex items-center gap-1 px-1 py-0.5">
-      {[0, 1, 2].map(i => (
-        <span key={i} className="h-1.5 w-1.5 rounded-full bg-slate-400 animate-bounce"
-          style={{ animationDelay: `${i * 150}ms` }} />
-      ))}
-    </div>
-  )
-}
-
-// Split a line into segments: bold (**text**), URLs (https://...), or plain text
-function renderLine(line: string): React.ReactNode[] {
-  const segments = line.split(/(https?:\/\/[^\s)>\]"]+|\*\*[^*]+\*\*)/)
-  return segments.map((seg, i) => {
-    if (seg.startsWith('**') && seg.endsWith('**')) {
-      return <strong key={i}>{seg.slice(2, -2)}</strong>
-    }
-    if (seg.startsWith('http')) {
-      // Strip trailing punctuation that isn't part of the URL
-      const url = seg.replace(/[.,;:!?)]+$/, '')
-      const trailing = seg.slice(url.length)
-      return (
-        <span key={i}>
-          <a
-            href={url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="underline underline-offset-2 font-medium break-all"
-            style={{ color: '#a78bfa' }}
-          >
-            {url}
-          </a>
-          {trailing}
-        </span>
-      )
-    }
-    return seg
-  })
-}
-
-type Confidence = 'high' | 'medium' | 'low' | null
-
-function parseConfidence(content: string): { confidence: Confidence; body: string } {
-  const first = content.split('\n')[0].trim().toUpperCase()
-  if (first === 'CONFIDENCE: HIGH')   return { confidence: 'high',   body: content.split('\n').slice(1).join('\n').trimStart() }
-  if (first === 'CONFIDENCE: MEDIUM') return { confidence: 'medium', body: content.split('\n').slice(1).join('\n').trimStart() }
-  if (first === 'CONFIDENCE: LOW')    return { confidence: 'low',    body: content.split('\n').slice(1).join('\n').trimStart() }
-  return { confidence: null, body: content }
-}
-
-function ConfidenceBadge({ level }: { level: Confidence }) {
-  if (!level) return null
-  const cfg = level === 'high'
-    ? { label: '✓ זיהוי בטוח',   bg: 'rgba(16,185,129,.12)', border: 'rgba(16,185,129,.35)', color: '#059669' }
-    : { label: '~ זיהוי משוער',  bg: 'rgba(245,158,11,.12)', border: 'rgba(245,158,11,.35)', color: '#b45309' }
-  return (
-    <span className="mb-2 inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
-      style={{ background: cfg.bg, border: `1px solid ${cfg.border}`, color: cfg.color }}>
-      {cfg.label}
-    </span>
-  )
-}
-
-function renderAI(text: string) {
-  return text.split('\n').map((line, li, arr) => (
-    <span key={li}>
-      {renderLine(line)}
-      {li < arr.length - 1 && <br />}
-    </span>
-  ))
-}
-
-export default function FontIdentifierClient({ identifyFont, initialHistory }: Props) {
-  const [messages, setMessages] = useState<Message[]>(() =>
-    initialHistory.map(h => ({
-      id: h.id,
-      role: h.role === 'assistant' ? 'ai' : 'user',
-      content: h.content,
-      imageUrl: h.image_url ?? undefined,
-    }))
-  )
-  const [inputText, setInputText]     = useState('')
+export default function FontIdentifierClient({ identifyFontFromDB, fonts }: Props) {
   const [imageFile, setImageFile]     = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [imageBase64, setImageBase64] = useState<string | null>(null)
   const [isLoading, setIsLoading]     = useState(false)
+  const [result, setResult]           = useState<{ matches?: string[]; description?: string; error?: string } | null>(null)
+  const [search, setSearch]           = useState('')
+  const [filterCat, setFilterCat]     = useState('')
+  const [filterFree, setFilterFree]   = useState<'all' | 'free' | 'paid'>('all')
 
-  const bottomRef = useRef<HTMLDivElement>(null)
-  const fileRef   = useRef<HTMLInputElement>(null)
-  const textRef   = useRef<HTMLTextAreaElement>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
-
-  // ── Image helpers ──────────────────────────────────────
   const loadImageFile = (file: File) => {
     setImageFile(file)
     const reader = new FileReader()
@@ -127,12 +33,14 @@ export default function FontIdentifierClient({ identifyFont, initialHistory }: P
       setImageBase64(dataUrl.split(',')[1])
     }
     reader.readAsDataURL(file)
+    setResult(null)
   }
 
   const clearImage = () => {
     setImageFile(null)
     setImagePreview(null)
     setImageBase64(null)
+    setResult(null)
   }
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -141,224 +49,293 @@ export default function FontIdentifierClient({ identifyFont, initialHistory }: P
     if (fileRef.current) fileRef.current.value = ''
   }
 
-  // ── Paste image with Ctrl+V ────────────────────────────
-  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    const imageItem = Array.from(e.clipboardData.items).find(item =>
-      item.type.startsWith('image/')
-    )
-    if (!imageItem) return
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const item = Array.from(e.clipboardData.items).find(i => i.type.startsWith('image/'))
+    if (!item) return
     e.preventDefault()
-    const file = imageItem.getAsFile()
+    const file = item.getAsFile()
     if (file) loadImageFile(file)
   }
 
-  // ── Send ───────────────────────────────────────────────
-  const handleSend = async () => {
-    if ((!inputText.trim() && !imageFile) || isLoading) return
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    const file = e.dataTransfer.files[0]
+    if (file?.type.startsWith('image/')) loadImageFile(file)
+  }
 
-    const userContent = inputText.trim() || 'זהה את הפונט בתמונה'
-    const preview  = imagePreview
-    const base64   = imageBase64
-    const mimeType = imageFile?.type ?? 'image/jpeg'
-
-    setMessages(prev => [...prev, {
-      id: `user-${Date.now()}`,
-      role: 'user',
-      content: userContent,
-      imageUrl: preview ?? undefined,
-    }])
-    setInputText('')
-    clearImage()
-    if (textRef.current) textRef.current.style.height = 'auto'
-
-    const loadingId = `ai-${Date.now()}`
-    setMessages(prev => [...prev, { id: loadingId, role: 'ai', content: '', isLoading: true }])
+  const handleIdentify = async () => {
+    if (!imageBase64 || !imageFile || isLoading) return
     setIsLoading(true)
-
     try {
-      const result = await identifyFont(
-        userContent,
-        base64 ?? undefined,
-        base64 ? mimeType : undefined,
-      )
-      setMessages(prev => prev.map(m =>
-        m.id === loadingId
-          ? { id: m.id, role: 'ai', content: result.response ?? result.error ?? 'שגיאה לא ידועה' }
-          : m
-      ))
+      const res = await identifyFontFromDB(imageBase64, imageFile.type)
+      setResult(res)
     } catch {
-      setMessages(prev => prev.map(m =>
-        m.id === loadingId
-          ? { id: m.id, role: 'ai', content: 'שגיאה בתקשורת עם השרת' }
-          : m
-      ))
+      setResult({ error: 'שגיאת רשת' })
     }
     setIsLoading(false)
   }
 
-  const handleKey = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
-  }
+  const matchedFonts = result?.matches
+    ? fonts.filter(f => result.matches!.includes(f.name))
+    : []
 
-  const canSend = (!!inputText.trim() || !!imageFile) && !isLoading
+  const categories = Array.from(new Set(fonts.map(f => f.category).filter(Boolean))) as string[]
 
-  // ── Render ─────────────────────────────────────────────
+  const filteredFonts = fonts.filter(f => {
+    const q = search.toLowerCase()
+    const matchSearch = !q || f.name.toLowerCase().includes(q) || (f.name_hebrew?.toLowerCase().includes(q) ?? false) || (f.company?.toLowerCase().includes(q) ?? false)
+    const matchCat  = !filterCat  || f.category === filterCat
+    const matchFree = filterFree === 'all' || (filterFree === 'free' && f.is_free) || (filterFree === 'paid' && !f.is_free)
+    return matchSearch && matchCat && matchFree
+  })
+
   return (
-    <div className="flex h-[calc(100vh-3.5rem)] flex-col lg:h-screen" style={{ background: 'var(--bg)' }}>
+    <div
+      className="min-h-full overflow-y-auto"
+      style={{ background: 'var(--bg)' }}
+      onPaste={handlePaste}
+    >
 
-      {/* Header */}
-      <div className="shrink-0 flex items-center gap-3 px-5 py-3.5"
-        style={{ background: 'var(--hdr)', borderBottom: '1px solid var(--bd)' }}>
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl"
-          style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)' }}>
-          <ScanText size={18} className="text-white" />
-        </div>
-        <div>
-          <h1 className="text-sm font-bold" style={{ color: 'var(--tx)' }}>זיהוי פונט</h1>
-          <p className="text-[11px]" style={{ color: 'var(--tx3)' }}>
-            העלה תמונה עם טקסט ואני אזהה את הפונט
-          </p>
-        </div>
-      </div>
+      {/* ── AI Identification ── */}
+      <div className="px-4 py-6 lg:px-8">
+        <div className="mx-auto max-w-3xl">
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4">
-
-        {messages.length === 0 && (
-          <div className="flex h-full flex-col items-center justify-center gap-5 text-center">
-            <div className="flex h-20 w-20 items-center justify-center rounded-3xl"
-              style={{ background: 'rgba(124,58,237,.08)', border: '2px solid rgba(124,58,237,.15)' }}>
-              <ScanText size={36} className="text-purple-400" />
+          <div className="mb-5 flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl"
+              style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)' }}>
+              <ScanText size={18} className="text-white" />
             </div>
             <div>
-              <p className="text-base font-bold" style={{ color: 'var(--tx)' }}>מוכן לזהות פונטים</p>
-              <p className="mt-1 text-sm" style={{ color: 'var(--tx3)' }}>
-                העלה תמונה, הדבק עם Ctrl+V, או שאל שאלה
+              <h1 className="text-lg font-bold" style={{ color: 'var(--tx)' }}>זיהוי פונט</h1>
+              <p className="text-xs" style={{ color: 'var(--tx3)' }}>
+                העלה תמונה עם טקסט ו-AI יחפש במאגר הפונטים
               </p>
             </div>
-            <div className="grid grid-cols-3 gap-2 text-xs max-w-sm w-full">
-              {[
-                { icon: '📸', text: 'העלה תמונה עם טקסט' },
-                { icon: '📋', text: 'הדבק תמונה Ctrl+V' },
-                { icon: '🔗', text: 'קישורים להורדה חינמית' },
-              ].map(item => (
-                <div key={item.text} className="flex flex-col items-center gap-1.5 rounded-2xl p-3"
-                  style={{ background: 'var(--s1)', border: '1px solid var(--bd)' }}>
-                  <span className="text-xl">{item.icon}</span>
-                  <span style={{ color: 'var(--tx3)' }}>{item.text}</span>
-                </div>
-              ))}
-            </div>
           </div>
-        )}
 
-        <div className="space-y-4">
-          {messages.map(msg => (
-            <div key={msg.id}
-              className={`flex items-end gap-2.5 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
-
-              {msg.role === 'ai' && (
-                <div className="shrink-0 flex h-8 w-8 items-center justify-center rounded-full"
-                  style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)' }}>
-                  <ScanText size={14} className="text-white" />
-                </div>
-              )}
-
-              <div className={`flex max-w-[78%] flex-col gap-1.5 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                {msg.imageUrl && (
-                  <img src={msg.imageUrl} alt="תמונה שהועלתה"
-                    className="max-h-52 max-w-full rounded-2xl object-cover"
-                    style={{ border: '2px solid rgba(124,58,237,.2)' }} />
-                )}
-                {(msg.isLoading || msg.content) && (() => {
-                  const { confidence, body } = msg.role === 'ai' && !msg.isLoading
-                    ? parseConfidence(msg.content)
-                    : { confidence: null, body: msg.content }
-                  return (
-                    <div className="rounded-2xl px-4 py-2.5 text-sm leading-relaxed"
-                      style={msg.role === 'user'
-                        ? { background: 'linear-gradient(135deg,#7c3aed,#6d28d9)', color: 'white' }
-                        : { background: 'var(--s1)', border: '1px solid var(--bd)', color: 'var(--tx)' }
-                      }>
-                      {msg.isLoading ? <TypingDots /> : (
-                        <>
-                          {confidence && <div><ConfidenceBadge level={confidence} /></div>}
-                          <span className="whitespace-pre-wrap">
-                            {msg.role === 'ai' ? renderAI(body) : msg.content}
-                          </span>
-                        </>
-                      )}
-                    </div>
-                  )
-                })()}
+          {/* Upload zone */}
+          {!imagePreview ? (
+            <div
+              onClick={() => fileRef.current?.click()}
+              onDrop={handleDrop}
+              onDragOver={e => e.preventDefault()}
+              className="flex cursor-pointer flex-col items-center justify-center gap-4 rounded-2xl py-14 text-center transition-all hover:opacity-80"
+              style={{ border: '2px dashed rgba(124,58,237,.35)', background: 'rgba(124,58,237,.04)' }}
+            >
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl"
+                style={{ background: 'rgba(124,58,237,.1)' }}>
+                <ImagePlus size={24} className="text-purple-400" />
+              </div>
+              <div>
+                <p className="font-semibold" style={{ color: 'var(--tx)' }}>גרור תמונה לכאן או לחץ לבחירה</p>
+                <p className="mt-1 text-sm" style={{ color: 'var(--tx3)' }}>PNG, JPG, WebP · Ctrl+V להדבקה</p>
               </div>
             </div>
-          ))}
+          ) : (
+            <div className="overflow-hidden rounded-2xl" style={{ border: '1px solid var(--bd)' }}>
+              <div className="relative">
+                <img
+                  src={imagePreview}
+                  alt=""
+                  className="max-h-72 w-full object-contain"
+                  style={{ background: 'var(--inp)' }}
+                />
+                <button
+                  onClick={clearImage}
+                  className="absolute end-3 top-3 flex h-7 w-7 items-center justify-center rounded-full bg-black/50 text-white transition hover:bg-black/70"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+              <div className="flex items-center justify-between gap-3 px-4 py-3"
+                style={{ background: 'var(--s1)', borderTop: '1px solid var(--bd)' }}>
+                <span className="truncate text-sm" style={{ color: 'var(--tx2)' }}>
+                  {imageFile?.name}
+                </span>
+                <button
+                  onClick={handleIdentify}
+                  disabled={isLoading}
+                  className="flex shrink-0 items-center gap-2 rounded-xl px-5 py-2 text-sm font-bold text-white transition hover:opacity-90 disabled:opacity-50"
+                  style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)' }}
+                >
+                  <ScanText size={15} />
+                  {isLoading ? 'מזהה...' : 'זהה פונט'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Result */}
+          {result && (
+            <div className="mt-5 rounded-2xl p-5"
+              style={{ background: 'var(--s1)', border: '1px solid var(--bd)' }}>
+              {result.error ? (
+                <p className="text-sm text-red-400">{result.error}</p>
+              ) : (
+                <>
+                  {result.description && (
+                    <p className="mb-4 text-sm" style={{ color: 'var(--tx2)' }}>{result.description}</p>
+                  )}
+                  {matchedFonts.length > 0 ? (
+                    <>
+                      <p className="mb-3 text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--tx3)' }}>
+                        פונטים מתאימים ({matchedFonts.length})
+                      </p>
+                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                        {matchedFonts.map((font, i) => (
+                          <FontCard key={font.id} font={font} rank={i + 1} />
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-sm" style={{ color: 'var(--tx3)' }}>לא נמצאו פונטים מתאימים במאגר</p>
+                  )}
+                </>
+              )}
+            </div>
+          )}
         </div>
-        <div ref={bottomRef} />
       </div>
 
-      {/* Input bar */}
-      <div className="shrink-0 px-3 py-2.5"
-        style={{ background: 'var(--hdr)', borderTop: '1px solid var(--bd)' }}>
+      {/* Divider */}
+      <div className="mx-4 lg:mx-8" style={{ borderTop: '1px solid var(--bd)' }} />
 
-        {imagePreview && (
-          <div className="mb-2 flex items-center gap-2.5 rounded-xl px-3 py-2"
-            style={{ background: 'var(--inp)', border: '1px solid var(--bd)' }}>
-            <img src={imagePreview} alt="" className="h-10 w-10 rounded-lg shrink-0 object-cover" />
-            <span className="flex-1 truncate text-xs" style={{ color: 'var(--tx2)' }}>
-              {imageFile?.name ?? 'תמונה מהלוח'}
-            </span>
-            <button onClick={clearImage}
-              className="shrink-0 rounded p-0.5 hover:bg-red-500/10"
-              style={{ color: 'var(--tx3)' }}>
-              <X size={14} />
-            </button>
+      {/* ── Font Gallery ── */}
+      <div className="px-4 py-6 lg:px-8">
+        <div className="mx-auto max-w-5xl">
+
+          <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="font-bold" style={{ color: 'var(--tx)' }}>מאגר הפונטים</h2>
+              <p className="text-xs" style={{ color: 'var(--tx3)' }}>{fonts.length} פונטים</p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative">
+                <Search size={13} className="absolute start-3 top-1/2 -translate-y-1/2 pointer-events-none"
+                  style={{ color: 'var(--tx3)' }} />
+                <input
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="חפש פונט..."
+                  className="rounded-xl py-2 pe-3 ps-8 text-sm outline-none"
+                  style={{ background: 'var(--inp)', border: '1px solid var(--bd)', color: 'var(--tx)', width: '160px' }}
+                />
+              </div>
+
+              {categories.length > 0 && (
+                <select
+                  value={filterCat}
+                  onChange={e => setFilterCat(e.target.value)}
+                  className="rounded-xl px-3 py-2 text-sm outline-none"
+                  style={{ background: 'var(--inp)', border: '1px solid var(--bd)', color: 'var(--tx)' }}
+                >
+                  <option value="">כל הקטגוריות</option>
+                  {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              )}
+
+              <select
+                value={filterFree}
+                onChange={e => setFilterFree(e.target.value as 'all' | 'free' | 'paid')}
+                className="rounded-xl px-3 py-2 text-sm outline-none"
+                style={{ background: 'var(--inp)', border: '1px solid var(--bd)', color: 'var(--tx)' }}
+              >
+                <option value="all">הכל</option>
+                <option value="free">חינמי</option>
+                <option value="paid">בתשלום</option>
+              </select>
+            </div>
           </div>
-        )}
 
-        <div className="flex items-end gap-2 rounded-2xl px-2 py-1.5"
-          style={{ background: 'var(--inp)', border: '1px solid var(--bd)' }}>
-          <button
-            onClick={() => fileRef.current?.click()}
-            className="mb-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition hover:bg-purple-500/10"
-            style={{ color: 'var(--tx3)' }}
-            title="העלה תמונה">
-            <ImagePlus size={16} />
-          </button>
-
-          <textarea
-            ref={textRef}
-            value={inputText}
-            onChange={e => setInputText(e.target.value)}
-            onKeyDown={handleKey}
-            onPaste={handlePaste}
-            onInput={e => {
-              const el = e.currentTarget
-              el.style.height = 'auto'
-              el.style.height = Math.min(el.scrollHeight, 140) + 'px'
-            }}
-            rows={1}
-            placeholder={imagePreview ? 'שאל שאלה על הפונט...' : 'העלה תמונה, הדבק Ctrl+V, או שאל שאלה...'}
-            className="flex-1 resize-none bg-transparent py-1.5 text-sm leading-relaxed outline-none placeholder:text-slate-400"
-            style={{ color: 'var(--tx)', maxHeight: '140px', overflowY: 'auto' }}
-          />
-
-          <button
-            onClick={handleSend}
-            disabled={!canSend}
-            className="mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-all hover:scale-105 disabled:opacity-30"
-            style={{ background: canSend ? 'linear-gradient(135deg,#7c3aed,#6d28d9)' : 'var(--inp)' }}>
-            <Send size={15} className={canSend ? 'text-white' : 'text-slate-400'} />
-          </button>
+          {filteredFonts.length === 0 ? (
+            <div className="rounded-2xl py-16 text-center text-sm"
+              style={{ border: '2px dashed var(--bd)', background: 'var(--inp)', color: 'var(--tx3)' }}>
+              {fonts.length === 0
+                ? 'מאגר הפונטים ריק — הוסף פונטים מפאנל הניהול'
+                : 'לא נמצאו פונטים'}
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+              {filteredFonts.map(font => <FontCard key={font.id} font={font} />)}
+            </div>
+          )}
         </div>
-
-        <p className="mt-1 text-center text-[10px]" style={{ color: 'var(--tx3)' }}>
-          Enter לשליחה · Shift+Enter לשורה חדשה · Ctrl+V להדבקת תמונה
-        </p>
       </div>
 
       <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFileSelect} />
+    </div>
+  )
+}
+
+function FontCard({ font, rank }: { font: Font; rank?: number }) {
+  return (
+    <div className="flex flex-col overflow-hidden rounded-2xl transition-all hover:shadow-md"
+      style={{ background: 'var(--s1)', border: '1px solid var(--bd)' }}>
+
+      {/* Preview */}
+      <div className="relative h-28 overflow-hidden shrink-0" style={{ background: 'var(--inp)' }}>
+        {font.preview_image_url ? (
+          <img src={font.preview_image_url} alt={font.name} className="h-full w-full object-cover" />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center"
+            style={{ background: 'linear-gradient(135deg,rgba(124,58,237,.07),rgba(109,40,217,.13))' }}>
+            <span className="select-none text-4xl font-black"
+              style={{ color: 'rgba(124,58,237,.25)', fontFamily: 'Georgia, serif' }}>
+              Aa
+            </span>
+          </div>
+        )}
+
+        {typeof rank === 'number' && (
+          <div className="absolute start-2 top-2 flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-bold text-white"
+            style={{ background: rank === 1 ? '#7c3aed' : rank === 2 ? '#6d28d9' : '#5b21b6' }}>
+            {rank}
+          </div>
+        )}
+
+        <div className="absolute end-2 top-2">
+          <span
+            className="rounded-full px-2 py-0.5 text-[10px] font-bold"
+            style={font.is_free
+              ? { background: 'rgba(16,185,129,.15)', border: '1px solid rgba(16,185,129,.3)', color: '#059669' }
+              : { background: 'rgba(245,158,11,.15)', border: '1px solid rgba(245,158,11,.3)', color: '#b45309' }
+            }
+          >
+            {font.is_free ? 'חינמי' : (font.price ?? 'בתשלום')}
+          </span>
+        </div>
+      </div>
+
+      {/* Info */}
+      <div className="flex flex-1 flex-col p-3">
+        <p className="font-semibold leading-snug" style={{ color: 'var(--tx)' }}>{font.name}</p>
+        {font.name_hebrew && (
+          <p className="text-sm" style={{ color: 'var(--tx2)' }}>{font.name_hebrew}</p>
+        )}
+        {font.company && (
+          <p className="mt-0.5 text-xs" style={{ color: 'var(--tx3)' }}>{font.company}</p>
+        )}
+        {font.category && (
+          <span className="mt-2 self-start rounded-full px-2 py-0.5 text-[10px] font-medium"
+            style={{ background: 'rgba(124,58,237,.1)', color: '#7c3aed' }}>
+            {font.category}
+          </span>
+        )}
+
+        {font.download_url && (
+          <a
+            href={font.download_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-3 flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold text-white transition hover:opacity-90"
+            style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)', marginTop: 'auto' }}
+          >
+            <ExternalLink size={11} />
+            {font.is_free ? 'הורד חינם' : 'לרכישה'}
+          </a>
+        )}
+      </div>
     </div>
   )
 }
