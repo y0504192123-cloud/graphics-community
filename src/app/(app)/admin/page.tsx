@@ -73,14 +73,12 @@ export default async function AdminPage() {
   async function saveLogoUrl(url: string): Promise<void> {
     'use server'
     const adminClient = createAdminClient()
-    const { data: existing } = await adminClient.from('site_settings').select('id').eq('key', 'logo_url').single()
-    if (existing) {
-      await adminClient.from('site_settings').update({ value: url }).eq('key', 'logo_url')
-    } else {
-      await adminClient.from('site_settings').insert({ key: 'logo_url', value: url })
-    }
+    const { error } = await adminClient
+      .from('site_settings')
+      .upsert({ key: 'logo_url', value: url }, { onConflict: 'key' })
+    if (error) console.error('[saveLogoUrl] upsert error:', error)
+    revalidatePath('/', 'layout')
     revalidatePath('/admin')
-    revalidatePath('/')
   }
 
   async function rejectUser(userId: string) {
