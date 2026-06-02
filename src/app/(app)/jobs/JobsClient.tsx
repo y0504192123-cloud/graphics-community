@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, X, Briefcase, Clock, ChevronDown, Trash2, Calendar } from 'lucide-react'
+import { Plus, X, Briefcase, Clock, ChevronDown, Trash2, Calendar, MessageCircle } from 'lucide-react'
 import type { Job, Profile } from '@/types'
 
 type Props = {
@@ -307,11 +307,11 @@ export default function JobsClient({
                     {/* Bottom row: status changer (owner) + apply (other) + delete */}
                     <div className="flex flex-wrap items-center gap-2">
 
-                      {/* Status change — owner only */}
+                      {/* Status change — owner only (open/closed) */}
                       {isOwn && (
                         <div className="flex items-center gap-1.5">
-                          <span className="text-xs text-slate-500">שנה סטטוס:</span>
-                          {(['open', 'in_progress', 'closed'] as const).map((s) => {
+                          <span className="text-xs text-slate-500">סטטוס:</span>
+                          {(['open', 'closed'] as const).map((s) => {
                             const cfg = statusConfig[s]
                             const active = job.status === s
                             return (
@@ -333,6 +333,24 @@ export default function JobsClient({
                       )}
 
                       <div className="ms-auto flex items-center gap-2">
+                        {/* Contact publisher — non-owners */}
+                        {!isOwn && (
+                          <button
+                            onClick={() => {
+                              const budget = formatBudget(job.budget_min, job.budget_max)
+                              const params = new URLSearchParams({ dm: job.client_id, jobTitle: job.title })
+                              if (budget) params.set('jobBudget', budget)
+                              if (job.description) params.set('jobDesc', job.description.slice(0, 100))
+                              router.push(`/chat?${params.toString()}`)
+                            }}
+                            className="flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold transition-all duration-200 hover:scale-[1.03]"
+                            style={{ background: 'rgba(52,211,153,.08)', border: '1px solid rgba(52,211,153,.2)', color: '#34d399' }}
+                          >
+                            <MessageCircle size={12} />
+                            פנה למפרסם
+                          </button>
+                        )}
+
                         {/* Apply button — non-owners, open jobs */}
                         {!isOwn && job.status === 'open' && (
                           <button

@@ -1,9 +1,9 @@
 'use client'
 
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { Send, ArrowRight, Plus, X, Hash, Clock, Smile, MessageSquare } from 'lucide-react'
+import { Send, ArrowRight, Plus, X, Hash, Clock, Smile, MessageSquare, Lock } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import type { Topic, Message, Profile } from '@/types'
+import type { Topic, Message, Profile, PrivateMessage } from '@/types'
 
 type Props = {
   topics: Topic[]
@@ -12,6 +12,20 @@ type Props = {
   currentProfile: Profile | null
   createTopic: (formData: FormData) => Promise<void>
   sendMessage: (topicId: string, content: string) => Promise<void>
+  initialPrivateMessages: PrivateMessage[]
+  sendPrivateMessage: (receiverId: string, content: string) => Promise<void>
+  markMessagesRead: (senderId: string) => Promise<void>
+  initialDmUserId: string | null
+  initialDmProfile: Profile | null
+  initialJobQuote: string | null
+}
+
+type Convo = {
+  partnerId: string
+  profile: Profile | null
+  msgs: PrivateMessage[]
+  lastMsg: PrivateMessage
+  unread: number
 }
 
 const categoryColors: Record<string, { bg: string; text: string; border: string }> = {
@@ -49,46 +63,122 @@ function CategoryBadge({ cat }: { cat: string }) {
 
 const inputCls = 'w-full rounded-xl border bg-white/[0.04] px-4 py-2.5 text-sm text-slate-100 outline-none transition-all placeholder:text-slate-600 focus:bg-white/[0.06] focus:ring-2 focus:ring-purple-500/20'
 
-export default function ChatClient({ topics: initialTopics, categories, currentUserId, currentProfile, createTopic, sendMessage }: Props) {
-  const [topics, setTopics]               = useState<Topic[]>(initialTopics)
-  const [view, setView]                   = useState<'list' | 'chat'>('list')
+const headerBg: React.CSSProperties = { background: 'linear-gradient(135deg, #0a0a18 0%, var(--bg) 70%)' }
+
+function BgDecorations() {
+  return (
+    <>
+      <div className="pointer-events-none absolute -top-16 start-0 h-48 w-48 rounded-full opacity-25" style={{ background: 'radial-gradient(circle, rgba(52,211,153,.5) 0%, transparent 70%)', filter: 'blur(40px)' }} />
+      <div className="grid-pattern absolute inset-0" />
+    </>
+  )
+}
+
+export default function ChatClient({
+  topics: initialTopics, categories,
+  currentUserId, currentProfile,
+  createTopic, sendMessage,
+  initialPrivateMessages,
+  sendPrivateMessage, markMessagesRead,
+  initialDmUserId, initialDmProfile, initialJobQuote,
+}: Props) {
+
+  const [mainTab, setMainTab] = useState<'community' | 'private'>(initialDmUserId ? 'private' : 'community')
+
+  // Community state
+  const [topics, setTopics]             = useState<Topic[]>(initialTopics)
+  const [communityView, setCommunityView] = useState<'list' | 'chat'>('list')
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null)
-  const [messages, setMessages]           = useState<Message[]>([])
-  const [text, setText]                   = useState('')
-  const [isSending, setIsSending]         = useState(false)
-  const [showCreate, setShowCreate]       = useState(false)
-  const [filterCat, setFilterCat]         = useState('הכל')
-  const bottomRef  = useRef<HTMLDivElement>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const [communityMsgs, setCommunityMsgs] = useState<Message[]>([])
+  const [communityText, setCommunityText] = useState('')
+  const [isSendingC, setIsSendingC]     = useState(false)
+  const [showCreate, setShowCreate]     = useState(false)
+  const [filterCat, setFilterCat]       = useState('הכל')
+
+  // Private state
+  const [privateMsgs, setPrivateMsgs]   = useState<PrivateMessage[]>(initialPrivateMessages)
+  const [selectedPartner, setSelectedPartner] = useState<string | null>(initialDmUserId)
+  const [dmView, setDmView]             = useState<'list' | 'chat'>(initialDmUserId ? 'chat' : 'list')
+  const [privateText, setPrivateText]   = useState(initialJobQuote ?? '')
+  const [isSendingP, setIsSendingP]     = useState(false)
+
+  const communityBottomRef = useRef<HTMLDivElement>(null)
+  const privateBottomRef   = useRef<HTMLDivElement>(null)
+  const communityTextRef   = useRef<HTMLTextAreaElement>(null)
+  const privateTextRef     = useRef<HTMLTextAreaElement>(null)
+  const selectedPartnerRef = useRef<string | null>(selectedPartner)
+  selectedPartnerRef.current = selectedPartner
+
   const supabase = useMemo(() => createClient(), [])
 
-  // Realtime: new topics
+  // ── Computed ──
+
+  const convos: Convo[] = useMemo(() => {
+    const map = new Map<string, { msgs: PrivateMessage[], profile: Profile | null }>()
+
+    for (const msg of privateMsgs) {
+      const partnerId = msg.sender_id === currentUserId ? msg.receiver_id : msg.sender_id
+      const profile = msg.sender_id === currentUserId
+        ? (msg.receiver as Profile | undefined ?? null)
+        : (msg.sender as Profile | undefined ?? null)
+      if (!map.has(partnerId)) map.set(partnerId, { msgs: [], profile: null })
+      const entry = map.get(partnerId)!
+      entry.msgs.push(msg)
+      if (!entry.profile && profile) entry.profile = profile
+    }
+
+    return Array.from(map.entries())
+      .map(([partnerId, { msgs, profile }]) => ({
+        partnerId, profile, msgs,
+        lastMsg: msgs[msgs.length - 1],
+        unread: msgs.filter(m => m.receiver_id === currentUserId && !m.is_read).length,
+      }))
+      .filter(c => c.lastMsg !== undefined)
+      .sort((a, b) => new Date(b.lastMsg.created_at).getTime() - new Date(a.lastMsg.created_at).getTime())
+  }, [privateMsgs, currentUserId])
+
+  const totalUnread = useMemo(() =>
+    privateMsgs.filter(m => m.receiver_id === currentUserId && !m.is_read).length,
+    [privateMsgs, currentUserId]
+  )
+
+  const currentConvMsgs = useMemo(() => {
+    if (!selectedPartner) return []
+    return privateMsgs.filter(m =>
+      (m.sender_id === currentUserId && m.receiver_id === selectedPartner) ||
+      (m.sender_id === selectedPartner && m.receiver_id === currentUserId)
+    )
+  }, [privateMsgs, selectedPartner, currentUserId])
+
+  const partnerProfile = useMemo(() => {
+    if (!selectedPartner) return null
+    if (selectedPartner === initialDmUserId && initialDmProfile) return initialDmProfile
+    return convos.find(c => c.partnerId === selectedPartner)?.profile ?? null
+  }, [selectedPartner, convos, initialDmUserId, initialDmProfile])
+
+  // ── Realtime ──
+
   useEffect(() => {
-    const ch = supabase
-      .channel('topics-feed')
+    const ch = supabase.channel('topics-feed')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'topics' }, async (payload) => {
         const newTopic = payload.new as Topic
         const { data: profile } = await supabase.from('profiles').select('*').eq('id', newTopic.created_by).single()
-        setTopics((prev) => [{ ...newTopic, profiles: profile ?? undefined }, ...prev])
+        setTopics(prev => [{ ...newTopic, profiles: profile ?? undefined }, ...prev])
       })
       .subscribe()
     return () => { supabase.removeChannel(ch) }
   }, [supabase])
 
-  // Realtime: messages in selected topic
   useEffect(() => {
     if (!selectedTopic) return
-    const ch = supabase
-      .channel(`room:${selectedTopic.id}`)
+    const ch = supabase.channel(`room:${selectedTopic.id}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `channel_id=eq.${selectedTopic.id}` },
         async (payload) => {
           const newMsg = payload.new as Message
           const { data: profile } = await supabase.from('profiles').select('*').eq('id', newMsg.user_id).single()
-          setMessages((prev) => {
-            const withoutTemp = prev.filter(
-              (m) => !(m.id.startsWith('temp-') && m.user_id === newMsg.user_id && m.content === newMsg.content)
-            )
-            if (withoutTemp.some((m) => m.id === newMsg.id)) return withoutTemp
+          setCommunityMsgs(prev => {
+            const withoutTemp = prev.filter(m => !(m.id.startsWith('temp-') && m.user_id === newMsg.user_id && m.content === newMsg.content))
+            if (withoutTemp.some(m => m.id === newMsg.id)) return withoutTemp
             return [...withoutTemp, { ...newMsg, profiles: profile ?? undefined }]
           })
         })
@@ -97,69 +187,178 @@ export default function ChatClient({ topics: initialTopics, categories, currentU
   }, [selectedTopic?.id, supabase])
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+    const ch = supabase.channel('pm-inbox')
+      .on('postgres_changes', {
+        event: 'INSERT', schema: 'public', table: 'private_messages',
+        filter: `receiver_id=eq.${currentUserId}`,
+      }, async (payload) => {
+        const newMsg = payload.new as PrivateMessage
+        const [{ data: senderProfile }, { data: receiverProfile }] = await Promise.all([
+          supabase.from('profiles').select('*').eq('id', newMsg.sender_id).single(),
+          supabase.from('profiles').select('*').eq('id', newMsg.receiver_id).single(),
+        ])
+        const fullMsg: PrivateMessage = { ...newMsg, sender: senderProfile ?? undefined, receiver: receiverProfile ?? undefined }
+        setPrivateMsgs(prev => [...prev, fullMsg])
+        // Auto mark as read if this conversation is open
+        if (selectedPartnerRef.current === newMsg.sender_id) {
+          markMessagesRead(newMsg.sender_id)
+          setPrivateMsgs(prev => prev.map(m =>
+            m.sender_id === newMsg.sender_id && m.receiver_id === currentUserId && !m.is_read
+              ? { ...m, is_read: true }
+              : m
+          ))
+        }
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  }, [supabase, currentUserId, markMessagesRead])
+
+  useEffect(() => { communityBottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [communityMsgs])
+  useEffect(() => { privateBottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [currentConvMsgs])
+
+  // ── Handlers ──
+
+  const openConversation = async (partnerId: string) => {
+    setSelectedPartner(partnerId)
+    setDmView('chat')
+    setPrivateMsgs(prev => prev.map(m =>
+      m.sender_id === partnerId && m.receiver_id === currentUserId && !m.is_read
+        ? { ...m, is_read: true }
+        : m
+    ))
+    await markMessagesRead(partnerId)
+  }
 
   const openTopic = async (topic: Topic) => {
     setSelectedTopic(topic)
-    setView('chat')
-    const { data } = await supabase
-      .from('messages').select('*, profiles(*)')
-      .eq('channel_id', topic.id)
-      .order('created_at', { ascending: true })
-      .limit(50)
-    setMessages((data as Message[]) ?? [])
+    setCommunityView('chat')
+    const { data } = await supabase.from('messages').select('*, profiles(*)').eq('channel_id', topic.id).order('created_at', { ascending: true }).limit(50)
+    setCommunityMsgs((data as Message[]) ?? [])
   }
 
-  const handleSend = async () => {
-    if (!text.trim() || !selectedTopic || isSending) return
-    const content = text.trim()
-    setText('')
-    if (textareaRef.current) textareaRef.current.style.height = 'auto'
-
-    const tempMsg: Message = {
+  const handleCommunitySend = async () => {
+    if (!communityText.trim() || !selectedTopic || isSendingC) return
+    const content = communityText.trim()
+    setCommunityText('')
+    if (communityTextRef.current) communityTextRef.current.style.height = 'auto'
+    setCommunityMsgs(prev => [...prev, {
       id: `temp-${Date.now()}`,
       channel_id: selectedTopic.id,
       user_id: currentUserId,
       content,
       created_at: new Date().toISOString(),
       profiles: currentProfile ?? undefined,
-    }
-    setMessages((prev) => [...prev, tempMsg])
-
-    setIsSending(true)
-    try { await sendMessage(selectedTopic.id, content) }
-    finally { setIsSending(false) }
+    }])
+    setIsSendingC(true)
+    try { await sendMessage(selectedTopic.id, content) } finally { setIsSendingC(false) }
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
+  const handlePrivateSend = async () => {
+    if (!privateText.trim() || !selectedPartner || isSendingP) return
+    const content = privateText.trim()
+    setPrivateText('')
+    if (privateTextRef.current) privateTextRef.current.style.height = 'auto'
+    setPrivateMsgs(prev => [...prev, {
+      id: `temp-${Date.now()}`,
+      sender_id: currentUserId,
+      receiver_id: selectedPartner,
+      content,
+      job_id: null,
+      is_read: false,
+      created_at: new Date().toISOString(),
+      sender: currentProfile ?? undefined,
+    }])
+    setIsSendingP(true)
+    try { await sendPrivateMessage(selectedPartner, content) } finally { setIsSendingP(false) }
   }
 
-  const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setText(e.target.value)
+  const handleCommunityKey = (e: React.KeyboardEvent) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleCommunitySend() } }
+  const handlePrivateKey   = (e: React.KeyboardEvent) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handlePrivateSend() } }
+
+  const makeTextareaHandler = (setter: (v: string) => void) => (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setter(e.target.value)
     e.target.style.height = 'auto'
     e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px'
   }
 
-  const displayName = (p: Profile | null | undefined) => p?.full_name ?? p?.username ?? 'משתמש'
-  const initials    = (name: string) => name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()
-  const avatarGrad  = (uid: string)  => avatarGradients[hashStr(uid) % avatarGradients.length]
+  const dName      = (p: Profile | null | undefined) => p?.full_name ?? p?.username ?? 'משתמש'
+  const initials   = (name: string) => name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
+  const avatarGrad = (uid: string) => avatarGradients[hashStr(uid) % avatarGradients.length]
+  const filteredTopics = filterCat === 'הכל' ? topics : topics.filter(t => t.category === filterCat)
 
-  const filteredTopics = filterCat === 'הכל' ? topics : topics.filter((t) => t.category === filterCat)
+  // Shared tab bar
+  const TabBar = (
+    <div className="mt-4 flex gap-1">
+      {([
+        { id: 'community' as const, label: 'קהילתי', icon: <MessageSquare size={14} />, badge: 0 },
+        { id: 'private'   as const, label: 'פרטי',   icon: <Lock size={14} />,          badge: totalUnread },
+      ] as const).map(tab => (
+        <button
+          key={tab.id}
+          onClick={() => setMainTab(tab.id)}
+          className="flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-semibold transition-all duration-200"
+          style={mainTab === tab.id
+            ? { background: 'rgba(255,255,255,.15)', color: 'white' }
+            : { background: 'rgba(0,0,0,.25)', color: 'rgba(255,255,255,.55)', border: '1px solid rgba(255,255,255,.08)' }
+          }
+        >
+          {tab.icon}
+          <span>{tab.label}</span>
+          {tab.badge > 0 && (
+            <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">
+              {tab.badge > 9 ? '9+' : tab.badge}
+            </span>
+          )}
+        </button>
+      ))}
+    </div>
+  )
 
-  /* ── Topics list view ── */
-  if (view === 'list') {
+  // Shared input bar
+  function InputBar({ value, onChange, onKeyDown, onSend, isSending, textRef }: {
+    value: string
+    onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void
+    onKeyDown: (e: React.KeyboardEvent) => void
+    onSend: () => void
+    isSending: boolean
+    textRef: React.RefObject<HTMLTextAreaElement | null>
+  }) {
+    return (
+      <div className="shrink-0 px-4 py-3 lg:px-5" style={{ background: 'var(--hdr)', borderTop: '1px solid var(--bd)' }}>
+        <div className="flex items-end gap-2 rounded-2xl p-2" style={{ background: 'var(--inp)', border: '1px solid var(--bd)' }}>
+          <button className="mb-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-slate-600 transition hover:bg-white/[0.07] hover:text-slate-400">
+            <Smile size={17} />
+          </button>
+          <textarea
+            ref={textRef}
+            value={value}
+            onChange={onChange}
+            onKeyDown={onKeyDown}
+            rows={1}
+            placeholder="כתוב הודעה..."
+            className="flex-1 resize-none bg-transparent py-1.5 text-sm outline-none placeholder:text-slate-600"
+            style={{ color: 'var(--tx)', maxHeight: '120px' }}
+          />
+          <button
+            onClick={onSend}
+            disabled={!value.trim() || isSending}
+            className="mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white shadow-md transition-all duration-200 hover:scale-105 disabled:opacity-30"
+            style={{ background: value.trim() ? 'linear-gradient(135deg, #7c3aed, #6d28d9)' : 'var(--inp)' }}
+          >
+            <Send size={15} className={value.trim() ? '' : 'text-slate-600'} />
+          </button>
+        </div>
+        <p className="mt-1.5 text-center text-[10px] text-slate-700">Enter לשליחה · Shift+Enter לשורה חדשה</p>
+      </div>
+    )
+  }
+
+  // ── COMMUNITY LIST ──
+  if (mainTab === 'community' && communityView === 'list') {
     return (
       <div className="min-h-full" style={{ background: 'var(--bg)' }}>
-
-        {/* Header */}
-        <div
-          className="relative overflow-hidden px-6 py-8"
-          style={{ background: 'linear-gradient(135deg, #0a0a18 0%, var(--bg) 70%)' }}
-        >
-          <div className="pointer-events-none absolute -top-16 start-0 h-48 w-48 rounded-full opacity-25" style={{ background: 'radial-gradient(circle, rgba(52,211,153,.5) 0%, transparent 70%)', filter: 'blur(40px)' }} />
-          <div className="grid-pattern absolute inset-0" />
+        <div className="relative overflow-hidden px-6 py-8" style={headerBg}>
+          <BgDecorations />
           <div className="relative mx-auto max-w-5xl">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -167,7 +366,7 @@ export default function ChatClient({ topics: initialTopics, categories, currentU
                 <p className="mt-1 text-sm text-slate-400">שוחח עם הקהילה לפי נושאים</p>
               </div>
               <button
-                onClick={() => setShowCreate((s) => !s)}
+                onClick={() => setShowCreate(s => !s)}
                 className="flex w-fit items-center gap-2 rounded-xl px-5 py-3 text-sm font-bold text-white shadow-lg transition-all hover:scale-[1.02] hover:opacity-90"
                 style={{ background: 'linear-gradient(135deg, #7c3aed, #6d28d9)', boxShadow: '0 4px 20px rgba(124,58,237,.4)' }}
               >
@@ -175,11 +374,11 @@ export default function ChatClient({ topics: initialTopics, categories, currentU
                 {showCreate ? 'ביטול' : 'נושא חדש'}
               </button>
             </div>
+            {TabBar}
           </div>
         </div>
 
         <div className="mx-auto max-w-5xl px-6 py-6">
-          {/* Create topic form */}
           {showCreate && (
             <form
               action={(fd) => { createTopic(fd); setShowCreate(false) }}
@@ -205,7 +404,6 @@ export default function ChatClient({ topics: initialTopics, categories, currentU
             </form>
           )}
 
-          {/* Category filters */}
           <div className="mb-5 flex flex-wrap gap-2">
             {['הכל', ...(categories.length ? categories : ['כללי'])].map((cat) => (
               <button
@@ -222,7 +420,6 @@ export default function ChatClient({ topics: initialTopics, categories, currentU
             ))}
           </div>
 
-          {/* Topics grid */}
           {filteredTopics.length === 0 ? (
             <div className="flex flex-col items-center gap-4 rounded-2xl py-20 text-center" style={{ border: '2px dashed var(--bd)', background: 'var(--inp)' }}>
               <MessageSquare size={32} className="text-slate-600" />
@@ -235,20 +432,14 @@ export default function ChatClient({ topics: initialTopics, categories, currentU
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {filteredTopics.map((topic, i) => {
                 const c = categoryColors[topic.category] ?? categoryColors['כללי']
-                const creator = displayName(topic.profiles)
+                const creator = dName(topic.profiles)
                 return (
                   <button
                     key={topic.id}
                     onClick={() => openTopic(topic)}
                     className="group animate-fade-up overflow-hidden rounded-2xl text-start transition-all duration-300 hover:scale-[1.02] hover:-translate-y-0.5"
-                    style={{
-                      background: 'var(--s2)',
-                      border: '1px solid var(--bd)',
-                      boxShadow: '0 2px 12px rgba(0,0,0,.2)',
-                      animationDelay: `${i * 40}ms`,
-                    }}
+                    style={{ background: 'var(--s2)', border: '1px solid var(--bd)', boxShadow: '0 2px 12px rgba(0,0,0,.2)', animationDelay: `${i * 40}ms` }}
                   >
-                    {/* Color stripe */}
                     <div className="h-1 w-full" style={{ background: c.text }} />
                     <div className="p-4">
                       <div className="mb-3 flex items-start justify-between gap-2">
@@ -258,22 +449,15 @@ export default function ChatClient({ topics: initialTopics, categories, currentU
                           {new Date(topic.created_at).toLocaleDateString('he-IL')}
                         </span>
                       </div>
-                      <h3 className="mb-3 font-bold text-slate-100 transition-colors group-hover:text-white line-clamp-2">
-                        {topic.title}
-                      </h3>
+                      <h3 className="mb-3 font-bold text-slate-100 transition-colors group-hover:text-white line-clamp-2">{topic.title}</h3>
                       <div className="flex items-center gap-2">
-                        <div
-                          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${avatarGrad(topic.created_by)} text-[9px] font-bold text-white`}
-                        >
+                        <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${avatarGrad(topic.created_by)} text-[9px] font-bold text-white`}>
                           {initials(creator)}
                         </div>
                         <span className="text-xs text-slate-500">{creator}</span>
                       </div>
                     </div>
-                    <div
-                      className="flex items-center justify-end gap-1 px-4 py-2 text-xs text-slate-500 transition-colors group-hover:text-purple-400"
-                      style={{ borderTop: '1px solid var(--bd)' }}
-                    >
+                    <div className="flex items-center justify-end gap-1 px-4 py-2 text-xs text-slate-500 transition-colors group-hover:text-purple-400" style={{ borderTop: '1px solid var(--bd)' }}>
                       <span>הצטרף לשיחה</span>
                       <ArrowRight size={12} className="transition-transform group-hover:translate-x-0.5" />
                     </div>
@@ -287,66 +471,235 @@ export default function ChatClient({ topics: initialTopics, categories, currentU
     )
   }
 
-  /* ── Chat conversation view ── */
+  // ── COMMUNITY CHAT ──
+  if (mainTab === 'community' && communityView === 'chat') {
+    return (
+      <div className="flex h-[calc(100vh-3.5rem)] flex-col overflow-hidden lg:h-screen" style={{ background: 'var(--bg)' }}>
+        <div className="shrink-0 flex items-center gap-3 px-5 py-3.5" style={{ background: 'var(--hdr)', borderBottom: '1px solid var(--bd)', backdropFilter: 'blur(20px)' }}>
+          <button
+            onClick={() => { setCommunityView('list'); setSelectedTopic(null); setCommunityMsgs([]) }}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-slate-400 transition hover:bg-white/[0.07] hover:text-slate-200"
+          >
+            <ArrowRight size={17} />
+          </button>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <Hash size={14} className="shrink-0 text-purple-400" />
+              <h2 className="truncate text-sm font-bold text-white">{selectedTopic?.title}</h2>
+            </div>
+            {selectedTopic && <CategoryBadge cat={selectedTopic.category} />}
+          </div>
+          <div className="flex items-center gap-1.5 text-xs text-emerald-400 shrink-0">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
+            פעיל
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-4 py-4 lg:px-6">
+          {communityMsgs.length === 0 && (
+            <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl" style={{ background: 'rgba(124,58,237,.1)', border: '1px solid rgba(124,58,237,.2)' }}>
+                <MessageSquare size={26} className="text-purple-400" />
+              </div>
+              <div>
+                <p className="font-bold text-slate-200">{selectedTopic?.title}</p>
+                <p className="mt-1 text-sm text-slate-600">היה הראשון לכתוב הודעה בנושא זה</p>
+              </div>
+            </div>
+          )}
+          <div className="space-y-1">
+            {communityMsgs.map((msg, i) => {
+              const isOwn = msg.user_id === currentUserId
+              const prevMsg = communityMsgs[i - 1]
+              const sameUser = prevMsg?.user_id === msg.user_id
+              const isTemp = msg.id.startsWith('temp-')
+              const name = dName(msg.profiles)
+              const gradient = avatarGrad(msg.user_id)
+              return (
+                <div key={msg.id} className={`group flex items-end gap-2.5 ${isOwn ? 'flex-row-reverse' : ''} ${sameUser ? 'mt-0.5' : 'mt-4'}`}>
+                  {!sameUser ? (
+                    <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${gradient} text-xs font-bold text-white shadow-md`}>
+                      {initials(name)}
+                    </div>
+                  ) : <div className="w-8 shrink-0" />}
+                  <div className={`flex max-w-[72%] flex-col gap-0.5 ${isOwn ? 'items-end' : 'items-start'}`}>
+                    {!sameUser && (
+                      <div className={`flex items-center gap-2 px-1 ${isOwn ? 'flex-row-reverse' : ''}`}>
+                        <span className="text-xs font-semibold text-slate-300">{isOwn ? 'אתה' : name}</span>
+                        <span className="text-[10px] text-slate-600">
+                          {new Date(msg.created_at).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                    )}
+                    <div
+                      className={`relative rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${isTemp ? 'opacity-70' : 'opacity-100'}`}
+                      style={isOwn
+                        ? { background: 'linear-gradient(135deg, #7c3aed, #6d28d9)', boxShadow: '0 2px 12px rgba(124,58,237,.25)', color: 'white' }
+                        : { background: 'var(--s2)', border: '1px solid var(--bd)', color: 'var(--tx2)' }
+                      }
+                    >
+                      {msg.content}
+                      {isTemp && <span className="absolute -bottom-4 end-0 text-[9px] text-slate-600">שולח...</span>}
+                    </div>
+                    {sameUser && (
+                      <span className="px-1 text-[10px] text-slate-700 opacity-0 transition-opacity group-hover:opacity-100">
+                        {new Date(msg.created_at).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          <div ref={communityBottomRef} />
+        </div>
+
+        <InputBar
+          value={communityText}
+          onChange={makeTextareaHandler(setCommunityText)}
+          onKeyDown={handleCommunityKey}
+          onSend={handleCommunitySend}
+          isSending={isSendingC}
+          textRef={communityTextRef}
+        />
+      </div>
+    )
+  }
+
+  // ── PRIVATE LIST ──
+  if (mainTab === 'private' && dmView === 'list') {
+    return (
+      <div className="min-h-full" style={{ background: 'var(--bg)' }}>
+        <div className="relative overflow-hidden px-6 py-8" style={headerBg}>
+          <BgDecorations />
+          <div className="relative mx-auto max-w-5xl">
+            <div>
+              <h1 className="text-2xl font-bold text-white lg:text-3xl">צ׳אטים</h1>
+              <p className="mt-1 text-sm text-slate-400">שיחות פרטיות</p>
+            </div>
+            {TabBar}
+          </div>
+        </div>
+
+        <div className="mx-auto max-w-5xl px-6 py-6">
+          {convos.length === 0 ? (
+            <div className="flex flex-col items-center gap-4 rounded-2xl py-20 text-center" style={{ border: '2px dashed var(--bd)', background: 'var(--inp)' }}>
+              <Lock size={32} className="text-slate-600" />
+              <div>
+                <p className="font-semibold text-slate-400">אין שיחות פרטיות</p>
+                <p className="mt-1 text-sm text-slate-600">לחץ &apos;פנה למפרסם&apos; בלוח העבודות כדי להתחיל שיחה</p>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {convos.map(convo => {
+                const name = dName(convo.profile)
+                const hasUnread = convo.unread > 0
+                return (
+                  <button
+                    key={convo.partnerId}
+                    onClick={() => openConversation(convo.partnerId)}
+                    className="group flex w-full items-center gap-4 rounded-2xl p-4 text-start transition-all duration-200 hover:-translate-y-0.5"
+                    style={{
+                      background: 'var(--s2)',
+                      border: hasUnread ? '1px solid rgba(124,58,237,.3)' : '1px solid var(--bd)',
+                      boxShadow: '0 2px 12px rgba(0,0,0,.14)',
+                    }}
+                  >
+                    <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${avatarGrad(convo.partnerId)} text-sm font-bold text-white shadow-md`}>
+                      {convo.profile?.avatar_url
+                        ? <img src={convo.profile.avatar_url} alt={name} className="h-12 w-12 rounded-full object-cover" />
+                        : initials(name)
+                      }
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between">
+                        <span className={`text-sm font-semibold ${hasUnread ? 'text-white' : 'text-slate-200'}`}>{name}</span>
+                        <span className="text-[11px] text-slate-500">
+                          {new Date(convo.lastMsg.created_at).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      <div className="mt-0.5 flex items-center justify-between gap-2">
+                        <p className={`truncate text-xs ${hasUnread ? 'text-slate-300' : 'text-slate-500'}`}>
+                          {convo.lastMsg.sender_id === currentUserId && <span className="text-slate-600">אתה: </span>}
+                          {convo.lastMsg.content}
+                        </p>
+                        {hasUnread && (
+                          <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-purple-600 px-1.5 text-[10px] font-bold text-white">
+                            {convo.unread > 9 ? '9+' : convo.unread}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // ── PRIVATE CHAT ──
   return (
     <div className="flex h-[calc(100vh-3.5rem)] flex-col overflow-hidden lg:h-screen" style={{ background: 'var(--bg)' }}>
-
-      {/* Topic header */}
-      <div
-        className="shrink-0 flex items-center gap-3 px-5 py-3.5"
-        style={{ background: 'var(--hdr)', borderBottom: '1px solid var(--bd)', backdropFilter: 'blur(20px)' }}
-      >
+      <div className="shrink-0 flex items-center gap-3 px-5 py-3.5" style={{ background: 'var(--hdr)', borderBottom: '1px solid var(--bd)', backdropFilter: 'blur(20px)' }}>
         <button
-          onClick={() => { setView('list'); setSelectedTopic(null); setMessages([]) }}
+          onClick={() => { setDmView('list'); setSelectedPartner(null) }}
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-slate-400 transition hover:bg-white/[0.07] hover:text-slate-200"
         >
           <ArrowRight size={17} />
         </button>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <Hash size={14} className="shrink-0 text-purple-400" />
-            <h2 className="truncate text-sm font-bold text-white">{selectedTopic?.title}</h2>
+        {selectedPartner && (
+          <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${avatarGrad(selectedPartner)} text-xs font-bold text-white shadow-md`}>
+            {partnerProfile?.avatar_url
+              ? <img src={partnerProfile.avatar_url} alt={dName(partnerProfile)} className="h-9 w-9 rounded-full object-cover" />
+              : initials(dName(partnerProfile))
+            }
           </div>
-          {selectedTopic && <CategoryBadge cat={selectedTopic.category} />}
+        )}
+        <div className="min-w-0 flex-1">
+          <h2 className="truncate text-sm font-bold text-white">{dName(partnerProfile)}</h2>
+          {partnerProfile?.specialization && (
+            <p className="text-xs text-slate-500">{partnerProfile.specialization}</p>
+          )}
         </div>
-        <div className="flex items-center gap-1.5 text-xs text-emerald-400 shrink-0">
-          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
-          פעיל
-        </div>
+        <Lock size={14} className="shrink-0 text-slate-600" />
       </div>
 
-      {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-4 lg:px-6">
-        {messages.length === 0 && (
+        {currentConvMsgs.length === 0 && (
           <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
             <div className="flex h-16 w-16 items-center justify-center rounded-2xl" style={{ background: 'rgba(124,58,237,.1)', border: '1px solid rgba(124,58,237,.2)' }}>
-              <MessageSquare size={26} className="text-purple-400" />
+              <Lock size={26} className="text-purple-400" />
             </div>
             <div>
-              <p className="font-bold text-slate-200">{selectedTopic?.title}</p>
-              <p className="mt-1 text-sm text-slate-600">היה הראשון לכתוב הודעה בנושא זה</p>
+              <p className="font-bold text-slate-200">{dName(partnerProfile)}</p>
+              <p className="mt-1 text-sm text-slate-600">שלח הודעה ראשונה לפתוח את השיחה</p>
             </div>
           </div>
         )}
 
         <div className="space-y-1">
-          {messages.map((msg, i) => {
-            const isOwn = msg.user_id === currentUserId
-            const prevMsg = messages[i - 1]
-            const sameUser = prevMsg?.user_id === msg.user_id
+          {currentConvMsgs.map((msg, i) => {
+            const isOwn = msg.sender_id === currentUserId
+            const prev = currentConvMsgs[i - 1]
+            const sameUser = prev?.sender_id === msg.sender_id
             const isTemp = msg.id.startsWith('temp-')
-            const name = displayName(msg.profiles)
-            const gradient = avatarGrad(msg.user_id)
+            const profile = isOwn ? currentProfile : partnerProfile
+            const name = dName(profile)
 
             return (
               <div key={msg.id} className={`group flex items-end gap-2.5 ${isOwn ? 'flex-row-reverse' : ''} ${sameUser ? 'mt-0.5' : 'mt-4'}`}>
                 {!sameUser ? (
-                  <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${gradient} text-xs font-bold text-white shadow-md`}>
-                    {initials(name)}
+                  <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${avatarGrad(msg.sender_id)} text-xs font-bold text-white shadow-md`}>
+                    {profile?.avatar_url
+                      ? <img src={profile.avatar_url} alt={name} className="h-8 w-8 rounded-full object-cover" />
+                      : initials(name)
+                    }
                   </div>
-                ) : (
-                  <div className="w-8 shrink-0" />
-                )}
+                ) : <div className="w-8 shrink-0" />}
 
                 <div className={`flex max-w-[72%] flex-col gap-0.5 ${isOwn ? 'items-end' : 'items-start'}`}>
                   {!sameUser && (
@@ -358,7 +711,7 @@ export default function ChatClient({ topics: initialTopics, categories, currentU
                     </div>
                   )}
                   <div
-                    className={`relative rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${isTemp ? 'opacity-70' : 'opacity-100'}`}
+                    className={`relative rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${isTemp ? 'opacity-70' : ''}`}
                     style={isOwn
                       ? { background: 'linear-gradient(135deg, #7c3aed, #6d28d9)', boxShadow: '0 2px 12px rgba(124,58,237,.25)', color: 'white' }
                       : { background: 'var(--s2)', border: '1px solid var(--bd)', color: 'var(--tx2)' }
@@ -367,6 +720,9 @@ export default function ChatClient({ topics: initialTopics, categories, currentU
                     {msg.content}
                     {isTemp && <span className="absolute -bottom-4 end-0 text-[9px] text-slate-600">שולח...</span>}
                   </div>
+                  {isOwn && !isTemp && msg.is_read && (
+                    <span className="px-1 text-[10px] text-purple-400">✓✓ נקרא</span>
+                  )}
                   {sameUser && (
                     <span className="px-1 text-[10px] text-slate-700 opacity-0 transition-opacity group-hover:opacity-100">
                       {new Date(msg.created_at).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
@@ -377,35 +733,17 @@ export default function ChatClient({ topics: initialTopics, categories, currentU
             )
           })}
         </div>
-        <div ref={bottomRef} />
+        <div ref={privateBottomRef} />
       </div>
 
-      {/* Input */}
-      <div className="shrink-0 px-4 py-3 lg:px-5" style={{ background: 'var(--hdr)', borderTop: '1px solid var(--bd)' }}>
-        <div className="flex items-end gap-2 rounded-2xl p-2" style={{ background: 'var(--inp)', border: '1px solid var(--bd)' }}>
-          <button className="mb-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-slate-600 transition hover:bg-white/[0.07] hover:text-slate-400">
-            <Smile size={17} />
-          </button>
-          <textarea
-            ref={textareaRef}
-            value={text}
-            onChange={handleTextareaChange}
-            onKeyDown={handleKeyDown}
-            rows={1}
-            className="flex-1 resize-none bg-transparent py-1.5 text-sm outline-none"
-            style={{ color: 'var(--tx)', maxHeight: '120px' }}
-          />
-          <button
-            onClick={handleSend}
-            disabled={!text.trim() || isSending}
-            className="mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white shadow-md transition-all duration-200 hover:scale-105 disabled:opacity-30"
-            style={{ background: text.trim() ? 'linear-gradient(135deg, #7c3aed, #6d28d9)' : 'var(--inp)' }}
-          >
-            <Send size={15} className={text.trim() ? '' : 'text-slate-600'} />
-          </button>
-        </div>
-        <p className="mt-1.5 text-center text-[10px] text-slate-700">Enter לשליחה · Shift+Enter לשורה חדשה</p>
-      </div>
+      <InputBar
+        value={privateText}
+        onChange={makeTextareaHandler(setPrivateText)}
+        onKeyDown={handlePrivateKey}
+        onSend={handlePrivateSend}
+        isSending={isSendingP}
+        textRef={privateTextRef}
+      />
     </div>
   )
 }

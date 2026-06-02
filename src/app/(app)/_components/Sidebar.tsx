@@ -3,14 +3,15 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { LayoutDashboard, Briefcase, MessageSquare, Library, Menu, X, Sparkles, Moon, Sun, ShieldCheck, Palette, Globe } from 'lucide-react'
-import { useState } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import LogoutButton from './LogoutButton'
 import { useTheme } from '@/components/ThemeProvider'
 import { useLanguage } from '@/components/LanguageProvider'
+import { createClient } from '@/lib/supabase/client'
 import type { Profile } from '@/types'
 
 type NavItem = { href: string; label: string; icon: React.ReactNode }
-type Props = { profile: Profile | null; email: string }
+type Props = { profile: Profile | null; email: string; currentUserId?: string }
 
 const labels = {
   he: {
@@ -27,12 +28,38 @@ const labels = {
   },
 }
 
-export default function Sidebar({ profile, email }: Props) {
+export default function Sidebar({ profile, email, currentUserId }: Props) {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
   const { theme, toggle } = useTheme()
   const { lang, toggleLang } = useLanguage()
   const t = labels[lang]
+  const [unreadCount, setUnreadCount] = useState(0)
+  const supabase = useMemo(() => createClient(), [])
+
+  useEffect(() => {
+    if (!currentUserId) return
+
+    const fetchCount = async () => {
+      const { count } = await supabase
+        .from('private_messages')
+        .select('*', { count: 'exact', head: true })
+        .eq('receiver_id', currentUserId)
+        .eq('is_read', false)
+      setUnreadCount(count ?? 0)
+    }
+
+    fetchCount()
+
+    const ch = supabase
+      .channel('sidebar-pm-count')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'private_messages' }, () => {
+        fetchCount()
+      })
+      .subscribe()
+
+    return () => { supabase.removeChannel(ch) }
+  }, [currentUserId, supabase])
 
   const navItems: NavItem[] = [
     { href: '/dashboard',   label: t.home,        icon: <LayoutDashboard size={17} /> },
@@ -76,6 +103,7 @@ export default function Sidebar({ profile, email }: Props) {
       <nav className="flex-1 space-y-0.5 px-3">
         {navItems.map((item) => {
           const active = pathname === item.href || pathname.startsWith(item.href + '/')
+          const isChat = item.href === '/chat'
           return (
             <Link
               key={item.href}
@@ -100,6 +128,11 @@ export default function Sidebar({ profile, email }: Props) {
                 {item.icon}
               </span>
               <span className="relative">{item.label}</span>
+              {isChat && unreadCount > 0 && (
+                <span className="relative ms-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
             </Link>
           )
         })}
@@ -241,8 +274,13 @@ export default function Sidebar({ profile, email }: Props) {
           >
             {theme === 'dark' ? <Sun size={18} className="text-amber-400" /> : <Moon size={18} className="text-indigo-500" />}
           </button>
-          <button onClick={() => setOpen((o) => !o)} className="rounded-lg p-1.5 transition hover:bg-white/[0.06]" style={{ color: 'var(--tx2)' }}>
+          <button onClick={() => setOpen((o) => !o)} className="relative rounded-lg p-1.5 transition hover:bg-white/[0.06]" style={{ color: 'var(--tx2)' }}>
             {open ? <X size={20} /> : <Menu size={20} />}
+            {!open && unreadCount > 0 && (
+              <span className="absolute -end-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[8px] font-bold text-white">
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
           </button>
         </div>
       </div>

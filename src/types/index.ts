@@ -95,6 +95,18 @@ export type Asset = {
   created_at: string
 }
 
+export type PrivateMessage = {
+  id: string
+  sender_id: string
+  receiver_id: string
+  content: string
+  job_id: string | null
+  is_read: boolean
+  created_at: string
+  sender?: Profile
+  receiver?: Profile
+}
+
 export type JobCategory = {
   id: string
   name: string
