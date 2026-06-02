@@ -11,8 +11,8 @@ const rubik = Rubik({
 })
 
 export const metadata: Metadata = {
-  title: 'גרפיקס קהילה',
-  description: 'פלטפורמת הקהילה לגרפיקאים',
+  title: 'Grafi',
+  description: 'קהילת הגרפיקאים החרדים',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

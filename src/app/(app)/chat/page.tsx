@@ -4,7 +4,9 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import ChatClient from './ChatClient'
 import {
   sendMessage,
+  editMessage,
   deleteMessage,
+  toggleCommunityReaction,
   sendPrivateMessage,
   deletePrivateMessage,
   markMessagesRead,
@@ -102,7 +104,9 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
       currentProfile={profileData}
       isAdmin={isAdmin}
       sendMessage={sendMessage}
+      editMessage={editMessage}
       deleteMessage={deleteMessage}
+      toggleCommunityReaction={toggleCommunityReaction}
       initialPrivateMessages={privateMessages}
       sendPrivateMessage={sendPrivateMessage}
       deletePrivateMessage={deletePrivateMessage}

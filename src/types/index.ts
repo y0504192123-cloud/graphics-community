@@ -70,9 +70,25 @@ export type Message = {
   id: string
   channel_id: string
   user_id: string
-  content: string
+  content: string | null
   created_at: string
+  edited_at?: string | null
+  attachment_url?: string | null
+  attachment_type?: string | null
+  attachment_name?: string | null
+  reply_to_id?: string | null
+  reply_to?: { id: string; content: string | null; user_id: string } | null
   profiles?: Profile
+}
+
+export type Notification = {
+  id: string
+  user_id: string
+  type: string
+  content: string
+  link: string | null
+  is_read: boolean
+  created_at: string
 }
 
 export type NewsItem = {
