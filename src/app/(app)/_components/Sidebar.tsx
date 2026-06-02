@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Briefcase, MessageSquare, Library, Menu, X, ShieldCheck, Palette, Globe, MessagesSquare } from 'lucide-react'
+import { LayoutDashboard, Briefcase, MessageSquare, Library, Menu, X, ShieldCheck, Palette, Globe, MessagesSquare, ScanText } from 'lucide-react'
 import { useState, useEffect, useMemo } from 'react'
 import LogoutButton from './LogoutButton'
 import { useLanguage } from '@/components/LanguageProvider'
@@ -16,12 +16,12 @@ const labels = {
   he: {
     home: 'ראשי', jobs: 'לוח עבודות', chat: "צ'אטים", forum: 'פורום',
     inspiration: 'ספריית השראה', assets: 'חומרים לשימוש', admin: 'פאנל ניהול',
-    designer: 'גרפיקאי',
+    designer: 'גרפיקאי', fontId: 'זיהוי פונט',
   },
   en: {
     home: 'Home', jobs: 'Job Board', chat: 'Chats', forum: 'Forum',
     inspiration: 'Inspiration', assets: 'Resources', admin: 'Admin Panel',
-    designer: 'Designer',
+    designer: 'Designer', fontId: 'Font Identifier',
   },
 }
 
@@ -57,7 +57,8 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
     { href: '/chat',        label: t.chat,        icon: <MessageSquare size={17} /> },
     { href: '/forum',       label: t.forum,       icon: <MessagesSquare size={17} /> },
     { href: '/inspiration', label: t.inspiration, icon: <Palette size={17} /> },
-    { href: '/assets',      label: t.assets,      icon: <Library size={17} /> },
+    { href: '/assets',           label: t.assets,  icon: <Library size={17} /> },
+    { href: '/font-identifier',  label: t.fontId,  icon: <ScanText size={17} /> },
   ]
 
   const displayName = profile?.full_name ?? profile?.username ?? email.split('@')[0]
