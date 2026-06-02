@@ -598,6 +598,9 @@ export default function ChatClient({
                         מחק
                       </button>
                     )}
+                    {isOwn && !isTemp && (
+                      <span className="px-1 text-[10px] text-slate-600">✓</span>
+                    )}
                     {sameUser && !(isOwn || isAdmin) && (
                       <span className="px-1 text-[10px] text-slate-700 opacity-0 transition-opacity group-hover:opacity-100">
                         {new Date(msg.created_at).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
