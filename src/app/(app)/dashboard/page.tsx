@@ -99,7 +99,7 @@ export default async function DashboardPage() {
             </h1>
             <p className="mt-2" style={{ color: 'var(--tx2)' }}>
               {portfolioCount > 0
-                ? `יש לך ${portfolioCount} עבודות בפורטפוליו — המשך לצמוח!`
+                ? `יש לך ${portfolioCount} עבודות — המשך לצמוח!`
                 : 'ברוך הבא לקהילה — חקור, שתף ויצור קשרים עם גרפיקאים נוספים.'}
             </p>
           </div>

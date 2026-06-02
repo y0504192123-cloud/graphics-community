@@ -78,7 +78,7 @@ export default function AdminClient({
       {/* Header */}
       <div
         className="relative overflow-hidden px-6 py-8"
-        style={{ background: 'linear-gradient(135deg, #1a0533 0%, var(--bg) 70%)' }}
+        style={{ background: 'var(--hero)' }}
       >
         <div className="pointer-events-none absolute -top-20 start-0 h-60 w-60 rounded-full opacity-20" style={{ background: 'radial-gradient(circle, rgba(236,72,153,.6) 0%, transparent 70%)', filter: 'blur(50px)' }} />
         <div className="grid-pattern absolute inset-0 opacity-40" />
