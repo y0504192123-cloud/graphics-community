@@ -26,7 +26,7 @@ export type PortfolioItem = {
 
 export type Job = {
   id: string
-  user_id: string
+  client_id: string
   title: string
   description: string
   budget: number | null

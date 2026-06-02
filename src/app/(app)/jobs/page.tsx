@@ -12,7 +12,7 @@ export default async function JobsPage() {
 
   const admin = createAdminClient()
   const [jobsRes, catsRes] = await Promise.all([
-    admin.from('jobs').select('*, profiles(*)').order('created_at', { ascending: false }),
+    admin.from('jobs').select('*, profiles!client_id(*)').order('created_at', { ascending: false }),
     admin.from('job_categories').select('name').order('name', { ascending: true }),
   ])
 
@@ -39,7 +39,7 @@ export default async function JobsPage() {
       console.log('[createJob] payload:', { title, description, category, budget })
 
       const { error, data } = await createAdminClient().from('jobs').insert({
-        user_id: user!.id,
+        client_id: user!.id,
         title,
         description,
         category,

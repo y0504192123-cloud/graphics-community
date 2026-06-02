@@ -177,7 +177,7 @@ export default function JobsClient({ jobs, currentUserId, categories, createJob,
 
           {filtered.map((job, i) => {
             const status = statusConfig[job.status]
-            const isOwn = job.user_id === currentUserId
+            const isOwn = job.client_id === currentUserId
             const isApplying = applyingTo === job.id
 
             return (
