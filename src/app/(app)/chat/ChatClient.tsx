@@ -22,8 +22,10 @@ type Props = {
   currentProfile: Profile | null
   isAdmin: boolean
   activeUsers: Profile[]
-  sendMessage: (topicId: string, content: string) => Promise<void>
+  sendMessage: (topicId: string, content: string, attUrl?: string, attType?: string, attName?: string, replyToId?: string) => Promise<void>
+  editMessage: (id: string, content: string) => Promise<void>
   deleteMessage: (id: string) => Promise<void>
+  toggleCommunityReaction: (messageId: string, emoji: string) => Promise<void>
   initialPrivateMessages: PrivateMessage[]
   sendPrivateMessage: (receiverId: string, content: string, attUrl?: string, attType?: string, attName?: string, replyToId?: string) => Promise<void>
   deletePrivateMessage: (id: string) => Promise<void>
@@ -103,6 +105,15 @@ function groupReactions(rxns: { emoji: string; user_id: string }[], uid: string)
   return Object.values(m)
 }
 
+function renderContent(content: string): React.ReactNode {
+  const parts = content.split(/(@[^\s@]+)/g)
+  return parts.map((part, i) =>
+    part.startsWith('@')
+      ? <span key={i} className="font-bold text-purple-400">{part}</span>
+      : part
+  )
+}
+
 // ─────────────────────────────────────────────────────────
 // Small components
 // ─────────────────────────────────────────────────────────
@@ -177,9 +188,11 @@ type InputBarProps = {
   placeholder?: string
   replyTo?: { content: string | null; senderName: string } | null
   onCancelReply?: () => void
+  mentionUsers?: Profile[]
+  onMentionSelect?: (p: Profile) => void
 }
 
-function InputBar({ value, onChange, onKeyDown, onSend, isSending, textRef, onAttachClick, attachment, onRemoveAttachment, isUploading, placeholder, replyTo, onCancelReply }: InputBarProps) {
+function InputBar({ value, onChange, onKeyDown, onSend, isSending, textRef, onAttachClick, attachment, onRemoveAttachment, isUploading, placeholder, replyTo, onCancelReply, mentionUsers, onMentionSelect }: InputBarProps) {
   const handleInput = (e: React.FormEvent<HTMLTextAreaElement>) => {
     const el = e.currentTarget
     el.style.height = 'auto'
@@ -189,6 +202,25 @@ function InputBar({ value, onChange, onKeyDown, onSend, isSending, textRef, onAt
 
   return (
     <div className="shrink-0 px-3 py-2.5" style={{ background: 'var(--hdr)', borderTop: '1px solid var(--bd)' }}>
+      {/* Mention dropdown */}
+      {mentionUsers && mentionUsers.length > 0 && onMentionSelect && (
+        <div className="mb-2 rounded-xl overflow-hidden" style={{ background: 'var(--s1)', border: '1px solid var(--bd)', boxShadow: '0 -4px 16px rgba(0,0,0,.08)' }}>
+          {mentionUsers.map((u, idx) => (
+            <button
+              key={u.id}
+              onMouseDown={e => { e.preventDefault(); onMentionSelect(u) }}
+              className="flex w-full items-center gap-2.5 px-3 py-2 text-start transition hover:bg-purple-50/60"
+              style={{ borderTop: idx > 0 ? '1px solid var(--bd)' : undefined }}
+            >
+              <AvatarBubble profile={u} uid={u.id} size={7} />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-xs font-semibold" style={{ color: 'var(--tx)' }}>{dName(u)}</p>
+                {u.specialization && <p className="truncate text-[10px]" style={{ color: 'var(--tx3)' }}>{u.specialization}</p>}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
       {/* Reply preview */}
       {replyTo && (
         <div className="mb-2 flex items-start gap-2 rounded-xl px-3 py-2 border-s-2 border-purple-500" style={{ background: 'rgba(124,58,237,.07)' }}>
@@ -253,7 +285,7 @@ function InputBar({ value, onChange, onKeyDown, onSend, isSending, textRef, onAt
 export default function ChatClient({
   generalTopicId,
   currentUserId, currentProfile, isAdmin, activeUsers,
-  sendMessage, deleteMessage,
+  sendMessage, editMessage, deleteMessage, toggleCommunityReaction,
   initialPrivateMessages,
   sendPrivateMessage, deletePrivateMessage, editPrivateMessage, toggleReaction,
   markMessagesRead, getChatUploadUrl,
@@ -268,6 +300,14 @@ export default function ChatClient({
   const [communityMsgs, setCommunityMsgs] = useState<Message[]>([])
   const [communityText, setCommunityText] = useState('')
   const [isSendingC, setIsSendingC] = useState(false)
+  const [communityReplyTo, setCommunityReplyTo] = useState<Message | null>(null)
+  const [communityReactionsMap, setCommunityReactionsMap] = useState<ReactionsMap>({})
+  const [communityEmojiPickerFor, setCommunityEmojiPickerFor] = useState<string | null>(null)
+  const [communityEditingId, setCommunityEditingId] = useState<string | null>(null)
+  const [communityEditText, setCommunityEditText] = useState('')
+
+  // ── Mention state (shared) ──
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null)
 
   // ── Private state ──
   const [privateMsgs, setPrivateMsgs] = useState<PrivateMessage[]>(initialPrivateMessages)
@@ -429,10 +469,23 @@ export default function ChatClient({
   useEffect(() => {
     if (!generalTopicId) return
     supabase.from('messages')
-      .select('id,content,created_at,user_id,channel_id,profiles(id,full_name,username,avatar_url)')
+      .select('id,content,created_at,user_id,channel_id,edited_at,attachment_url,attachment_type,attachment_name,reply_to_id,reply_to:messages!reply_to_id(id,content,user_id),profiles(id,full_name,username,avatar_url)')
       .eq('channel_id', generalTopicId).order('created_at', { ascending: true }).limit(100)
-      .then(({ data }) => { setCommunityMsgs((data as unknown as Message[]) ?? []) })
-  }, [generalTopicId, supabase])
+      .then(({ data }) => {
+        setCommunityMsgs((data as unknown as Message[]) ?? [])
+        const ids = (data ?? []).map((m: any) => m.id)
+        if (!ids.length) return
+        supabase.from('community_reactions').select('message_id, emoji, user_id').in('message_id', ids).then(({ data: rxns }) => {
+          if (!rxns?.length) return
+          const map: ReactionsMap = {}
+          for (const id of ids) {
+            const rows = rxns.filter((r: any) => r.message_id === id)
+            if (rows.length) map[id] = groupReactions(rows, currentUserId)
+          }
+          setCommunityReactionsMap(map)
+        })
+      })
+  }, [generalTopicId, supabase]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Realtime: community messages ──
   useEffect(() => {
@@ -454,6 +507,26 @@ export default function ChatClient({
       .subscribe()
     return () => { supabase.removeChannel(ch) }
   }, [generalTopicId, supabase])
+
+  // ── Realtime: community reactions ──
+  useEffect(() => {
+    if (!generalTopicId) return
+    let active = true
+    const reload = async (msgId: string) => {
+      const { data } = await supabase.from('community_reactions').select('emoji, user_id').eq('message_id', msgId)
+      if (active) setCommunityReactionsMap(prev => ({ ...prev, [msgId]: groupReactions(data ?? [], currentUserId) }))
+    }
+    const ch = supabase.channel('rt-community-reactions')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'community_reactions' }, (p) => { const id = (p.new as any)?.message_id; if (id && active) reload(id) })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'community_reactions' }, (p) => { const id = (p.new as any)?.message_id; if (id && active) reload(id) })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'community_reactions' }, (p) => {
+        const id = (p.old as any)?.message_id
+        if (!active) return
+        if (id) reload(id)
+      })
+      .subscribe()
+    return () => { active = false; supabase.removeChannel(ch) }
+  }, [generalTopicId, supabase, currentUserId])
 
   // ── Realtime: private messages ──
   useEffect(() => {
@@ -588,13 +661,47 @@ export default function ChatClient({
   }
 
   const handleCommunitySend = async () => {
-    if (!communityText.trim() || !generalTopicId || isSendingC) return
+    if ((!communityText.trim() && !attachFile) || !generalTopicId || isSendingC) return
     const content = communityText.trim()
+    const currentReplyTo = communityReplyTo
+    setCommunityReplyTo(null)
+    setMentionQuery(null)
+
+    if (attachFile) {
+      setIsUploading(true)
+      try {
+        const { signedUrl, publicUrl, error } = await getChatUploadUrl()
+        if (error || !signedUrl || !publicUrl) return
+        await fetch(signedUrl, { method: 'PUT', body: attachFile, headers: { 'Content-Type': attachFile.type } })
+        const attType = attachFile.type.startsWith('image/') ? 'image' : 'file'
+        setCommunityMsgs(prev => [...prev, {
+          id: `temp-${Date.now()}`, channel_id: generalTopicId, user_id: currentUserId,
+          content: content || null, created_at: new Date().toISOString(),
+          attachment_url: publicUrl, attachment_type: attType, attachment_name: attachFile.name,
+          reply_to_id: currentReplyTo?.id ?? null, reply_to: currentReplyTo ? { id: currentReplyTo.id, content: currentReplyTo.content, user_id: currentReplyTo.user_id } : null,
+          profiles: currentProfile ?? undefined,
+        }])
+        setCommunityText('')
+        if (communityTextRef.current) communityTextRef.current.style.height = 'auto'
+        await sendMessage(generalTopicId, content, publicUrl, attType, attachFile.name, currentReplyTo?.id)
+      } finally {
+        setIsUploading(false)
+        setAttachFile(null)
+        setAttachPreview(null)
+      }
+      return
+    }
+
     setCommunityText('')
     if (communityTextRef.current) communityTextRef.current.style.height = 'auto'
-    setCommunityMsgs(prev => [...prev, { id: `temp-${Date.now()}`, channel_id: generalTopicId, user_id: currentUserId, content, created_at: new Date().toISOString(), profiles: currentProfile ?? undefined }])
+    setCommunityMsgs(prev => [...prev, {
+      id: `temp-${Date.now()}`, channel_id: generalTopicId, user_id: currentUserId,
+      content, created_at: new Date().toISOString(),
+      reply_to_id: currentReplyTo?.id ?? null, reply_to: currentReplyTo ? { id: currentReplyTo.id, content: currentReplyTo.content, user_id: currentReplyTo.user_id } : null,
+      profiles: currentProfile ?? undefined,
+    }])
     setIsSendingC(true)
-    try { await sendMessage(generalTopicId, content) } finally { setIsSendingC(false) }
+    try { await sendMessage(generalTopicId, content, undefined, undefined, undefined, currentReplyTo?.id) } finally { setIsSendingC(false) }
   }
 
   const handlePrivateSend = async () => {
@@ -710,8 +817,82 @@ export default function ChatClient({
     deleteMessage(msgId)
   }
 
-  const handleCommunityKey = (e: React.KeyboardEvent) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleCommunitySend() } }
-  const handlePrivateKey = (e: React.KeyboardEvent) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handlePrivateSend() } }
+  const handleCommunityReaction = async (msgId: string, emoji: string) => {
+    setCommunityEmojiPickerFor(null)
+    setCommunityReactionsMap(prev => {
+      const existing = (prev[msgId] ?? []).map(r => ({ ...r }))
+      const prevUserRxn = existing.find(r => r.hasReacted)
+      if (prevUserRxn) {
+        if (prevUserRxn.emoji === emoji) {
+          const idx = existing.findIndex(r => r.emoji === emoji)
+          if (existing[idx].count <= 1) existing.splice(idx, 1)
+          else existing[idx] = { ...existing[idx], count: existing[idx].count - 1, hasReacted: false }
+        } else {
+          const oldIdx = existing.findIndex(r => r.emoji === prevUserRxn.emoji)
+          if (existing[oldIdx].count <= 1) existing.splice(oldIdx, 1)
+          else existing[oldIdx] = { ...existing[oldIdx], count: existing[oldIdx].count - 1, hasReacted: false }
+          const newIdx = existing.findIndex(r => r.emoji === emoji)
+          if (newIdx >= 0) existing[newIdx] = { ...existing[newIdx], count: existing[newIdx].count + 1, hasReacted: true }
+          else existing.push({ emoji, count: 1, hasReacted: true })
+        }
+      } else {
+        const idx = existing.findIndex(r => r.emoji === emoji)
+        if (idx >= 0) existing[idx] = { ...existing[idx], count: existing[idx].count + 1, hasReacted: true }
+        else existing.push({ emoji, count: 1, hasReacted: true })
+      }
+      return { ...prev, [msgId]: existing }
+    })
+    await toggleCommunityReaction(msgId, emoji)
+  }
+
+  const handleCommunityEditSave = async (msgId: string) => {
+    if (!communityEditText.trim()) return
+    const content = communityEditText.trim()
+    const editedAt = new Date().toISOString()
+    setCommunityMsgs(prev => prev.map(m => m.id === msgId ? { ...m, content, edited_at: editedAt } : m))
+    setCommunityEditingId(null)
+    setCommunityEditText('')
+    await editMessage(msgId, content)
+  }
+
+  // ── Mention helpers ──
+
+  function getMentionQuery(text: string): string | null {
+    const match = text.match(/@([^\s@]*)$/)
+    return match !== null ? match[1] : null
+  }
+
+  function insertMention(text: string, profile: Profile): string {
+    const name = profile.full_name?.split(' ')[0] ?? profile.username ?? 'user'
+    return text.replace(/@([^\s@]*)$/, `@${name} `)
+  }
+
+  const mentionedUsers = mentionQuery !== null
+    ? activeUsers.filter(u => {
+        const q = mentionQuery.toLowerCase()
+        return !q || (u.full_name ?? '').toLowerCase().includes(q) || (u.username ?? '').toLowerCase().includes(q)
+      }).slice(0, 6)
+    : []
+
+  const handleMentionSelect = (profile: Profile) => {
+    if (activeSide === 'community') {
+      setCommunityText(insertMention(communityText, profile))
+      communityTextRef.current?.focus()
+    } else {
+      setPrivateText(insertMention(privateText, profile))
+      privateTextRef.current?.focus()
+    }
+    setMentionQuery(null)
+  }
+
+  const handleCommunityKey = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') { setMentionQuery(null); return }
+    if (e.key === 'Enter' && !e.shiftKey && mentionQuery === null) { e.preventDefault(); handleCommunitySend() }
+  }
+  const handlePrivateKey = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') { setMentionQuery(null); return }
+    if (e.key === 'Enter' && !e.shiftKey && mentionQuery === null) { e.preventDefault(); handlePrivateSend() }
+  }
 
   // ─────────────────────────────────────────────────────────
   // LEFT PANEL
@@ -882,7 +1063,7 @@ export default function ChatClient({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-0.5">
+      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-0.5" onClick={() => setCommunityEmojiPickerFor(null)}>
         {communityMsgs.length === 0 && (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
             <MessageSquare size={28} className="text-slate-300" />
@@ -895,6 +1076,9 @@ export default function ChatClient({
           const sameUser = prev?.user_id === msg.user_id
           const isTemp = String(msg.id).startsWith('temp-')
           const name = dName(msg.profiles)
+          const isEditing = communityEditingId === msg.id
+          const reactions = communityReactionsMap[msg.id] ?? []
+          const showEmojiPicker = communityEmojiPickerFor === msg.id
           return (
             <div key={msg.id}>
               {needsDateSep(msg.created_at, prev?.created_at) && <DateSepLine iso={msg.created_at} />}
@@ -910,19 +1094,114 @@ export default function ChatClient({
                       <span className="text-[10px]" style={{ color: 'var(--tx3)' }}>{fmtTime(msg.created_at)}</span>
                     </div>
                   )}
-                  <div
-                    className={`rounded-2xl px-3.5 py-2 text-sm leading-relaxed ${isTemp ? 'opacity-60' : ''}`}
-                    style={isOwn
-                      ? { background: 'linear-gradient(135deg,#7c3aed,#6d28d9)', color: 'white' }
-                      : { background: 'var(--s2)', border: '1px solid var(--bd)', color: 'var(--tx)' }
-                    }
-                  >
-                    {msg.content}
-                  </div>
-                  {(isOwn || isAdmin) && !isTemp && (
-                    <button onClick={() => handleDeleteCommunity(msg.id)} className="mt-0.5 flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] opacity-0 transition group-hover:opacity-100 hover:bg-red-500/10 hover:text-red-500" style={{ color: 'var(--tx3)' }}>
-                      <Trash2 size={10} /> מחק
-                    </button>
+
+                  {/* Edit mode */}
+                  {isEditing ? (
+                    <div className="flex flex-col gap-2" style={{ minWidth: '220px' }}>
+                      <textarea
+                        autoFocus
+                        value={communityEditText}
+                        onChange={e => setCommunityEditText(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleCommunityEditSave(msg.id) }
+                          if (e.key === 'Escape') { setCommunityEditingId(null); setCommunityEditText('') }
+                        }}
+                        className="rounded-xl px-3 py-2 text-sm leading-relaxed outline-none resize-none"
+                        style={{ background: 'var(--inp)', border: '2px solid #7c3aed', color: 'var(--tx)' }}
+                        rows={2}
+                      />
+                      <div className="flex gap-2 justify-end">
+                        <button onClick={() => { setCommunityEditingId(null); setCommunityEditText('') }} className="rounded-lg px-2.5 py-1 text-xs font-medium" style={{ background: 'var(--inp)', color: 'var(--tx3)', border: '1px solid var(--bd)' }}>ביטול</button>
+                        <button onClick={() => handleCommunityEditSave(msg.id)} className="rounded-lg px-2.5 py-1 text-xs font-bold text-white" style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)' }}>שמור</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div
+                      className={`rounded-2xl text-sm leading-relaxed ${isTemp ? 'opacity-70' : ''}`}
+                      style={isOwn
+                        ? { background: 'linear-gradient(135deg,#7c3aed,#6d28d9)', color: 'white', padding: '8px 14px' }
+                        : { background: 'var(--s2)', border: '1px solid var(--bd)', color: 'var(--tx)', padding: '8px 14px' }
+                      }
+                    >
+                      {/* Reply quote */}
+                      {msg.reply_to_id && msg.reply_to && 'id' in msg.reply_to && (
+                        <div className="mb-2 rounded-lg px-2.5 py-1.5 text-xs border-s-2 border-purple-400" style={{ background: isOwn ? 'rgba(255,255,255,.15)' : 'var(--inp)' }}>
+                          <p className="font-semibold mb-0.5" style={{ color: isOwn ? 'rgba(255,255,255,.9)' : '#7c3aed' }}>
+                            {msg.reply_to.user_id === currentUserId ? 'אתה' : dName(communityMsgs.find(m => m.id === msg.reply_to?.id)?.profiles)}
+                          </p>
+                          <p className="truncate opacity-80">{msg.reply_to.content ?? '📎 קובץ'}</p>
+                        </div>
+                      )}
+                      {/* Attachment */}
+                      {msg.attachment_url && (
+                        <div className="mb-1">
+                          {msg.attachment_type === 'image'
+                            ? <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer"><img src={msg.attachment_url} alt="" className="max-h-48 max-w-[220px] rounded-xl object-cover cursor-pointer hover:opacity-90 transition" /></a>
+                            : (
+                              <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition hover:opacity-80" style={{ background: isOwn ? 'rgba(255,255,255,.15)' : 'var(--inp)', border: '1px solid var(--bd)' }}>
+                                <FileIcon size={16} />
+                                <span className="truncate text-xs">{msg.attachment_name ?? 'קובץ'}</span>
+                              </a>
+                            )
+                          }
+                        </div>
+                      )}
+                      {msg.content && <span className="whitespace-pre-wrap">{renderContent(msg.content)}</span>}
+                      {msg.edited_at && <span className="ms-1.5 text-[10px] opacity-60 italic">נערך</span>}
+                    </div>
+                  )}
+
+                  {/* Reactions row */}
+                  {reactions.length > 0 && !isEditing && (
+                    <div className={`flex flex-wrap gap-1 px-1 ${isOwn ? 'justify-end' : 'justify-start'}`}>
+                      {reactions.map(r => (
+                        <button key={r.emoji} onClick={e => { e.stopPropagation(); handleCommunityReaction(msg.id, r.emoji) }}
+                          className="flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs transition hover:scale-105"
+                          style={{ background: r.hasReacted ? 'rgba(124,58,237,.15)' : 'var(--inp)', border: r.hasReacted ? '1px solid rgba(124,58,237,.4)' : '1px solid var(--bd)' }}>
+                          <span>{r.emoji}</span>
+                          <span className="text-[10px] font-medium" style={{ color: r.hasReacted ? '#7c3aed' : 'var(--tx3)' }}>{r.count}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Time + hover actions */}
+                  {!isEditing && (
+                    <div className={`relative flex items-center gap-1 px-1 ${isOwn ? 'flex-row-reverse' : ''}`}>
+                      {sameUser && <span className="text-[10px]" style={{ color: 'var(--tx3)' }}>{fmtTime(msg.created_at)}</span>}
+                      {isOwn && isTemp && <span className="text-[10px]" style={{ color: 'var(--tx3)' }}>שולח...</span>}
+                      {!isTemp && (
+                        <div className={`flex items-center gap-0.5 opacity-0 transition group-hover:opacity-100 ${isOwn ? 'flex-row-reverse' : ''}`}>
+                          <div className="relative">
+                            <button onClick={e => { e.stopPropagation(); setCommunityEmojiPickerFor(showEmojiPicker ? null : msg.id) }}
+                              className="rounded p-1 transition hover:bg-purple-500/10" style={{ color: showEmojiPicker ? '#7c3aed' : 'var(--tx3)' }} title="תגובת אימוג׳י">
+                              <Smile size={11} />
+                            </button>
+                            {showEmojiPicker && (
+                              <div className={`absolute z-20 ${isOwn ? 'end-0' : 'start-0'}`} style={{ bottom: '24px' }} onClick={e => e.stopPropagation()}>
+                                <EmojiPickerRow onSelect={e => handleCommunityReaction(msg.id, e)} />
+                              </div>
+                            )}
+                          </div>
+                          <button onClick={e => { e.stopPropagation(); setCommunityReplyTo(msg) }}
+                            className="rounded p-1 transition hover:bg-blue-500/10" style={{ color: 'var(--tx3)' }} title="הגב">
+                            <CornerUpLeft size={11} />
+                          </button>
+                          {isOwn && msg.content && (
+                            <button onClick={e => { e.stopPropagation(); setCommunityEditingId(msg.id); setCommunityEditText(msg.content ?? '') }}
+                              className="rounded p-1 transition hover:bg-amber-500/10" style={{ color: 'var(--tx3)' }} title="ערוך">
+                              <Edit2 size={11} />
+                            </button>
+                          )}
+                          {(isOwn || isAdmin) && (
+                            <button onClick={e => { e.stopPropagation(); handleDeleteCommunity(msg.id) }}
+                              className="rounded p-1 transition hover:bg-red-500/10 hover:text-red-500" style={{ color: 'var(--tx3)' }}>
+                              <Trash2 size={11} />
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
@@ -932,7 +1211,25 @@ export default function ChatClient({
         <div ref={communityBottomRef} />
       </div>
 
-      <InputBar value={communityText} onChange={setCommunityText} onKeyDown={handleCommunityKey} onSend={handleCommunitySend} isSending={isSendingC} textRef={communityTextRef} />
+      <InputBar
+        value={communityText}
+        onChange={(v) => { setCommunityText(v); setMentionQuery(getMentionQuery(v)) }}
+        onKeyDown={handleCommunityKey}
+        onSend={handleCommunitySend}
+        isSending={isSendingC}
+        textRef={communityTextRef}
+        onAttachClick={() => fileInputRef.current?.click()}
+        attachment={attachFile ? { name: attachFile.name, type: attachFile.type, preview: attachPreview ?? undefined } : null}
+        onRemoveAttachment={() => { setAttachFile(null); setAttachPreview(null) }}
+        isUploading={isUploading}
+        replyTo={communityReplyTo ? {
+          content: communityReplyTo.content,
+          senderName: communityReplyTo.user_id === currentUserId ? 'אתה' : dName(communityReplyTo.profiles),
+        } : null}
+        onCancelReply={() => setCommunityReplyTo(null)}
+        mentionUsers={activeSide === 'community' ? mentionedUsers : []}
+        onMentionSelect={handleMentionSelect}
+      />
     </div>
   )
 
@@ -1088,7 +1385,7 @@ export default function ChatClient({
                               }
                             </div>
                           )}
-                          {msg.content && <span className="whitespace-pre-wrap">{msg.content}</span>}
+                          {msg.content && <span className="whitespace-pre-wrap">{renderContent(msg.content)}</span>}
                           {msg.edited_at && (
                             <span className="ms-1.5 text-[10px] opacity-60 italic">נערך</span>
                           )}
@@ -1220,12 +1517,9 @@ export default function ChatClient({
         <div ref={privateBottomRef} />
       </div>
 
-      {/* Hidden file input */}
-      <input ref={fileInputRef} type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.zip,.rar" className="hidden" onChange={handleFileSelect} />
-
       <InputBar
         value={privateText}
-        onChange={(v) => { setPrivateText(v); broadcastTyping() }}
+        onChange={(v) => { setPrivateText(v); broadcastTyping(); setMentionQuery(getMentionQuery(v)) }}
         onKeyDown={handlePrivateKey}
         onSend={handlePrivateSend}
         isSending={isSendingP}
@@ -1239,6 +1533,8 @@ export default function ChatClient({
           senderName: replyTo.sender_id === currentUserId ? 'אתה' : dName(partnerProfile),
         } : null}
         onCancelReply={() => setReplyTo(null)}
+        mentionUsers={activeSide === 'private' ? mentionedUsers : []}
+        onMentionSelect={handleMentionSelect}
       />
     </div>
   )
@@ -1253,6 +1549,7 @@ export default function ChatClient({
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)] overflow-hidden lg:h-screen">
+      <input ref={fileInputRef} type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.zip,.rar" className="hidden" onChange={handleFileSelect} />
       <div
         className={`${mobileShowChat ? 'hidden' : 'flex'} lg:flex w-full flex-col lg:w-80 xl:w-96 shrink-0`}
         style={{ borderInlineEnd: '1px solid var(--bd)' }}
