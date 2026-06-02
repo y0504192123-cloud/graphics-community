@@ -12,17 +12,130 @@ type WeightEntry = {
   download_url: string
 }
 
+type UploadFn = () => Promise<{ signedUrl?: string; publicUrl?: string; error?: string }>
+
 type Props = {
   fonts: Font[]
   fontWeights: FontWeight[]
   saveFont: (prev: SaveResult, fd: FormData) => Promise<SaveResult>
   deleteFont: (id: string) => Promise<void>
-  getFontPreviewUploadUrl: () => Promise<{ signedUrl?: string; publicUrl?: string; error?: string }>
+  getFontPreviewUploadUrl: UploadFn
 }
 
 const inp = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition placeholder:text-slate-400 focus:border-purple-400 focus:ring-2 focus:ring-purple-100'
 const lbl = 'mb-1 block text-[11px] font-semibold uppercase tracking-widest text-slate-500'
 
+// ── Per-weight row with its own upload state ───────────────────────────────
+function WeightRow({
+  weight, onUpdate, onRemove, getUploadUrl,
+}: {
+  weight: WeightEntry
+  onUpdate: (field: keyof WeightEntry, val: string) => void
+  onRemove: () => void
+  getUploadUrl: UploadFn
+}) {
+  const [uploading, setUploading]     = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const fileRef                       = useRef<HTMLInputElement>(null)
+
+  const handleUpload = async (file: File) => {
+    setUploading(true)
+    setUploadError(null)
+    try {
+      const { signedUrl, publicUrl, error } = await getUploadUrl()
+      if (error || !signedUrl || !publicUrl) { setUploadError(error ?? 'שגיאה'); return }
+      const res = await fetch(signedUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } })
+      if (!res.ok) { setUploadError('העלאה נכשלה'); return }
+      onUpdate('preview_image_url', publicUrl)
+    } catch { setUploadError('שגיאת רשת') }
+    finally { setUploading(false) }
+  }
+
+  return (
+    <div className="flex flex-wrap items-start gap-2 rounded-xl p-3"
+      style={{ background: 'var(--inp)', border: '1px solid var(--bd)' }}>
+
+      {/* Weight name */}
+      <input
+        value={weight.weight_name}
+        onChange={e => onUpdate('weight_name', e.target.value)}
+        placeholder="שם משקל (Regular, Bold...)"
+        className={inp}
+        style={{ flex: '1 1 130px' }}
+      />
+
+      {/* Preview image: thumbnail + upload button */}
+      <div className="flex shrink-0 items-center gap-2">
+        {weight.preview_image_url ? (
+          <div className="relative h-9 w-14 overflow-hidden rounded-lg"
+            style={{ border: '1px solid var(--bd)' }}>
+            <img src={weight.preview_image_url} alt="" className="h-full w-full object-cover" />
+            <button
+              type="button"
+              onClick={() => onUpdate('preview_image_url', '')}
+              className="absolute end-0.5 top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-black/60 text-white"
+            >
+              <X size={8} />
+            </button>
+          </div>
+        ) : (
+          <div className="flex h-9 w-14 items-center justify-center rounded-lg"
+            style={{ background: 'rgba(0,0,0,.04)', border: '1px dashed var(--bd)' }}>
+            <ImageIcon size={13} style={{ color: 'var(--tx3)' }} />
+          </div>
+        )}
+        <div className="flex flex-col gap-0.5">
+          <button
+            type="button"
+            disabled={uploading}
+            onClick={() => fileRef.current?.click()}
+            className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition hover:opacity-80 disabled:opacity-40"
+            style={{ background: 'var(--s1)', border: '1px solid var(--bd)', color: 'var(--tx2)' }}
+          >
+            <Upload size={11} />
+            {uploading ? 'מעלה...' : 'תמונה'}
+          </button>
+          {uploadError && (
+            <p className="max-w-[80px] text-[10px] leading-tight text-red-400">{uploadError}</p>
+          )}
+        </div>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={e => {
+            const file = e.target.files?.[0]
+            if (file) handleUpload(file)
+            if (fileRef.current) fileRef.current.value = ''
+          }}
+        />
+      </div>
+
+      {/* Download URL */}
+      <input
+        value={weight.download_url}
+        onChange={e => onUpdate('download_url', e.target.value)}
+        placeholder="URL הורדה"
+        className={inp}
+        dir="ltr"
+        style={{ flex: '2 1 160px' }}
+      />
+
+      {/* Remove */}
+      <button
+        type="button"
+        onClick={onRemove}
+        className="mt-1 shrink-0 rounded-lg p-1.5 transition hover:bg-red-500/10 hover:text-red-400"
+        style={{ color: 'var(--tx3)' }}
+      >
+        <X size={13} />
+      </button>
+    </div>
+  )
+}
+
+// ── Font add/edit form ─────────────────────────────────────────────────────
 type FontFormProps = {
   editingFont: Font | null
   initialWeights: WeightEntry[]
@@ -30,7 +143,7 @@ type FontFormProps = {
   savePending: boolean
   saveState: SaveResult
   onCancel: () => void
-  getFontPreviewUploadUrl: () => Promise<{ signedUrl?: string; publicUrl?: string; error?: string }>
+  getFontPreviewUploadUrl: UploadFn
 }
 
 function FontForm({
@@ -113,7 +226,7 @@ function FontForm({
           defaultValue={editingFont?.download_url ?? ''} placeholder="https://..." />
       </div>
 
-      {/* Preview image upload */}
+      {/* Font preview image upload */}
       <div>
         <label className={lbl}>תמונת תצוגה מקדימה</label>
         <div className="flex items-start gap-3">
@@ -211,45 +324,19 @@ function FontForm({
         ) : (
           <div className="space-y-2">
             {weights.map((w, i) => (
-              <div key={i} className="flex items-start gap-2 rounded-xl p-3"
-                style={{ background: 'var(--inp)', border: '1px solid var(--bd)' }}>
-                <div className="grid flex-1 gap-2 sm:grid-cols-3">
-                  <input
-                    value={w.weight_name}
-                    onChange={e => updateWeight(i, 'weight_name', e.target.value)}
-                    placeholder="שם משקל (Regular, Bold...)"
-                    className={inp}
-                  />
-                  <input
-                    value={w.preview_image_url}
-                    onChange={e => updateWeight(i, 'preview_image_url', e.target.value)}
-                    placeholder="URL תמונת תצוגה"
-                    className={inp}
-                    dir="ltr"
-                  />
-                  <input
-                    value={w.download_url}
-                    onChange={e => updateWeight(i, 'download_url', e.target.value)}
-                    placeholder="URL הורדה"
-                    className={inp}
-                    dir="ltr"
-                  />
-                </div>
-                <button
-                  type="button"
-                  onClick={() => removeWeight(i)}
-                  className="mt-1.5 shrink-0 rounded-lg p-1.5 transition hover:bg-red-500/10 hover:text-red-400"
-                  style={{ color: 'var(--tx3)' }}
-                >
-                  <X size={13} />
-                </button>
-              </div>
+              <WeightRow
+                key={i}
+                weight={w}
+                onUpdate={(field, val) => updateWeight(i, field, val)}
+                onRemove={() => removeWeight(i)}
+                getUploadUrl={getFontPreviewUploadUrl}
+              />
             ))}
           </div>
         )}
       </div>
 
-      {/* Actions */}
+      {/* Submit */}
       <div className="flex items-center gap-2">
         <button
           type="submit"
@@ -273,6 +360,7 @@ function FontForm({
   )
 }
 
+// ── Main tab component ─────────────────────────────────────────────────────
 export default function FontsTab({ fonts, fontWeights, saveFont, deleteFont, getFontPreviewUploadUrl }: Props) {
   const [saveState, saveAction, savePending] = useActionState(saveFont, null)
   const [isPending, startTransition]         = useTransition()
@@ -280,15 +368,8 @@ export default function FontsTab({ fonts, fontWeights, saveFont, deleteFont, get
   const [editingFont, setEditingFont]        = useState<Font | null>(null)
   const [search, setSearch]                  = useState('')
 
-  const handleEdit = (font: Font) => {
-    setEditingFont(font)
-    setShowForm(true)
-  }
-
-  const handleCancel = () => {
-    setShowForm(false)
-    setEditingFont(null)
-  }
+  const handleEdit = (font: Font) => { setEditingFont(font); setShowForm(true) }
+  const handleCancel = () => { setShowForm(false); setEditingFont(null) }
 
   const getWeightsFor = (fontId: string): WeightEntry[] =>
     fontWeights
