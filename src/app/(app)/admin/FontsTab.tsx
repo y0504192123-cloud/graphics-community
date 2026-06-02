@@ -1,48 +1,84 @@
 'use client'
 
-import { useState, useTransition, useActionState } from 'react'
-import { Plus, Trash2, Pencil, X, ExternalLink, Search } from 'lucide-react'
-import type { Font } from '@/types'
+import { useState, useTransition, useActionState, useRef } from 'react'
+import { Plus, Trash2, Pencil, X, ExternalLink, Search, Upload, ImageIcon } from 'lucide-react'
+import type { Font, FontWeight } from '@/types'
 
 type SaveResult = { error?: string } | null
 
+type WeightEntry = {
+  weight_name: string
+  preview_image_url: string
+  download_url: string
+}
+
 type Props = {
   fonts: Font[]
-  saveFont:   (prev: SaveResult, fd: FormData) => Promise<SaveResult>
+  fontWeights: FontWeight[]
+  saveFont: (prev: SaveResult, fd: FormData) => Promise<SaveResult>
   deleteFont: (id: string) => Promise<void>
+  getFontPreviewUploadUrl: () => Promise<{ signedUrl?: string; publicUrl?: string; error?: string }>
 }
 
 const inp = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition placeholder:text-slate-400 focus:border-purple-400 focus:ring-2 focus:ring-purple-100'
 const lbl = 'mb-1 block text-[11px] font-semibold uppercase tracking-widest text-slate-500'
 
-function FontForm({
-  editingFont,
-  saveAction,
-  savePending,
-  saveState,
-  onCancel,
-}: {
+type FontFormProps = {
   editingFont: Font | null
-  saveAction:  (fd: FormData) => void
+  initialWeights: WeightEntry[]
+  saveAction: (fd: FormData) => void
   savePending: boolean
-  saveState:   SaveResult
-  onCancel:    () => void
-}) {
-  const [isFree, setIsFree] = useState(editingFont?.is_free ?? true)
+  saveState: SaveResult
+  onCancel: () => void
+  getFontPreviewUploadUrl: () => Promise<{ signedUrl?: string; publicUrl?: string; error?: string }>
+}
+
+function FontForm({
+  editingFont, initialWeights,
+  saveAction, savePending, saveState, onCancel,
+  getFontPreviewUploadUrl,
+}: FontFormProps) {
+  const [isFree, setIsFree]           = useState(editingFont?.is_free ?? true)
+  const [previewUrl, setPreviewUrl]   = useState(editingFont?.preview_image_url ?? '')
+  const [uploading, setUploading]     = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const [weights, setWeights]         = useState<WeightEntry[]>(initialWeights)
+  const previewFileRef                = useRef<HTMLInputElement>(null)
+
+  const handlePreviewUpload = async (file: File) => {
+    setUploading(true)
+    setUploadError(null)
+    try {
+      const { signedUrl, publicUrl, error } = await getFontPreviewUploadUrl()
+      if (error || !signedUrl || !publicUrl) { setUploadError(error ?? 'שגיאה'); return }
+      const res = await fetch(signedUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } })
+      if (!res.ok) { setUploadError('העלאה נכשלה'); return }
+      setPreviewUrl(publicUrl)
+    } catch { setUploadError('שגיאת רשת') }
+    finally { setUploading(false) }
+  }
+
+  const addWeight    = () => setWeights(w => [...w, { weight_name: '', preview_image_url: '', download_url: '' }])
+  const removeWeight = (i: number) => setWeights(w => w.filter((_, idx) => idx !== i))
+  const updateWeight = (i: number, field: keyof WeightEntry, val: string) =>
+    setWeights(w => w.map((e, idx) => idx === i ? { ...e, [field]: val } : e))
 
   return (
     <form
       key={editingFont?.id ?? 'new'}
       action={saveAction}
-      className="rounded-2xl p-5 space-y-4"
+      className="space-y-4 rounded-2xl p-5"
       style={{ background: 'rgba(124,58,237,.05)', border: '1px solid rgba(124,58,237,.2)' }}
     >
       {editingFont && <input type="hidden" name="id" value={editingFont.id} />}
+      <input type="hidden" name="preview_image_url" value={previewUrl} />
+      <input type="hidden" name="weights" value={JSON.stringify(weights)} />
 
       {saveState?.error && (
         <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">{saveState.error}</p>
       )}
 
+      {/* Basic fields */}
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
           <label className={lbl}>שם הפונט (באנגלית) *</label>
@@ -70,23 +106,68 @@ function FontForm({
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div>
-          <label className={lbl}>קישור הורדה / רכישה</label>
-          <input name="download_url" type="url" className={inp} dir="ltr" defaultValue={editingFont?.download_url ?? ''} placeholder="https://..." />
-        </div>
-        <div>
-          <label className={lbl}>קישור תמונת תצוגה מקדימה</label>
-          <input name="preview_image_url" type="url" className={inp} dir="ltr" defaultValue={editingFont?.preview_image_url ?? ''} placeholder="https://..." />
-        </div>
+      {/* Download URL */}
+      <div>
+        <label className={lbl}>קישור הורדה / רכישה</label>
+        <input name="download_url" type="url" className={inp} dir="ltr"
+          defaultValue={editingFont?.download_url ?? ''} placeholder="https://..." />
       </div>
 
+      {/* Preview image upload */}
+      <div>
+        <label className={lbl}>תמונת תצוגה מקדימה</label>
+        <div className="flex items-start gap-3">
+          {previewUrl ? (
+            <div className="relative h-16 w-24 shrink-0 overflow-hidden rounded-xl"
+              style={{ border: '1px solid var(--bd)' }}>
+              <img src={previewUrl} alt="" className="h-full w-full object-cover" />
+              <button type="button" onClick={() => setPreviewUrl('')}
+                className="absolute end-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/50 text-white">
+                <X size={10} />
+              </button>
+            </div>
+          ) : (
+            <div className="flex h-16 w-24 shrink-0 items-center justify-center rounded-xl"
+              style={{ background: 'var(--inp)', border: '1px dashed var(--bd)' }}>
+              <ImageIcon size={18} style={{ color: 'var(--tx3)' }} />
+            </div>
+          )}
+          <div>
+            <button
+              type="button"
+              disabled={uploading}
+              onClick={() => previewFileRef.current?.click()}
+              className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition hover:opacity-80 disabled:opacity-50"
+              style={{ background: 'var(--inp)', border: '1px solid var(--bd)', color: 'var(--tx2)' }}
+            >
+              <Upload size={14} />
+              {uploading ? 'מעלה...' : previewUrl ? 'החלף תמונה' : 'העלה תמונה'}
+            </button>
+            {uploadError && <p className="mt-1 text-xs text-red-400">{uploadError}</p>}
+            <p className="mt-1 text-[11px]" style={{ color: 'var(--tx3)' }}>PNG, JPG, WebP</p>
+          </div>
+        </div>
+        <input
+          ref={previewFileRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={e => {
+            const file = e.target.files?.[0]
+            if (file) handlePreviewUpload(file)
+            if (previewFileRef.current) previewFileRef.current.value = ''
+          }}
+        />
+      </div>
+
+      {/* Description */}
       <div>
         <label className={lbl}>תיאור</label>
         <textarea name="description" rows={2} className={`${inp} resize-none`}
           defaultValue={editingFont?.description ?? ''} placeholder="תיאור קצר של הפונט..." />
       </div>
 
+      {/* Free / paid */}
       <div className="flex flex-wrap items-center gap-4">
         <label className="flex cursor-pointer items-center gap-2 text-sm font-medium" style={{ color: 'var(--tx)' }}>
           <input
@@ -98,15 +179,77 @@ function FontForm({
           />
           פונט חינמי
         </label>
-
         {!isFree && (
           <div className="flex items-center gap-2">
             <label className={`${lbl} mb-0`}>מחיר</label>
-            <input name="price" className={`${inp} w-32`} defaultValue={editingFont?.price ?? ''} placeholder="₪99 / $19..." />
+            <input name="price" className={`${inp} w-32`}
+              defaultValue={editingFont?.price ?? ''} placeholder="₪99 / $19..." />
           </div>
         )}
       </div>
 
+      {/* Weights */}
+      <div>
+        <div className="mb-2 flex items-center justify-between">
+          <label className={`${lbl} mb-0`}>משקלים / גרסאות</label>
+          <button
+            type="button"
+            onClick={addWeight}
+            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold transition hover:opacity-80"
+            style={{ background: 'rgba(124,58,237,.1)', color: '#7c3aed' }}
+          >
+            <Plus size={12} />
+            הוסף משקל
+          </button>
+        </div>
+
+        {weights.length === 0 ? (
+          <p className="rounded-xl py-3 text-center text-xs"
+            style={{ background: 'var(--inp)', color: 'var(--tx3)' }}>
+            אין משקלים — לחץ "הוסף משקל" להוספה
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {weights.map((w, i) => (
+              <div key={i} className="flex items-start gap-2 rounded-xl p-3"
+                style={{ background: 'var(--inp)', border: '1px solid var(--bd)' }}>
+                <div className="grid flex-1 gap-2 sm:grid-cols-3">
+                  <input
+                    value={w.weight_name}
+                    onChange={e => updateWeight(i, 'weight_name', e.target.value)}
+                    placeholder="שם משקל (Regular, Bold...)"
+                    className={inp}
+                  />
+                  <input
+                    value={w.preview_image_url}
+                    onChange={e => updateWeight(i, 'preview_image_url', e.target.value)}
+                    placeholder="URL תמונת תצוגה"
+                    className={inp}
+                    dir="ltr"
+                  />
+                  <input
+                    value={w.download_url}
+                    onChange={e => updateWeight(i, 'download_url', e.target.value)}
+                    placeholder="URL הורדה"
+                    className={inp}
+                    dir="ltr"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeWeight(i)}
+                  className="mt-1.5 shrink-0 rounded-lg p-1.5 transition hover:bg-red-500/10 hover:text-red-400"
+                  style={{ color: 'var(--tx3)' }}
+                >
+                  <X size={13} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Actions */}
       <div className="flex items-center gap-2">
         <button
           type="submit"
@@ -130,12 +273,12 @@ function FontForm({
   )
 }
 
-export default function FontsTab({ fonts, saveFont, deleteFont }: Props) {
+export default function FontsTab({ fonts, fontWeights, saveFont, deleteFont, getFontPreviewUploadUrl }: Props) {
   const [saveState, saveAction, savePending] = useActionState(saveFont, null)
-  const [isPending, startTransition] = useTransition()
-  const [showForm, setShowForm]       = useState(false)
-  const [editingFont, setEditingFont] = useState<Font | null>(null)
-  const [search, setSearch]           = useState('')
+  const [isPending, startTransition]         = useTransition()
+  const [showForm, setShowForm]              = useState(false)
+  const [editingFont, setEditingFont]        = useState<Font | null>(null)
+  const [search, setSearch]                  = useState('')
 
   const handleEdit = (font: Font) => {
     setEditingFont(font)
@@ -147,6 +290,15 @@ export default function FontsTab({ fonts, saveFont, deleteFont }: Props) {
     setEditingFont(null)
   }
 
+  const getWeightsFor = (fontId: string): WeightEntry[] =>
+    fontWeights
+      .filter(w => w.font_id === fontId)
+      .map(w => ({
+        weight_name:       w.weight_name,
+        preview_image_url: w.preview_image_url ?? '',
+        download_url:      w.download_url ?? '',
+      }))
+
   const filteredFonts = fonts.filter(f => {
     const q = search.toLowerCase()
     return !q || f.name.toLowerCase().includes(q) || (f.name_hebrew?.toLowerCase().includes(q) ?? false)
@@ -157,8 +309,9 @@ export default function FontsTab({ fonts, saveFont, deleteFont }: Props) {
 
       {/* Toolbar */}
       <div className="mb-5 flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-40">
-          <Search size={13} className="absolute start-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--tx3)' }} />
+        <div className="relative flex-1" style={{ minWidth: '160px' }}>
+          <Search size={13} className="absolute start-3 top-1/2 -translate-y-1/2 pointer-events-none"
+            style={{ color: 'var(--tx3)' }} />
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
@@ -183,10 +336,12 @@ export default function FontsTab({ fonts, saveFont, deleteFont }: Props) {
         <div className="mb-6">
           <FontForm
             editingFont={null}
+            initialWeights={[]}
             saveAction={saveAction}
             savePending={savePending}
             saveState={saveState}
             onCancel={handleCancel}
+            getFontPreviewUploadUrl={getFontPreviewUploadUrl}
           />
         </div>
       )}
@@ -199,99 +354,99 @@ export default function FontsTab({ fonts, saveFont, deleteFont }: Props) {
             {fonts.length === 0 ? 'אין פונטים — לחץ "פונט חדש" להוספה' : 'לא נמצאו תוצאות'}
           </div>
         ) : (
-          filteredFonts.map(font => (
-            <div key={font.id}>
-              <div
-                className="flex items-center gap-3 rounded-xl px-4 py-3"
-                style={{ background: 'var(--s2)', border: '1px solid var(--bd)' }}
-              >
-                {/* Preview thumbnail */}
-                <div className="h-12 w-16 shrink-0 overflow-hidden rounded-lg"
-                  style={{ background: 'var(--inp)' }}>
-                  {font.preview_image_url ? (
-                    <img src={font.preview_image_url} alt="" className="h-full w-full object-cover" />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center">
-                      <span className="text-lg font-black select-none"
-                        style={{ color: 'rgba(124,58,237,.3)', fontFamily: 'Georgia,serif' }}>Aa</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Info */}
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                    <span className="font-semibold" style={{ color: 'var(--tx)' }}>{font.name}</span>
-                    {font.name_hebrew && (
-                      <span className="text-sm" style={{ color: 'var(--tx2)' }}>{font.name_hebrew}</span>
+          filteredFonts.map(font => {
+            const weights = getWeightsFor(font.id)
+            return (
+              <div key={font.id}>
+                <div
+                  className="flex items-center gap-3 rounded-xl px-4 py-3"
+                  style={{ background: 'var(--s2)', border: '1px solid var(--bd)' }}
+                >
+                  {/* Preview thumbnail */}
+                  <div className="h-12 w-16 shrink-0 overflow-hidden rounded-lg" style={{ background: 'var(--inp)' }}>
+                    {font.preview_image_url ? (
+                      <img src={font.preview_image_url} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center">
+                        <span className="select-none text-lg font-black"
+                          style={{ color: 'rgba(124,58,237,.3)', fontFamily: 'Georgia,serif' }}>Aa</span>
+                      </div>
                     )}
                   </div>
-                  <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs" style={{ color: 'var(--tx3)' }}>
-                    {font.company && <span>{font.company}</span>}
-                    {font.category && <span>· {font.category}</span>}
-                    <span
-                      className="rounded-full px-1.5 py-0.5 text-[10px] font-bold"
-                      style={font.is_free
-                        ? { background: 'rgba(16,185,129,.12)', color: '#059669' }
-                        : { background: 'rgba(245,158,11,.12)', color: '#b45309' }
-                      }
-                    >
-                      {font.is_free ? 'חינמי' : (font.price ?? 'בתשלום')}
-                    </span>
+
+                  {/* Info */}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-baseline gap-x-2">
+                      <span className="font-semibold" style={{ color: 'var(--tx)' }}>{font.name}</span>
+                      {font.name_hebrew && (
+                        <span className="text-sm" style={{ color: 'var(--tx2)' }}>{font.name_hebrew}</span>
+                      )}
+                    </div>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs" style={{ color: 'var(--tx3)' }}>
+                      {font.company && <span>{font.company}</span>}
+                      {font.category && <span>· {font.category}</span>}
+                      {weights.length > 0 && (
+                        <span className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold"
+                          style={{ background: 'rgba(124,58,237,.1)', color: '#7c3aed' }}>
+                          {weights.length} משקלים
+                        </span>
+                      )}
+                      <span
+                        className="rounded-full px-1.5 py-0.5 text-[10px] font-bold"
+                        style={font.is_free
+                          ? { background: 'rgba(16,185,129,.12)', color: '#059669' }
+                          : { background: 'rgba(245,158,11,.12)', color: '#b45309' }
+                        }
+                      >
+                        {font.is_free ? 'חינמי' : (font.price ?? 'בתשלום')}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex shrink-0 items-center gap-1">
+                    {font.download_url && (
+                      <a href={font.download_url} target="_blank" rel="noopener noreferrer"
+                        className="rounded-lg p-1.5 transition hover:bg-purple-500/10"
+                        style={{ color: 'var(--tx3)' }} title="פתח קישור">
+                        <ExternalLink size={14} />
+                      </a>
+                    )}
+                    <button onClick={() => handleEdit(font)}
+                      className="rounded-lg p-1.5 transition hover:bg-purple-500/10"
+                      style={{ color: 'var(--tx3)' }} title="ערוך">
+                      <Pencil size={14} />
+                    </button>
+                    <button
+                      disabled={isPending}
+                      onClick={() => {
+                        if (confirm(`למחוק את "${font.name}"?`))
+                          startTransition(async () => { await deleteFont(font.id) })
+                      }}
+                      className="rounded-lg p-1.5 transition hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50"
+                      style={{ color: 'var(--tx3)' }} title="מחק">
+                      <Trash2 size={14} />
+                    </button>
                   </div>
                 </div>
 
-                {/* Actions */}
-                <div className="flex shrink-0 items-center gap-1">
-                  {font.download_url && (
-                    <a
-                      href={font.download_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="rounded-lg p-1.5 transition hover:bg-purple-500/10"
-                      style={{ color: 'var(--tx3)' }}
-                      title="פתח קישור"
-                    >
-                      <ExternalLink size={14} />
-                    </a>
-                  )}
-                  <button
-                    onClick={() => handleEdit(font)}
-                    className="rounded-lg p-1.5 transition hover:bg-purple-500/10"
-                    style={{ color: 'var(--tx3)' }}
-                    title="ערוך"
-                  >
-                    <Pencil size={14} />
-                  </button>
-                  <button
-                    disabled={isPending}
-                    onClick={() => {
-                      if (confirm(`למחוק את "${font.name}"?`))
-                        startTransition(async () => { await deleteFont(font.id) })
-                    }}
-                    className="rounded-lg p-1.5 transition hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50"
-                    style={{ color: 'var(--tx3)' }}
-                    title="מחק"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
+                {/* Inline edit form */}
+                {showForm && editingFont?.id === font.id && (
+                  <div className="mt-2">
+                    <FontForm
+                      editingFont={editingFont}
+                      initialWeights={getWeightsFor(editingFont.id)}
+                      saveAction={saveAction}
+                      savePending={savePending}
+                      saveState={saveState}
+                      onCancel={handleCancel}
+                      getFontPreviewUploadUrl={getFontPreviewUploadUrl}
+                    />
+                  </div>
+                )}
               </div>
-
-              {/* Inline edit form */}
-              {showForm && editingFont?.id === font.id && (
-                <div className="mt-2">
-                  <FontForm
-                    editingFont={editingFont}
-                    saveAction={saveAction}
-                    savePending={savePending}
-                    saveState={saveState}
-                    onCancel={handleCancel}
-                  />
-                </div>
-              )}
-            </div>
-          ))
+            )
+          })
         )}
       </div>
     </div>

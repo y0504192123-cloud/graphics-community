@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import AdminClient from './AdminClient'
 import { addForumCategory, deleteForumCategory } from '../forum/actions'
-import type { Profile, NewsItem, ChatCategory, Specialization, InspirationCategory, JobCategory, AssetCategory, ForumCategory, Font } from '@/types'
+import type { Profile, NewsItem, ChatCategory, Specialization, InspirationCategory, JobCategory, AssetCategory, ForumCategory, Font, FontWeight } from '@/types'
 import { sendApprovalEmail } from '@/lib/email'
 
 export default async function AdminPage() {
@@ -16,7 +16,7 @@ export default async function AdminPage() {
   if (profileData?.role !== 'admin') redirect('/dashboard')
 
   const admin = createAdminClient()
-  const [pendingRes, activeRes, newsRes, catRes, specsRes, inspCatsRes, jobCatsRes, assetCatsRes, logoRes, forumCatsRes, fontsRes] = await Promise.all([
+  const [pendingRes, activeRes, newsRes, catRes, specsRes, inspCatsRes, jobCatsRes, assetCatsRes, logoRes, forumCatsRes, fontsRes, fontWeightsRes] = await Promise.all([
     admin.from('profiles').select('*').eq('status', 'pending').order('created_at', { ascending: false }),
     admin.from('profiles').select('*').eq('status', 'active').order('created_at', { ascending: false }),
     supabase.from('news').select('*, profiles(*)').order('created_at', { ascending: false }),
@@ -28,6 +28,7 @@ export default async function AdminPage() {
     supabase.from('site_settings').select('value').eq('key', 'logo_url').single(),
     admin.from('forum_categories').select('*').order('sort_order', { ascending: true }),
     admin.from('fonts').select('*').order('name', { ascending: true }),
+    admin.from('font_weights').select('*').order('created_at', { ascending: true }),
   ])
 
   const pendingUsers          = (pendingRes.data    ?? []) as Profile[]
@@ -41,6 +42,7 @@ export default async function AdminPage() {
   const currentLogoUrl: string | null = logoRes.data?.value ?? null
   const forumCategories       = (forumCatsRes.data  ?? []) as ForumCategory[]
   const fonts                 = (fontsRes.data      ?? []) as Font[]
+  const fontWeights           = (fontWeightsRes.data ?? []) as FontWeight[]
 
   /* ── Server Actions ── */
 
@@ -255,27 +257,57 @@ export default async function AdminPage() {
     const id   = (formData.get('id') as string) || null
     const name = (formData.get('name') as string)?.trim()
     if (!name) return { error: 'שם הפונט חסר' }
-    const is_free  = formData.get('is_free') === 'on'
-    const tagsRaw  = (formData.get('tags') as string)?.trim()
-    const tags     = tagsRaw ? tagsRaw.split(',').map((t: string) => t.trim()).filter(Boolean) : []
+    const is_free = formData.get('is_free') === 'on'
+    const tagsRaw = (formData.get('tags') as string)?.trim()
+    const tags    = tagsRaw ? tagsRaw.split(',').map((t: string) => t.trim()).filter(Boolean) : []
+
+    type WeightEntry = { weight_name: string; preview_image_url: string; download_url: string }
+    let weightsData: WeightEntry[] = []
+    try {
+      const raw = formData.get('weights') as string
+      if (raw) weightsData = JSON.parse(raw)
+    } catch { /* invalid JSON — ignore */ }
+
     const payload = {
       name,
-      name_hebrew:        (formData.get('name_hebrew')        as string) || null,
-      company:            (formData.get('company')            as string) || null,
-      category:           (formData.get('category')           as string) || null,
-      style:              (formData.get('style')              as string) || null,
+      name_hebrew:       (formData.get('name_hebrew')       as string) || null,
+      company:           (formData.get('company')           as string) || null,
+      category:          (formData.get('category')          as string) || null,
+      style:             (formData.get('style')             as string) || null,
       is_free,
-      price:              is_free ? null : ((formData.get('price') as string) || null),
-      download_url:       (formData.get('download_url')       as string) || null,
-      preview_image_url:  (formData.get('preview_image_url')  as string) || null,
-      description:        (formData.get('description')        as string) || null,
+      price:             is_free ? null : ((formData.get('price') as string) || null),
+      download_url:      (formData.get('download_url')      as string) || null,
+      preview_image_url: (formData.get('preview_image_url') as string) || null,
+      description:       (formData.get('description')       as string) || null,
       tags,
     }
+
     const a = createAdminClient()
-    const { error } = id
-      ? await a.from('fonts').update(payload).eq('id', id)
-      : await a.from('fonts').insert(payload)
-    if (error) return { error: error.message }
+    let fontId: string
+
+    if (id) {
+      const { error } = await a.from('fonts').update(payload).eq('id', id)
+      if (error) return { error: error.message }
+      fontId = id
+      await a.from('font_weights').delete().eq('font_id', fontId)
+    } else {
+      const { data, error } = await a.from('fonts').insert(payload).select('id').single()
+      if (error || !data) return { error: error?.message ?? 'שגיאה ביצירת הפונט' }
+      fontId = data.id
+    }
+
+    const weightRows = weightsData
+      .filter(w => w.weight_name?.trim())
+      .map(w => ({
+        font_id:           fontId,
+        weight_name:       w.weight_name.trim(),
+        preview_image_url: w.preview_image_url || null,
+        download_url:      w.download_url || null,
+      }))
+    if (weightRows.length > 0) {
+      await a.from('font_weights').insert(weightRows)
+    }
+
     revalidatePath('/admin')
     revalidatePath('/font-identifier')
     return null
@@ -286,6 +318,18 @@ export default async function AdminPage() {
     await createAdminClient().from('fonts').delete().eq('id', id)
     revalidatePath('/admin')
     revalidatePath('/font-identifier')
+  }
+
+  async function getFontPreviewUploadUrl(): Promise<{ signedUrl?: string; publicUrl?: string; error?: string }> {
+    'use server'
+    const a = createAdminClient()
+    // Create bucket if it doesn't exist yet (no-op if already exists)
+    await a.storage.createBucket('fonts-previews', { public: true }).catch(() => {})
+    const path = `font_${Date.now()}.jpg`
+    const { data, error } = await a.storage.from('fonts-previews').createSignedUploadUrl(path)
+    if (error) return { error: error.message }
+    const { data: { publicUrl } } = a.storage.from('fonts-previews').getPublicUrl(path)
+    return { signedUrl: data.signedUrl, publicUrl }
   }
 
   return (
@@ -322,8 +366,10 @@ export default async function AdminPage() {
       addForumCategory={addForumCategory}
       deleteForumCategory={deleteForumCategory}
       fonts={fonts}
+      fontWeights={fontWeights}
       saveFont={saveFont}
       deleteFont={deleteFont}
+      getFontPreviewUploadUrl={getFontPreviewUploadUrl}
     />
   )
 }

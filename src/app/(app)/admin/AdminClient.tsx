@@ -5,7 +5,7 @@ import {
   ShieldCheck, Users, Clock, CheckCircle2, XCircle, Newspaper,
   Hash, Plus, Trash2, ExternalLink, Phone, MapPin, Briefcase, Star, X, Palette, FolderOpen, ImageIcon, MessagesSquare, ScanText
 } from 'lucide-react'
-import type { Profile, NewsItem, ChatCategory, Specialization, InspirationCategory, JobCategory, AssetCategory, ForumCategory, Font } from '@/types'
+import type { Profile, NewsItem, ChatCategory, Specialization, InspirationCategory, JobCategory, AssetCategory, ForumCategory, Font, FontWeight } from '@/types'
 import FontsTab from './FontsTab'
 
 type Tab = 'pending' | 'users' | 'news' | 'categories' | 'specializations' | 'insp_cats' | 'job_cats' | 'asset_cats' | 'branding' | 'forum_cats' | 'fonts'
@@ -43,8 +43,10 @@ type Props = {
   getLogoUploadUrl:            () => Promise<{ signedUrl?: string; publicUrl?: string; error?: string }>
   saveLogoUrl:                 (url: string) => Promise<void>
   fonts:                       Font[]
+  fontWeights:                 FontWeight[]
   saveFont:                    (prev: { error?: string } | null, fd: FormData) => Promise<{ error?: string } | null>
   deleteFont:                  (id: string) => Promise<void>
+  getFontPreviewUploadUrl:     () => Promise<{ signedUrl?: string; publicUrl?: string; error?: string }>
 }
 
 const inputCls = 'w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition-all placeholder:text-slate-400 hover:border-slate-300 focus:border-purple-400 focus:ring-2 focus:ring-purple-100'
@@ -76,7 +78,7 @@ export default function AdminClient({
   addAssetCategory, deleteAssetCategory,
   addForumCategory, deleteForumCategory,
   getLogoUploadUrl, saveLogoUrl,
-  fonts, saveFont, deleteFont,
+  fonts, fontWeights, saveFont, deleteFont, getFontPreviewUploadUrl,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('pending')
   const [isPending, startTransition] = useTransition()
@@ -760,8 +762,10 @@ export default function AdminClient({
         {activeTab === 'fonts' && (
           <FontsTab
             fonts={fonts}
+            fontWeights={fontWeights}
             saveFont={saveFont}
             deleteFont={deleteFont}
+            getFontPreviewUploadUrl={getFontPreviewUploadUrl}
           />
         )}
 

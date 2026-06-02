@@ -224,6 +224,15 @@ export type Font = {
   created_at: string
 }
 
+export type FontWeight = {
+  id: string
+  font_id: string
+  weight_name: string
+  preview_image_url: string | null
+  download_url: string | null
+  created_at: string
+}
+
 export type ForumReply = {
   id: string
   thread_id: string
