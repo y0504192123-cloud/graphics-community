@@ -108,6 +108,9 @@ export type PrivateMessage = {
   attachment_type?: string | null
   attachment_name?: string | null
   deleted_for_all?: boolean
+  edited_at?: string | null
+  reply_to_id?: string | null
+  reply_to?: { id: string; content: string | null; sender_id: string } | null
   sender?: Profile
   receiver?: Profile
 }

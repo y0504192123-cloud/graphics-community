@@ -46,6 +46,7 @@ export async function sendPrivateMessage(
   attachmentUrl?: string,
   attachmentType?: string,
   attachmentName?: string,
+  replyToId?: string,
 ) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -59,6 +60,7 @@ export async function sendPrivateMessage(
     attachment_url: attachmentUrl ?? null,
     attachment_type: attachmentType ?? null,
     attachment_name: attachmentName ?? null,
+    reply_to_id: replyToId ?? null,
   })
 }
 
@@ -85,6 +87,34 @@ export async function markMessagesRead(senderId: string) {
     .eq('sender_id', senderId)
     .eq('receiver_id', user.id)
     .eq('is_read', false)
+}
+
+export async function editPrivateMessage(messageId: string, content: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return
+  const admin = createAdminClient()
+  const { data: msg } = await admin.from('private_messages').select('sender_id').eq('id', messageId).single()
+  if (!msg || msg.sender_id !== user.id) return
+  await admin.from('private_messages').update({ content, edited_at: new Date().toISOString() }).eq('id', messageId)
+}
+
+export async function toggleReaction(messageId: string, emoji: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return
+  const admin = createAdminClient()
+  const { data: existing } = await admin.from('message_reactions')
+    .select('id, emoji').eq('message_id', messageId).eq('user_id', user.id).maybeSingle()
+  if (existing) {
+    if (existing.emoji === emoji) {
+      await admin.from('message_reactions').delete().eq('id', existing.id)
+    } else {
+      await admin.from('message_reactions').update({ emoji }).eq('id', existing.id)
+    }
+  } else {
+    await admin.from('message_reactions').insert({ message_id: messageId, user_id: user.id, emoji })
+  }
 }
 
 export async function getChatUploadUrl(): Promise<{ signedUrl?: string; publicUrl?: string; error?: string }> {

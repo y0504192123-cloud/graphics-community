@@ -10,6 +10,8 @@ import {
   deletePrivateMessage,
   markMessagesRead,
   getChatUploadUrl,
+  editPrivateMessage,
+  toggleReaction,
 } from './actions'
 import type { Topic, Profile, PrivateMessage } from '@/types'
 
@@ -38,7 +40,7 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
     supabase.from('chat_categories').select('name').order('created_at', { ascending: true }),
     admin
       .from('private_messages')
-      .select('*, sender:profiles!sender_id(*), receiver:profiles!receiver_id(*)')
+      .select('*, sender:profiles!sender_id(*), receiver:profiles!receiver_id(*), reply_to:private_messages!reply_to_id(id,content,sender_id)')
       .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
       .order('created_at', { ascending: true }),
     admin
@@ -87,6 +89,8 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
       initialJobQuote={initialJobQuote}
       activeUsers={activeUsers}
       getChatUploadUrl={getChatUploadUrl}
+      editPrivateMessage={editPrivateMessage}
+      toggleReaction={toggleReaction}
     />
   )
 }
