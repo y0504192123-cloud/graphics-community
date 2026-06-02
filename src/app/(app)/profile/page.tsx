@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import ProfileClient from './ProfileClient'
 import type { Profile, PortfolioItem, Specialization } from '@/types'
 
@@ -69,17 +70,31 @@ export default async function ProfilePage() {
   async function deletePortfolioItem(id: string) {
     'use server'
     const supabase = await createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const { data: { user } } = await supabase.auth.getUser()
     if (!user) redirect('/login')
+    await supabase.from('portfolio_items').delete().eq('id', id).eq('user_id', user.id)
+    revalidatePath('/profile')
+  }
 
-    await supabase
-      .from('portfolio_items')
-      .delete()
-      .eq('id', id)
-      .eq('user_id', user.id)
+  async function getAvatarUploadUrl(): Promise<{ signedUrl?: string; publicUrl?: string; error?: string }> {
+    'use server'
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { error: 'לא מחובר' }
+    const admin = createAdminClient()
+    const path = `${user.id}/${Date.now()}.jpg`
+    const { data, error } = await admin.storage.from('avatars').createSignedUploadUrl(path)
+    if (error) return { error: error.message }
+    const { data: { publicUrl } } = admin.storage.from('avatars').getPublicUrl(path)
+    return { signedUrl: data.signedUrl, publicUrl }
+  }
 
+  async function updateAvatarUrl(url: string): Promise<void> {
+    'use server'
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    await supabase.from('profiles').update({ avatar_url: url }).eq('id', user.id)
     revalidatePath('/profile')
   }
 
@@ -105,6 +120,8 @@ export default async function ProfilePage() {
       updateProfile={updateProfile}
       addPortfolioItem={addPortfolioItem}
       deletePortfolioItem={deletePortfolioItem}
+      getAvatarUploadUrl={getAvatarUploadUrl}
+      updateAvatarUrl={updateAvatarUrl}
     />
   )
 }

@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useTransition } from 'react'
-import { Edit2, Save, X, Plus, Trash2, Star, MapPin, User, FileText, Tag } from 'lucide-react'
+import { useState, useTransition, useRef } from 'react'
+import { Edit2, Save, X, Plus, Trash2, Star, MapPin, User, FileText, Tag, Camera } from 'lucide-react'
 import type { Profile, PortfolioItem, Specialization } from '@/types'
 
 type Props = {
@@ -12,6 +12,8 @@ type Props = {
   updateProfile: (formData: FormData) => Promise<void>
   addPortfolioItem: (formData: FormData) => Promise<void>
   deletePortfolioItem: (id: string) => Promise<void>
+  getAvatarUploadUrl: () => Promise<{ signedUrl?: string; publicUrl?: string; error?: string }>
+  updateAvatarUrl: (url: string) => Promise<void>
 }
 
 const inputCls = [
@@ -44,13 +46,44 @@ function FieldGroup({ label, icon, children }: { label: string; icon: React.Reac
 export default function ProfileClient({
   profile, portfolioItems, allSpecializations, selectedSpecializationIds,
   updateProfile, addPortfolioItem, deletePortfolioItem,
+  getAvatarUploadUrl, updateAvatarUrl,
 }: Props) {
-  const [editing, setEditing]       = useState(false)
-  const [showAddItem, setShowAddItem] = useState(false)
-  const [isPending, startTransition] = useTransition()
-  const [selectedIds, setSelectedIds] = useState<string[]>(selectedSpecializationIds)
+  const [editing, setEditing]         = useState(false)
+  const [showAddItem, setShowAddItem]   = useState(false)
+  const [isPending, startTransition]   = useTransition()
+  const [selectedIds, setSelectedIds]  = useState<string[]>(selectedSpecializationIds)
+  const [avatarUrl, setAvatarUrl]      = useState<string | null>(profile.avatar_url)
+  const [avatarUploading, setAvatarUploading] = useState(false)
+  const [avatarError, setAvatarError]  = useState<string | null>(null)
+  const avatarInputRef = useRef<HTMLInputElement>(null)
 
   const selectedSpecs = allSpecializations.filter((s) => selectedIds.includes(s.id))
+
+  async function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setAvatarUploading(true)
+    setAvatarError(null)
+    const urlResult = await getAvatarUploadUrl()
+    if (urlResult.error || !urlResult.signedUrl) {
+      setAvatarError(urlResult.error ?? 'שגיאה בהכנת ה-URL')
+      setAvatarUploading(false)
+      return
+    }
+    const res = await fetch(urlResult.signedUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': file.type || 'image/jpeg' },
+      body: file,
+    })
+    if (!res.ok) {
+      setAvatarError('שגיאה בהעלאת התמונה')
+      setAvatarUploading(false)
+      return
+    }
+    await updateAvatarUrl(urlResult.publicUrl!)
+    setAvatarUrl(urlResult.publicUrl!)
+    setAvatarUploading(false)
+  }
 
   function toggleSpec(id: string) {
     setSelectedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])
@@ -81,24 +114,44 @@ export default function ProfileClient({
           <div className="flex items-end gap-5">
             {/* Avatar */}
             <div className="relative shrink-0">
-              <div
-                className="flex h-28 w-28 items-center justify-center rounded-full text-2xl font-bold shadow-xl"
+              <button
+                type="button"
+                onClick={() => avatarInputRef.current?.click()}
+                disabled={avatarUploading}
+                className="group relative flex h-28 w-28 items-center justify-center rounded-full text-2xl font-bold shadow-xl overflow-hidden"
                 style={{
                   background: 'linear-gradient(135deg, #7c3aed, #a855f7)',
                   border: '4px solid #ffffff',
-                  color: 'white',
                   boxShadow: '0 8px 32px rgba(107,33,168,.25)',
                 }}
+                title="לחץ לשינוי תמונת פרופיל"
               >
-                {profile.avatar_url
-                  ? <img src={profile.avatar_url} alt={displayName} className="h-full w-full rounded-full object-cover" />
-                  : <span style={{ color: 'white' }}>{initials}</span>
-                }
-              </div>
-              <span
-                className="absolute bottom-1 end-1 h-4 w-4 rounded-full bg-emerald-400"
-                style={{ border: '2px solid white', boxShadow: '0 0 0 1px rgba(52,211,153,.3)' }}
+                {avatarUploading ? (
+                  <div className="h-7 w-7 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                ) : avatarUrl ? (
+                  <img src={avatarUrl} alt={displayName} className="h-full w-full rounded-full object-cover" />
+                ) : (
+                  <span style={{ color: 'white' }}>{initials}</span>
+                )}
+                {/* Camera overlay on hover */}
+                <span className="absolute inset-0 flex items-center justify-center rounded-full opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+                  style={{ background: 'rgba(0,0,0,.45)' }}>
+                  <Camera size={22} style={{ color: 'white' }} />
+                </span>
+              </button>
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleAvatarChange}
               />
+              {!avatarUploading && (
+                <span
+                  className="absolute bottom-1 end-1 h-4 w-4 rounded-full bg-emerald-400"
+                  style={{ border: '2px solid white', boxShadow: '0 0 0 1px rgba(52,211,153,.3)' }}
+                />
+              )}
             </div>
 
             {/* Name */}
@@ -146,6 +199,13 @@ export default function ProfileClient({
             </span>
           </button>
         </div>
+
+        {/* Avatar error */}
+        {avatarError && (
+          <div className="mb-4 rounded-xl px-4 py-2.5 text-sm text-red-600" style={{ background: 'rgba(239,68,68,.08)', border: '1px solid rgba(239,68,68,.2)' }}>
+            {avatarError}
+          </div>
+        )}
 
         {/* Bio (view) */}
         {!editing && profile.bio && (
@@ -267,7 +327,7 @@ export default function ProfileClient({
           <div className="mb-5 flex items-center justify-between">
             <div>
               <h2 className="text-lg font-bold" style={{ color: 'var(--tx)' }}>העבודות שלי</h2>
-              <p className="mt-0.5 text-xs" style={{ color: 'var(--tx3)' }}>{portfolioItems.length} עבודות בפורטפוליו</p>
+              <p className="mt-0.5 text-xs" style={{ color: 'var(--tx3)' }}>{portfolioItems.length} עבודות</p>
             </div>
             <button
               onClick={() => setShowAddItem((s) => !s)}
@@ -324,7 +384,7 @@ export default function ProfileClient({
                     className="flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold transition hover:opacity-90 disabled:opacity-50"
                     style={{ background: 'linear-gradient(135deg, #7c3aed, #6b21a8)', color: 'white', boxShadow: '0 4px 16px rgba(107,33,168,.3)' }}
                   >
-                    <span style={{ color: 'white' }}>{isPending ? 'מוסיף...' : 'הוסף לפורטפוליו'}</span>
+                    <span style={{ color: 'white' }}>{isPending ? 'מוסיף...' : 'הוסף עבודה'}</span>
                   </button>
                   <button
                     type="button"

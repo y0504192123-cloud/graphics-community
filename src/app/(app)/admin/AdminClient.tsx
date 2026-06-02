@@ -5,9 +5,9 @@ import {
   ShieldCheck, Users, Clock, CheckCircle2, XCircle, Newspaper,
   Hash, Plus, Trash2, ExternalLink, Phone, MapPin, Briefcase, Star, X, Palette, FolderOpen
 } from 'lucide-react'
-import type { Profile, NewsItem, ChatCategory, Specialization, InspirationCategory, JobCategory } from '@/types'
+import type { Profile, NewsItem, ChatCategory, Specialization, InspirationCategory, JobCategory, AssetCategory } from '@/types'
 
-type Tab = 'pending' | 'users' | 'news' | 'categories' | 'specializations' | 'insp_cats' | 'job_cats'
+type Tab = 'pending' | 'users' | 'news' | 'categories' | 'specializations' | 'insp_cats' | 'job_cats' | 'asset_cats'
 
 type Props = {
   pendingUsers:    Profile[]
@@ -17,6 +17,7 @@ type Props = {
   specializations: Specialization[]
   inspirationCategories:       InspirationCategory[]
   jobCategories:               JobCategory[]
+  assetCategories:             AssetCategory[]
   approveUser:     (id: string) => Promise<void>
   rejectUser:      (id: string) => Promise<void>
   makeAdmin:       (id: string) => Promise<void>
@@ -32,9 +33,11 @@ type Props = {
   deleteInspirationCategory:   (id: string) => Promise<void>
   addJobCategory:              (prev: { error?: string } | null, fd: FormData) => Promise<{ error?: string } | null>
   deleteJobCategory:           (id: string) => Promise<void>
+  addAssetCategory:            (prev: { error?: string } | null, fd: FormData) => Promise<{ error?: string } | null>
+  deleteAssetCategory:         (id: string) => Promise<void>
 }
 
-const inputCls = 'w-full rounded-xl border bg-white/[0.04] px-4 py-2.5 text-sm text-slate-100 outline-none transition-all placeholder:text-slate-600 focus:bg-white/[0.06] focus:ring-2 focus:ring-purple-500/20'
+const inputCls = 'w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition-all placeholder:text-slate-400 hover:border-slate-300 focus:border-purple-400 focus:ring-2 focus:ring-purple-100'
 const labelCls = 'mb-1.5 block text-xs font-semibold uppercase tracking-widest text-slate-500'
 
 const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
@@ -43,26 +46,30 @@ const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'news',            label: 'חדשות',              icon: <Newspaper size={15} /> },
   { id: 'categories',      label: "קטגוריות צ'אט",     icon: <Hash size={15} /> },
   { id: 'specializations', label: 'תחומי התמחות',      icon: <Star size={15} /> },
-  { id: 'insp_cats',       label: 'קטגוריות השראה',    icon: <Palette size={15} /> },
-  { id: 'job_cats',        label: 'קטגוריות עבודות',   icon: <FolderOpen size={15} /> },
+  { id: 'insp_cats',       label: 'קטגוריות השראה',        icon: <Palette size={15} /> },
+  { id: 'job_cats',        label: 'קטגוריות עבודות',       icon: <FolderOpen size={15} /> },
+  { id: 'asset_cats',      label: 'קטגוריות חומרים',       icon: <FolderOpen size={15} /> },
 ]
 
 export default function AdminClient({
-  pendingUsers, activeUsers, newsItems, categories, specializations, inspirationCategories, jobCategories,
+  pendingUsers, activeUsers, newsItems, categories, specializations,
+  inspirationCategories, jobCategories, assetCategories,
   approveUser, rejectUser, makeAdmin, removeAdmin,
   publishNews, deleteNews, addCategory, deleteCategory,
   addSpecialization, deleteSpecialization, deleteUser,
   addInspirationCategory, deleteInspirationCategory,
   addJobCategory, deleteJobCategory,
+  addAssetCategory, deleteAssetCategory,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('pending')
   const [isPending, startTransition] = useTransition()
 
-  const [newsState,     newsAction,     newsPending]  = useActionState(publishNews, null)
-  const [catState,      catAction,      catPending]   = useActionState(addCategory, null)
-  const [specState,     specAction,     specPending]  = useActionState(addSpecialization, null)
-  const [inspCatState,  inspCatAction,  inspCatPending] = useActionState(addInspirationCategory, null)
-  const [jobCatState,   jobCatAction,   jobCatPending]  = useActionState(addJobCategory, null)
+  const [newsState,      newsAction,      newsPending]     = useActionState(publishNews, null)
+  const [catState,       catAction,       catPending]      = useActionState(addCategory, null)
+  const [specState,      specAction,      specPending]     = useActionState(addSpecialization, null)
+  const [inspCatState,   inspCatAction,   inspCatPending]  = useActionState(addInspirationCategory, null)
+  const [jobCatState,    jobCatAction,    jobCatPending]   = useActionState(addJobCategory, null)
+  const [assetCatState,  assetCatAction,  assetCatPending] = useActionState(addAssetCategory, null)
   const [showNewsForm, setShowNewsForm] = useState(false)
 
   return (
@@ -121,7 +128,7 @@ export default function AdminClient({
             {pendingUsers.length === 0 ? (
               <div className="flex flex-col items-center gap-3 rounded-2xl py-16 text-center" style={{ border: '2px dashed var(--bd)', background: 'var(--inp)' }}>
                 <CheckCircle2 size={32} className="text-emerald-500" />
-                <p className="font-semibold text-slate-300">אין בקשות ממתינות</p>
+                <p className="font-semibold" style={{ color: 'var(--tx2)' }}>אין בקשות ממתינות</p>
                 <p className="text-sm text-slate-600">כל הבקשות טופלו</p>
               </div>
             ) : (
@@ -137,11 +144,11 @@ export default function AdminClient({
                         {(user.full_name ?? user.email ?? 'א')[0].toUpperCase()}
                       </div>
                       <div>
-                        <p className="font-bold text-slate-100">{user.full_name ?? '—'}</p>
-                        <p className="text-xs text-slate-500 ltr" dir="ltr">{user.email ?? '—'}</p>
+                        <p className="font-bold" style={{ color: 'var(--tx)' }}>{user.full_name ?? '—'}</p>
+                        <p className="text-xs ltr" style={{ color: 'var(--tx3)' }} dir="ltr">{user.email ?? '—'}</p>
                       </div>
                     </div>
-                    <span className="rounded-full px-2.5 py-0.5 text-xs font-bold text-amber-300" style={{ background: 'rgba(245,158,11,.15)', border: '1px solid rgba(245,158,11,.3)' }}>
+                    <span className="rounded-full px-2.5 py-0.5 text-xs font-bold text-amber-700" style={{ background: 'rgba(245,158,11,.1)', border: '1px solid rgba(245,158,11,.25)' }}>
                       ממתין
                     </span>
                   </div>
@@ -243,12 +250,12 @@ export default function AdminClient({
                         {(user.full_name ?? user.email ?? 'א')[0].toUpperCase()}
                       </div>
                       <div>
-                        <p className="font-bold text-slate-100">{user.full_name ?? '—'}</p>
-                        <p className="text-xs text-slate-500 ltr" dir="ltr">{user.email ?? '—'}</p>
+                        <p className="font-bold" style={{ color: 'var(--tx)' }}>{user.full_name ?? '—'}</p>
+                        <p className="text-xs ltr" style={{ color: 'var(--tx3)' }} dir="ltr">{user.email ?? '—'}</p>
                       </div>
                     </div>
                     {user.role === 'admin' && (
-                      <span className="rounded-full px-2.5 py-0.5 text-xs font-bold text-pink-300" style={{ background: 'rgba(236,72,153,.15)', border: '1px solid rgba(236,72,153,.3)' }}>מנהל</span>
+                      <span className="rounded-full px-2.5 py-0.5 text-xs font-bold text-pink-700" style={{ background: 'rgba(236,72,153,.1)', border: '1px solid rgba(236,72,153,.25)' }}>מנהל</span>
                     )}
                   </div>
 
@@ -328,7 +335,7 @@ export default function AdminClient({
         {activeTab === 'news' && (
           <div>
             <div className="mb-5 flex items-center justify-between">
-              <p className="text-sm font-bold text-slate-300">{newsItems.length} פריטי חדשות</p>
+              <p className="text-sm font-bold" style={{ color: 'var(--tx2)' }}>{newsItems.length} פריטי חדשות</p>
               <button
                 onClick={() => setShowNewsForm((s) => !s)}
                 className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold text-white transition hover:opacity-90"
@@ -351,7 +358,7 @@ export default function AdminClient({
                 <div className="space-y-3">
                   <div>
                     <label className={labelCls}>כותרת</label>
-                    <input name="title" required className={inputCls} style={{ borderColor: 'rgba(124,58,237,.3)' }} />
+                    <input name="title" required className={inputCls} />
                   </div>
                   <div>
                     <label className={labelCls}>תוכן</label>
@@ -359,7 +366,7 @@ export default function AdminClient({
                   </div>
                   <div>
                     <label className={labelCls}>קישור לתמונה (אופציונלי)</label>
-                    <input name="image_url" type="url" className={inputCls} style={{ borderColor: 'rgba(124,58,237,.3)' }} dir="ltr" />
+                    <input name="image_url" type="url" className={inputCls} dir="ltr" />
                   </div>
                 </div>
                 <button
@@ -387,9 +394,9 @@ export default function AdminClient({
                     style={{ background: 'var(--s2)', border: '1px solid var(--bd)' }}
                   >
                     <div className="min-w-0 flex-1">
-                      <p className="font-semibold text-slate-100 line-clamp-1">{item.title}</p>
-                      <p className="mt-0.5 text-xs text-slate-500 line-clamp-2">{item.content}</p>
-                      <p className="mt-1 text-[11px] text-slate-700">
+                      <p className="font-semibold line-clamp-1" style={{ color: 'var(--tx)' }}>{item.title}</p>
+                      <p className="mt-0.5 text-xs line-clamp-2" style={{ color: 'var(--tx2)' }}>{item.content}</p>
+                      <p className="mt-1 text-[11px]" style={{ color: 'var(--tx3)' }}>
                         {new Date(item.created_at).toLocaleDateString('he-IL')}
                       </p>
                     </div>
@@ -416,8 +423,7 @@ export default function AdminClient({
                 <input
                   name="name"
                   required
-                  className={`flex-1 rounded-xl border bg-white/[0.04] px-4 py-2.5 text-sm text-slate-100 outline-none transition-all focus:bg-white/[0.06] focus:ring-2 focus:ring-purple-500/20`}
-                  style={{ borderColor: 'rgba(124,58,237,.3)' }}
+                  className="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition-all hover:border-slate-300 focus:border-purple-400 focus:ring-2 focus:ring-purple-100"
                 />
                 <button
                   type="submit"
@@ -448,7 +454,7 @@ export default function AdminClient({
                   >
                     <div className="flex items-center gap-2.5">
                       <Hash size={13} className="text-purple-400" />
-                      <span className="text-sm font-medium text-slate-200">{cat.name}</span>
+                      <span className="text-sm font-medium" style={{ color: 'var(--tx)' }}>{cat.name}</span>
                     </div>
                     <button
                       disabled={isPending}
@@ -504,7 +510,7 @@ export default function AdminClient({
                     style={{ background: 'rgba(124,58,237,.12)', border: '1px solid rgba(124,58,237,.3)' }}
                   >
                     <Star size={11} className="text-purple-400 shrink-0" />
-                    <span className="text-sm font-medium text-purple-200">{spec.name}</span>
+                    <span className="text-sm font-medium text-purple-700">{spec.name}</span>
                     <button
                       disabled={isPending}
                       onClick={() => startTransition(async () => { await deleteSpecialization(spec.id) })}
@@ -560,7 +566,7 @@ export default function AdminClient({
                   >
                     <div className="flex items-center gap-2.5">
                       <Palette size={13} className="text-purple-400" />
-                      <span className="text-sm font-medium text-slate-200">{cat.name}</span>
+                      <span className="text-sm font-medium" style={{ color: 'var(--tx)' }}>{cat.name}</span>
                     </div>
                     <button
                       disabled={isPending}
@@ -585,8 +591,7 @@ export default function AdminClient({
                 <input
                   name="name"
                   required
-                  className="flex-1 rounded-xl border bg-white/[0.04] px-4 py-2.5 text-sm text-slate-100 outline-none transition-all focus:bg-white/[0.06] focus:ring-2 focus:ring-purple-500/20"
-                  style={{ borderColor: 'rgba(124,58,237,.3)' }}
+                  className="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition-all hover:border-slate-300 focus:border-purple-400 focus:ring-2 focus:ring-purple-100"
                 />
                 <button
                   type="submit"
@@ -602,7 +607,6 @@ export default function AdminClient({
             {jobCatState?.error && (
               <p className="mb-4 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">{jobCatState.error}</p>
             )}
-
             <div className="space-y-2">
               {jobCategories.length === 0 ? (
                 <div className="rounded-2xl py-12 text-center text-sm text-slate-500" style={{ border: '2px dashed var(--bd)', background: 'var(--inp)' }}>
@@ -610,20 +614,62 @@ export default function AdminClient({
                 </div>
               ) : (
                 jobCategories.map((cat) => (
-                  <div
-                    key={cat.id}
-                    className="flex items-center justify-between rounded-xl px-4 py-3"
-                    style={{ background: 'var(--s2)', border: '1px solid var(--bd)' }}
-                  >
+                  <div key={cat.id} className="flex items-center justify-between rounded-xl px-4 py-3" style={{ background: 'var(--s2)', border: '1px solid var(--bd)' }}>
                     <div className="flex items-center gap-2.5">
                       <FolderOpen size={13} className="text-purple-400" />
-                      <span className="text-sm font-medium text-slate-200">{cat.name}</span>
+                      <span className="text-sm font-medium" style={{ color: 'var(--tx)' }}>{cat.name}</span>
                     </div>
-                    <button
-                      disabled={isPending}
-                      onClick={() => startTransition(async () => { await deleteJobCategory(cat.id) })}
-                      className="rounded-lg p-1.5 text-slate-600 transition hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50"
-                    >
+                    <button disabled={isPending} onClick={() => startTransition(async () => { await deleteJobCategory(cat.id) })}
+                      className="rounded-lg p-1.5 transition hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50" style={{ color: 'var(--tx3)' }}>
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Asset Categories ── */}
+        {activeTab === 'asset_cats' && (
+          <div>
+            <form action={assetCatAction} className="mb-6">
+              <label className={`${labelCls} mb-2`}>קטגוריה חדשה לחומרים לשימוש</label>
+              <div className="flex gap-2">
+                <input
+                  name="name"
+                  required
+                  className="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition-all hover:border-slate-300 focus:border-purple-400 focus:ring-2 focus:ring-purple-100"
+                  placeholder="למשל: פונטים, אייקונים, תמונות..."
+                />
+                <button
+                  type="submit"
+                  disabled={assetCatPending}
+                  className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-white transition hover:opacity-90 disabled:opacity-50"
+                  style={{ background: 'linear-gradient(135deg, #7c3aed, #6d28d9)' }}
+                >
+                  <Plus size={15} />
+                  הוסף
+                </button>
+              </div>
+            </form>
+            {assetCatState?.error && (
+              <p className="mb-4 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">{assetCatState.error}</p>
+            )}
+            <div className="space-y-2">
+              {assetCategories.length === 0 ? (
+                <div className="rounded-2xl py-12 text-center text-sm text-slate-500" style={{ border: '2px dashed var(--bd)', background: 'var(--inp)' }}>
+                  אין קטגוריות עדיין
+                </div>
+              ) : (
+                assetCategories.map((cat) => (
+                  <div key={cat.id} className="flex items-center justify-between rounded-xl px-4 py-3" style={{ background: 'var(--s2)', border: '1px solid var(--bd)' }}>
+                    <div className="flex items-center gap-2.5">
+                      <FolderOpen size={13} className="text-purple-400" />
+                      <span className="text-sm font-medium" style={{ color: 'var(--tx)' }}>{cat.name}</span>
+                    </div>
+                    <button disabled={isPending} onClick={() => startTransition(async () => { await deleteAssetCategory(cat.id) })}
+                      className="rounded-lg p-1.5 transition hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50" style={{ color: 'var(--tx3)' }}>
                       <Trash2 size={14} />
                     </button>
                   </div>

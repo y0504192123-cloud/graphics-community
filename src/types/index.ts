@@ -152,3 +152,9 @@ export type InspirationComment = {
   created_at: string
   profiles?: Profile
 }
+
+export type AssetCategory = {
+  id: string
+  name: string
+  created_at: string
+}

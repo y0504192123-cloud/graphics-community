@@ -15,12 +15,12 @@ type Props = { profile: Profile | null; email: string; currentUserId?: string }
 const labels = {
   he: {
     home: 'ראשי', jobs: 'לוח עבודות', chat: "צ'אטים",
-    inspiration: 'ספריית השראה', assets: 'נכסים', admin: 'פאנל ניהול',
+    inspiration: 'ספריית השראה', assets: 'חומרים לשימוש', admin: 'פאנל ניהול',
     appName: 'גרפיקס קהילה', appSub: 'פלטפורמה לגרפיקאים', designer: 'גרפיקאי',
   },
   en: {
     home: 'Home', jobs: 'Job Board', chat: 'Chats',
-    inspiration: 'Inspiration', assets: 'Assets', admin: 'Admin Panel',
+    inspiration: 'Inspiration', assets: 'Resources', admin: 'Admin Panel',
     appName: 'Graphics Community', appSub: 'Platform for Designers', designer: 'Designer',
   },
 }
