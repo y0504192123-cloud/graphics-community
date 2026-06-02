@@ -14,7 +14,22 @@ type Props = {
   deletePortfolioItem: (id: string) => Promise<void>
   getAvatarUploadUrl: () => Promise<{ signedUrl?: string; publicUrl?: string; error?: string }>
   updateAvatarUrl: (url: string) => Promise<void>
+  deleteAvatar: () => Promise<void>
+  updateAvatarColor: (color: string) => Promise<void>
 }
+
+const AVATAR_COLORS = [
+  '#7c3aed', // סגול
+  '#6366f1', // אינדיגו
+  '#3b82f6', // כחול
+  '#0ea5e9', // שמיים
+  '#06b6d4', // ציאן
+  '#10b981', // ירוק
+  '#f59e0b', // ענבר
+  '#ef4444', // אדום
+  '#ec4899', // ורוד
+  '#64748b', // אפור
+]
 
 const inputCls = [
   'w-full rounded-xl border px-4 py-2.5 text-sm outline-none transition-all',
@@ -46,15 +61,16 @@ function FieldGroup({ label, icon, children }: { label: string; icon: React.Reac
 export default function ProfileClient({
   profile, portfolioItems, allSpecializations, selectedSpecializationIds,
   updateProfile, addPortfolioItem, deletePortfolioItem,
-  getAvatarUploadUrl, updateAvatarUrl,
+  getAvatarUploadUrl, updateAvatarUrl, deleteAvatar, updateAvatarColor,
 }: Props) {
-  const [editing, setEditing]         = useState(false)
-  const [showAddItem, setShowAddItem]   = useState(false)
-  const [isPending, startTransition]   = useTransition()
-  const [selectedIds, setSelectedIds]  = useState<string[]>(selectedSpecializationIds)
-  const [avatarUrl, setAvatarUrl]      = useState<string | null>(profile.avatar_url)
+  const [editing, setEditing]               = useState(false)
+  const [showAddItem, setShowAddItem]         = useState(false)
+  const [isPending, startTransition]         = useTransition()
+  const [selectedIds, setSelectedIds]        = useState<string[]>(selectedSpecializationIds)
+  const [avatarUrl, setAvatarUrl]            = useState<string | null>(profile.avatar_url)
+  const [avatarColor, setAvatarColor]        = useState<string>(profile.avatar_color ?? '#7c3aed')
   const [avatarUploading, setAvatarUploading] = useState(false)
-  const [avatarError, setAvatarError]  = useState<string | null>(null)
+  const [avatarError, setAvatarError]        = useState<string | null>(null)
   const avatarInputRef = useRef<HTMLInputElement>(null)
 
   const selectedSpecs = allSpecializations.filter((s) => selectedIds.includes(s.id))
@@ -85,6 +101,19 @@ export default function ProfileClient({
     setAvatarUploading(false)
   }
 
+  async function handleDeleteAvatar() {
+    setAvatarUploading(true)
+    setAvatarError(null)
+    await deleteAvatar()
+    setAvatarUrl(null)
+    setAvatarUploading(false)
+  }
+
+  function handleColorChange(color: string) {
+    setAvatarColor(color)
+    startTransition(async () => { await updateAvatarColor(color) })
+  }
+
   function toggleSpec(id: string) {
     setSelectedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])
   }
@@ -113,45 +142,75 @@ export default function ProfileClient({
         <div className="-mt-14 mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div className="flex items-end gap-5">
             {/* Avatar */}
-            <div className="relative shrink-0">
+            <div className="group/av relative shrink-0">
+              {/* Circle button — upload on click */}
               <button
                 type="button"
                 onClick={() => avatarInputRef.current?.click()}
                 disabled={avatarUploading}
-                className="group relative flex h-28 w-28 items-center justify-center rounded-full text-2xl font-bold shadow-xl overflow-hidden"
+                className="group relative flex h-28 w-28 items-center justify-center rounded-full text-2xl font-bold overflow-hidden"
                 style={{
-                  background: 'linear-gradient(135deg, #7c3aed, #a855f7)',
+                  background: avatarColor,
                   border: '4px solid #ffffff',
-                  boxShadow: '0 8px 32px rgba(107,33,168,.25)',
+                  boxShadow: `0 8px 32px ${avatarColor}55`,
+                  color: 'white',
                 }}
                 title="לחץ לשינוי תמונת פרופיל"
               >
                 {avatarUploading ? (
                   <div className="h-7 w-7 animate-spin rounded-full border-2 border-white border-t-transparent" />
                 ) : avatarUrl ? (
-                  <img src={avatarUrl} alt={displayName} className="h-full w-full rounded-full object-cover" />
+                  <img src={avatarUrl} alt={displayName} className="h-full w-full object-cover" />
                 ) : (
                   <span style={{ color: 'white' }}>{initials}</span>
                 )}
-                {/* Camera overlay on hover */}
                 <span className="absolute inset-0 flex items-center justify-center rounded-full opacity-0 transition-opacity duration-200 group-hover:opacity-100"
                   style={{ background: 'rgba(0,0,0,.45)' }}>
                   <Camera size={22} style={{ color: 'white' }} />
                 </span>
               </button>
-              <input
-                ref={avatarInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={handleAvatarChange}
-              />
+
+              {/* Delete X — visible on avatar area hover, only when image exists */}
+              {avatarUrl && !avatarUploading && (
+                <button
+                  type="button"
+                  onClick={handleDeleteAvatar}
+                  className="absolute -top-1 -end-1 z-10 flex h-6 w-6 items-center justify-center rounded-full opacity-0 transition-opacity duration-200 group-hover/av:opacity-100"
+                  style={{ background: '#ef4444', border: '2px solid white', color: 'white' }}
+                  title="מחק תמונת פרופיל"
+                >
+                  <X size={11} />
+                </button>
+              )}
+
+              {/* Online dot */}
               {!avatarUploading && (
                 <span
                   className="absolute bottom-1 end-1 h-4 w-4 rounded-full bg-emerald-400"
                   style={{ border: '2px solid white', boxShadow: '0 0 0 1px rgba(52,211,153,.3)' }}
                 />
               )}
+
+              {/* Color picker swatches */}
+              <div className="mt-2 flex flex-wrap justify-center gap-1.5">
+                {AVATAR_COLORS.map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    onClick={() => handleColorChange(color)}
+                    className="h-5 w-5 rounded-full transition-all duration-150 hover:scale-110"
+                    style={{
+                      background: color,
+                      boxShadow: avatarColor === color
+                        ? `0 0 0 2px white, 0 0 0 4px ${color}`
+                        : 'none',
+                    }}
+                    title={color}
+                  />
+                ))}
+              </div>
+
+              <input ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
             </div>
 
             {/* Name */}

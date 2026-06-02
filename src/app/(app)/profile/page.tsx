@@ -76,6 +76,31 @@ export default async function ProfilePage() {
     revalidatePath('/profile')
   }
 
+  async function deleteAvatar(): Promise<void> {
+    'use server'
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    const { data: prof } = await supabase.from('profiles').select('avatar_url').eq('id', user.id).single()
+    if (prof?.avatar_url) {
+      const match = prof.avatar_url.match(/\/avatars\/(.+)$/)
+      if (match) {
+        await createAdminClient().storage.from('avatars').remove([decodeURIComponent(match[1])])
+      }
+    }
+    await supabase.from('profiles').update({ avatar_url: null }).eq('id', user.id)
+    revalidatePath('/profile')
+  }
+
+  async function updateAvatarColor(color: string): Promise<void> {
+    'use server'
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    await supabase.from('profiles').update({ avatar_color: color }).eq('id', user.id)
+    revalidatePath('/profile')
+  }
+
   async function getAvatarUploadUrl(): Promise<{ signedUrl?: string; publicUrl?: string; error?: string }> {
     'use server'
     const supabase = await createClient()
@@ -122,6 +147,8 @@ export default async function ProfilePage() {
       deletePortfolioItem={deletePortfolioItem}
       getAvatarUploadUrl={getAvatarUploadUrl}
       updateAvatarUrl={updateAvatarUrl}
+      deleteAvatar={deleteAvatar}
+      updateAvatarColor={updateAvatarColor}
     />
   )
 }

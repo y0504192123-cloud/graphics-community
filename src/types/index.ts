@@ -4,6 +4,7 @@ export type Profile = {
   username: string | null
   full_name: string | null
   avatar_url: string | null
+  avatar_color: string | null
   bio: string | null
   specialization: string | null
   role: 'user' | 'admin' | null
