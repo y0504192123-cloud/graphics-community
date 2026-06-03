@@ -5,21 +5,60 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { Font } from '@/types'
 
-const WEIGHT_SYNONYMS: Record<string, string[]> = {
-  thin:    ['thin', 'hairline', 'דק', 'דקיק'],
-  light:   ['light', 'lite', 'קל', 'לייט'],
-  regular: ['regular', 'normal', 'book', 'roman', 'רגיל', 'נורמל'],
-  medium:  ['medium', 'demi', 'בינוני'],
-  bold:    ['bold', 'semibold', 'semi-bold', 'מודגש', 'בולד'],
-  black:   ['black', 'heavy', 'ultra', 'extrabold', 'extra-bold', 'שחור'],
+const BATCH_SIZE    = 20   // font previews per Claude call (safe image limit)
+const BATCH_CONCUR  = 5    // parallel Claude calls at once
+const DL_CONCUR     = 40   // parallel preview downloads at once
+
+type Preview = { name: string; base64: string; mimeType: string }
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+async function downloadPreview(font: Font): Promise<Preview | null> {
+  if (!font.preview_image_url) return null
+  try {
+    const r = await fetch(font.preview_image_url, { signal: AbortSignal.timeout(8000) })
+    if (!r.ok) return null
+    const buf = await r.arrayBuffer()
+    const base64 = Buffer.from(buf).toString('base64')
+    const ct = r.headers.get('content-type') ?? 'image/png'
+    return { name: font.name, base64, mimeType: ct.split(';')[0].trim() }
+  } catch { return null }
 }
 
-function weightScore(font: Font, weight: string): number {
-  if (!weight) return 0
-  const synonyms = WEIGHT_SYNONYMS[weight] ?? [weight]
-  const corpus = [font.name, font.style ?? '', ...(font.tags ?? [])].join(' ').toLowerCase()
-  return synonyms.some(syn => corpus.includes(syn)) ? 1 : 0
+async function runConcurrent<T>(fns: (() => Promise<T>)[], limit: number): Promise<T[]> {
+  const results: T[] = []
+  for (let i = 0; i < fns.length; i += limit) {
+    const chunk = await Promise.all(fns.slice(i, i + limit).map(f => f()))
+    results.push(...chunk)
+  }
+  return results
 }
+
+async function claudeCall(
+  apiKey: string,
+  model: string,
+  maxTokens: number,
+  content: object[],
+): Promise<string> {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+    body: JSON.stringify({ model, max_tokens: maxTokens, messages: [{ role: 'user', content }] }),
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error?.message ?? 'Claude API error')
+  return data.content?.[0]?.text ?? ''
+}
+
+function imgBlock(base64: string, mimeType: string) {
+  return { type: 'image' as const, source: { type: 'base64' as const, media_type: mimeType, data: base64 } }
+}
+
+function textBlock(text: string) {
+  return { type: 'text' as const, text }
+}
+
+// ── Main action ───────────────────────────────────────────────────────────────
 
 export async function identifyFontFromDB(
   imageBase64: string,
@@ -35,185 +74,162 @@ export async function identifyFontFromDB(
   const admin = createAdminClient()
   const { data: fontsData } = await admin
     .from('fonts')
-    .select('id, name, name_hebrew, category, style, description, tags, company, preview_image_url, font_file_path, is_free, price, download_url, created_at')
+    .select('id, name, preview_image_url')
+    .not('preview_image_url', 'is', null)
     .order('name', { ascending: true })
 
   const fonts = (fontsData ?? []) as Font[]
-  console.log(`[font-id] fonts in DB: ${fonts.length}`)
-  if (!fonts.length) return { error: 'מאגר הפונטים ריק. הוסף פונטים מפאנל הניהול.' }
+  console.log(`[font-id] fonts with previews: ${fonts.length}`)
+  if (!fonts.length) return { error: 'אין פונטים עם תמונות preview במאגר.' }
 
-  // ── Step 1: Quick analysis — PREFIX + WEIGHT ───────────────────────────────
-  const step1Prompt = `You are a Hebrew typography expert. Analyze the font in this image.
+  // ── Step 1: Detailed visual analysis ────────────────────────────────────────
+  const step1Prompt = `You are a Hebrew typography expert. Analyze the letterform characteristics of the font in this image.
 
-Reply ONLY in this exact format (no other text):
-DESCRIPTION: one sentence in Hebrew describing the visual font style
-PREFIX: the company/foundry prefix visible at the start of the font name (e.g. FB, AA, ML, DL, MN, YD, AM). Write ONLY the 2-4 uppercase letters. If not identifiable, write UNKNOWN
-WEIGHT: one of: thin | light | regular | medium | bold | black`
+Reply ONLY in this exact format (one value per line):
+SERIF: yes | no
+WEIGHT: thin | light | regular | medium | bold | black
+WIDTH: condensed | normal | wide
+TERMINALS: rounded | sharp | square
+XHEIGHT: low | medium | high
+FEATURES: 2-3 distinctive visual traits (e.g. "high stroke contrast, triangular serifs, open counters")`
+
+  let analysis: string
+  try {
+    analysis = await claudeCall(apiKey, 'claude-haiku-4-5-20251001', 120,
+      [imgBlock(imageBase64, imageMimeType), textBlock(step1Prompt)])
+    console.log(`[font-id] step-1:\n${analysis}`)
+  } catch (err) {
+    console.error('[font-id] step-1 failed:', err)
+    return { error: 'שגיאה בניתוח התמונה' }
+  }
+
+  // ── Download all previews in parallel ────────────────────────────────────────
+  const dlTasks = fonts.map(f => () => downloadPreview(f))
+  const downloaded = await runConcurrent(dlTasks, DL_CONCUR)
+  const allPreviews = downloaded.filter(Boolean) as Preview[]
+  console.log(`[font-id] downloaded: ${allPreviews.length}/${fonts.length}`)
+
+  if (allPreviews.length === 0) return { error: 'לא ניתן לטעון תמונות preview.' }
+
+  // ── Step 2: Tournament — each batch picks its best match ─────────────────────
+  const batches: Preview[][] = []
+  for (let i = 0; i < allPreviews.length; i += BATCH_SIZE) {
+    batches.push(allPreviews.slice(i, i + BATCH_SIZE))
+  }
+  console.log(`[font-id] step-2: ${batches.length} batches × ${BATCH_SIZE}`)
+
+  const makeBatchPrompt = (batch: Preview[]): string => {
+    const imageLines = batch.map((p, i) => `  Image ${i + 2}: "${p.name}"`).join('\n')
+    const nameLines  = batch.map((p, i) => `${i + 1}. ${p.name}`).join('\n')
+    return `Hebrew font identification expert.
+
+Image 1: user's image (unknown font).
+${imageLines}
+
+Each Image 2+ shows the Hebrew alphabet in a specific font.
+
+Target font characteristics:
+${analysis}
+
+Compare Image 1 against each sample. Consider: letter shapes (especially א ג ד ה כ מ ע ר ש ת), stroke weight, terminal style, proportions.
+
+Font list (copy name exactly):
+${nameLines}
+
+Reply with ONE line only:
+BEST: ExactFontName
+
+If none of the samples match, write: BEST: NONE`
+  }
+
+  const allFontNames = new Set(allPreviews.map(p => p.name))
+
+  const batchTasks = batches.map(batch => async (): Promise<string | null> => {
+    try {
+      const content = [
+        imgBlock(imageBase64, imageMimeType),
+        ...batch.map(p => imgBlock(p.base64, p.mimeType)),
+        textBlock(makeBatchPrompt(batch)),
+      ]
+      const text = await claudeCall(apiKey, 'claude-haiku-4-5-20251001', 40, content)
+      const match = text.match(/BEST:\s*(.+)/i)?.[1]?.trim() ?? ''
+      return (match && match.toUpperCase() !== 'NONE' && allFontNames.has(match)) ? match : null
+    } catch (err) {
+      console.error('[font-id] batch error:', err)
+      return null
+    }
+  })
+
+  const rawWinners = await runConcurrent(batchTasks, BATCH_CONCUR)
+  const winners = [...new Set(rawWinners.filter(Boolean) as string[])]
+  console.log(`[font-id] step-2 winners (${winners.length}): ${winners.join(', ')}`)
+
+  if (winners.length === 0) {
+    return { description: buildDescription(analysis), matches: allPreviews.slice(0, 3).map(p => p.name) }
+  }
+
+  // ── Step 3: Final — Sonnet compares all winners ──────────────────────────────
+  // Cap at 20 to stay within image limit
+  const finalWinners = winners.slice(0, 20)
+  const winnerPreviews = finalWinners
+    .map(name => allPreviews.find(p => p.name === name))
+    .filter(Boolean) as Preview[]
+
+  const winnerImageLines = winnerPreviews.map((p, i) => `  Image ${i + 2}: "${p.name}"`).join('\n')
+  const winnerNameLines  = winnerPreviews.map((p, i) => `${i + 1}. ${p.name}`).join('\n')
+
+  const finalPrompt = `You are a Hebrew font identification expert performing a final selection.
+
+Image 1: user's image (unknown font).
+${winnerImageLines}
+
+These fonts were each selected as the best match from their group.
+
+Target font characteristics:
+${analysis}
+
+Carefully compare Image 1 against each candidate. Focus on the most distinctive letterforms.
+
+Font names (copy exactly):
+${winnerNameLines}
+
+Reply ONLY in this format:
+DESCRIPTION: one sentence in Hebrew describing the matched font style
+MATCH: ExactFontName
+MATCH: ExactFontName
+MATCH: ExactFontName
+
+Order from best to least similar. Up to 3 MATCH lines.`
 
   try {
-    const res1 = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 120,
-        messages: [{ role: 'user', content: [
-          { type: 'image', source: { type: 'base64', media_type: imageMimeType, data: imageBase64 } },
-          { type: 'text', text: step1Prompt },
-        ]}],
-      }),
-    })
-    const data1 = await res1.json()
-    if (!res1.ok) return { error: data1.error?.message ?? 'שגיאה בתקשורת עם Claude' }
+    const content = [
+      imgBlock(imageBase64, imageMimeType),
+      ...winnerPreviews.map(p => imgBlock(p.base64, p.mimeType)),
+      textBlock(finalPrompt),
+    ]
+    const finalText = await claudeCall(apiKey, 'claude-sonnet-4-6', 200, content)
+    console.log(`[font-id] step-3:\n${finalText}`)
 
-    const text1: string = data1.content?.[0]?.text ?? ''
-    console.log(`[font-id] step-1:\n${text1}`)
-
-    const description   = text1.match(/DESCRIPTION:\s*(.+)/i)?.[1]?.trim() ?? ''
-    const rawPrefix     = (text1.match(/PREFIX:\s*(.+)/i)?.[1] ?? '').trim().toUpperCase()
-    const weight        = (text1.match(/WEIGHT:\s*(.+)/i)?.[1] ?? '').trim().toLowerCase()
-    const companyPrefix = (rawPrefix === 'UNKNOWN' || rawPrefix === '') ? '' : rawPrefix
-
-    console.log(`[font-id] step-1 parsed: prefix="${companyPrefix}" weight="${weight}"`)
-
-    // ── Step 2: Filter candidates by PREFIX ────────────────────────────────────
-    let candidates: Font[]
-
-    if (companyPrefix) {
-      const p = companyPrefix.toLowerCase()
-      candidates = fonts.filter(f => {
-        const nameLower    = f.name.toLowerCase()
-        const companyLower = (f.company ?? '').toLowerCase().replace(/[_\-\s]/g, '')
-        return (
-          nameLower.startsWith(p + ' ') ||
-          nameLower.startsWith(p + '-') ||
-          nameLower.startsWith(p + '_') ||
-          companyLower === p ||
-          companyLower.startsWith(p)
-        )
-      })
-      console.log(`[font-id] step-2: prefix "${companyPrefix}" → ${candidates.length} fonts`)
-
-      // Within company, sort so weight-matched fonts come first
-      if (weight) {
-        candidates = [
-          ...candidates.filter(f => weightScore(f, weight) > 0),
-          ...candidates.filter(f => weightScore(f, weight) === 0),
-        ]
-      }
-    } else {
-      // No prefix identified — lightweight scoring fallback
-      console.log(`[font-id] step-2: no prefix, scoring fallback`)
-      const synonyms = weight ? (WEIGHT_SYNONYMS[weight] ?? [weight]) : []
-      candidates = fonts
-        .map(f => {
-          const corpus = [f.name, f.name_hebrew ?? '', f.category ?? '', f.style ?? '', ...(f.tags ?? [])].join(' ').toLowerCase()
-          let score = synonyms.some(syn => corpus.includes(syn)) ? 4 : 0
-          if (f.preview_image_url) score += 1
-          return { font: f, score }
-        })
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 40)
-        .map(s => s.font)
-    }
-
-    if (candidates.length === 0) {
-      return { description, error: `לא נמצאו פונטים עם הקידומת "${companyPrefix}" במאגר.` }
-    }
-
-    // ── Step 3: Visual comparison ────────────────────────────────────────────
-    const withPreviews = candidates.filter(f => f.preview_image_url).slice(0, 20)
-
-    if (withPreviews.length === 0) {
-      return { description, matches: candidates.slice(0, 3).map(f => f.name) }
-    }
-
-    const previewImages = await Promise.all(
-      withPreviews.map(async (font) => {
-        try {
-          const r = await fetch(font.preview_image_url!)
-          if (!r.ok) return null
-          const buf = await r.arrayBuffer()
-          const base64 = Buffer.from(buf).toString('base64')
-          const ct = r.headers.get('content-type') ?? 'image/png'
-          return { name: font.name, base64, mimeType: ct.split(';')[0].trim() }
-        } catch { return null }
-      })
-    )
-    const previews = previewImages.filter(Boolean) as { name: string; base64: string; mimeType: string }[]
-
-    if (previews.length === 0) {
-      return { description, matches: candidates.slice(0, 3).map(f => f.name) }
-    }
-
-    console.log(`[font-id] step-3: ${previews.length} previews → Claude`)
-
-    const imageList = previews.map((p, i) => `  Image ${i + 2}: "${p.name}"`).join('\n')
-    const nameList  = previews.map((p, i) => `${i + 1}. ${p.name}`).join('\n')
-
-    const step3Prompt = `You are a Hebrew font identification expert.
-
-Image 1: the user's input — Hebrew text in an unknown font.
-${imageList}
-
-Each of Images 2+ shows the full Hebrew alphabet ("אבגדהוזחטיכלמנסעפצקרשת") rendered in a specific font.
-
-Compare Image 1 against every sample. Focus on:
-- Letter shapes (especially א ג ד ה כ מ ע ר ש ת)
-- Stroke weight and contrast
-- Serif presence and style
-- Overall proportions and spacing
-
-FONT NAME LIST (copy names exactly, character-for-character):
-${nameList}
-
-Reply ONLY in this exact format:
-DESCRIPTION: one sentence in Hebrew about the match
-MATCH: ExactFontName
-MATCH: ExactFontName
-MATCH: ExactFontName
-
-Rules: order best → worst match · up to 3 MATCH lines · if nothing fits write MATCH: NONE`
-
-    const res3 = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 250,
-        messages: [{ role: 'user', content: [
-          { type: 'image', source: { type: 'base64', media_type: imageMimeType, data: imageBase64 } },
-          ...previews.map(p => ({ type: 'image' as const, source: { type: 'base64' as const, media_type: p.mimeType, data: p.base64 } })),
-          { type: 'text', text: step3Prompt },
-        ]}],
-      }),
-    })
-    const data3 = await res3.json()
-
-    if (!res3.ok) {
-      console.log(`[font-id] step-3 API error: ${data3.error?.message}`)
-      return { description, matches: candidates.slice(0, 3).map(f => f.name) }
-    }
-
-    const text3: string = data3.content?.[0]?.text ?? ''
-    console.log(`[font-id] step-3 response:\n${text3}`)
-
-    const finalDescription = text3.match(/DESCRIPTION:\s*(.+)/i)?.[1]?.trim() ?? description
-    const fontNames = fonts.map(f => f.name)
-    const matches = (text3.match(/MATCH:\s*(.+)/gi) ?? [])
+    const finalDescription = finalText.match(/DESCRIPTION:\s*(.+)/i)?.[1]?.trim() ?? buildDescription(analysis)
+    const matches = (finalText.match(/MATCH:\s*(.+)/gi) ?? [])
       .map(l => l.replace(/^MATCH:\s*/i, '').trim())
-      .filter(m => m && m.toUpperCase() !== 'NONE' && fontNames.includes(m))
+      .filter(m => m && m.toUpperCase() !== 'NONE' && allFontNames.has(m))
       .filter((m, i, arr) => arr.indexOf(m) === i)
       .slice(0, 3)
 
-    console.log(`[font-id] matches: ${JSON.stringify(matches)}`)
-
+    console.log(`[font-id] final: ${JSON.stringify(matches)}`)
     return {
       description: finalDescription,
-      matches: matches.length > 0 ? matches : candidates.slice(0, 3).map(f => f.name),
+      matches: matches.length > 0 ? matches : finalWinners.slice(0, 3),
     }
   } catch (err) {
-    console.error('[font-id] error:', err)
-    return { error: 'שגיאת רשת — לא ניתן להתחבר ל-Anthropic' }
+    console.error('[font-id] step-3 failed:', err)
+    return { description: buildDescription(analysis), matches: finalWinners.slice(0, 3) }
   }
+}
+
+function buildDescription(analysis: string): string {
+  const serif  = analysis.match(/SERIF:\s*(\w+)/i)?.[1]?.toLowerCase() === 'yes'
+  const weight = analysis.match(/WEIGHT:\s*(\w+)/i)?.[1] ?? ''
+  return `פונט ${serif ? 'סריף' : 'סאן-סריף'} במשקל ${weight}`
 }
