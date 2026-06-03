@@ -8,25 +8,64 @@ type Props = {
   identifyFontFromDB: (
     imageBase64: string,
     imageMimeType: string,
+    userEmbedding?: number[],
   ) => Promise<{ matches?: string[]; scores?: number[]; confident?: boolean; description?: string; error?: string; debug?: string }>
   fonts: Font[]
 }
 
+// Compute CLIP embedding in the browser (WASM — no Vercel needed)
+async function computeEmbeddingBrowser(file: File): Promise<number[] | null> {
+  if (typeof window === 'undefined') return null
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mod = await import('@huggingface/transformers') as any
+    mod.env.allowLocalModels  = false
+    mod.env.useBrowserCache   = true
+
+    const [processor, model] = await Promise.all([
+      mod.AutoProcessor.from_pretrained('Xenova/clip-vit-base-patch32'),
+      mod.CLIPVisionModelWithProjection.from_pretrained('Xenova/clip-vit-base-patch32', { dtype: 'fp32' }),
+    ])
+
+    const dataUrl = await new Promise<string>((resolve) => {
+      const reader = new FileReader()
+      reader.onload = e => resolve(e.target?.result as string)
+      reader.readAsDataURL(file)
+    })
+
+    const image  = await mod.RawImage.fromURL(dataUrl)
+    const inputs = await processor(image)
+    const { image_embeds } = await model(inputs)
+
+    const raw  = Array.from(image_embeds.data as Float32Array) as number[]
+    const norm = Math.sqrt(raw.reduce((s: number, v: number) => s + v * v, 0))
+    return norm > 0 ? raw.map((v: number) => v / norm) : raw
+  } catch (err) {
+    console.warn('[clip-browser] embedding failed (fallback to tournament):', err)
+    return null
+  }
+}
+
 export default function FontIdentifierClient({ identifyFontFromDB, fonts }: Props) {
-  const [imageFile, setImageFile]     = useState<File | null>(null)
+  const [imageFile, setImageFile]       = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
-  const [imageBase64, setImageBase64] = useState<string | null>(null)
-  const [isLoading, setIsLoading]     = useState(false)
-  const [result, setResult]           = useState<{ matches?: string[]; scores?: number[]; confident?: boolean; description?: string; error?: string; debug?: string } | null>(null)
-  const [showDebug, setShowDebug]     = useState(false)
-  const [search, setSearch]           = useState('')
-  const [filterCat, setFilterCat]     = useState('')
-  const [filterFree, setFilterFree]   = useState<'all' | 'free' | 'paid'>('all')
+  const [imageBase64, setImageBase64]   = useState<string | null>(null)
+  const [isLoading, setIsLoading]       = useState(false)
+  const [result, setResult]             = useState<{ matches?: string[]; scores?: number[]; confident?: boolean; description?: string; error?: string; debug?: string } | null>(null)
+  const [showDebug, setShowDebug]       = useState(false)
+  const [search, setSearch]             = useState('')
+  const [filterCat, setFilterCat]       = useState('')
+  const [filterFree, setFilterFree]     = useState<'all' | 'free' | 'paid'>('all')
+  // Embedding computed in background as soon as image is selected
+  const [embedState, setEmbedState]     = useState<'idle' | 'computing' | 'done' | 'failed'>('idle')
+  const embeddingRef                    = useRef<number[] | null>(null)
 
   const fileRef = useRef<HTMLInputElement>(null)
 
   const loadImageFile = (file: File) => {
     setImageFile(file)
+    embeddingRef.current = null
+    setEmbedState('computing')
     const reader = new FileReader()
     reader.onload = ev => {
       const dataUrl = ev.target?.result as string
@@ -35,6 +74,11 @@ export default function FontIdentifierClient({ identifyFontFromDB, fonts }: Prop
     }
     reader.readAsDataURL(file)
     setResult(null)
+    // Start embedding computation in background immediately
+    computeEmbeddingBrowser(file).then(emb => {
+      embeddingRef.current = emb
+      setEmbedState(emb ? 'done' : 'failed')
+    })
   }
 
   const clearImage = () => {
@@ -42,6 +86,8 @@ export default function FontIdentifierClient({ identifyFontFromDB, fonts }: Prop
     setImagePreview(null)
     setImageBase64(null)
     setResult(null)
+    embeddingRef.current = null
+    setEmbedState('idle')
   }
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -68,7 +114,19 @@ export default function FontIdentifierClient({ identifyFontFromDB, fonts }: Prop
     if (!imageBase64 || !imageFile || isLoading) return
     setIsLoading(true)
     try {
-      const res = await identifyFontFromDB(imageBase64, imageFile.type)
+      // If still computing, wait up to 30s for embedding
+      if (embedState === 'computing') {
+        await new Promise<void>(resolve => {
+          const deadline = Date.now() + 30_000
+          const poll = setInterval(() => {
+            if (embeddingRef.current !== null || Date.now() > deadline) {
+              clearInterval(poll); resolve()
+            }
+          }, 200)
+        })
+      }
+      const embedding = embeddingRef.current ?? undefined
+      const res = await identifyFontFromDB(imageBase64, imageFile.type, embedding)
       setResult(res)
     } catch {
       setResult({ error: 'שגיאת רשת' })
@@ -150,9 +208,26 @@ export default function FontIdentifierClient({ identifyFontFromDB, fonts }: Prop
               </div>
               <div className="flex items-center justify-between gap-3 px-4 py-3"
                 style={{ background: 'var(--s1)', borderTop: '1px solid var(--bd)' }}>
-                <span className="truncate text-sm" style={{ color: 'var(--tx2)' }}>
-                  {imageFile?.name}
-                </span>
+                <div className="min-w-0 flex-1">
+                  <span className="block truncate text-sm" style={{ color: 'var(--tx2)' }}>
+                    {imageFile?.name}
+                  </span>
+                  {embedState === 'computing' && (
+                    <span className="text-[11px]" style={{ color: 'var(--tx3)' }}>
+                      ⏳ מחשב embedding...
+                    </span>
+                  )}
+                  {embedState === 'done' && (
+                    <span className="text-[11px]" style={{ color: '#059669' }}>
+                      ✓ embedding מוכן — חיפוש מהיר
+                    </span>
+                  )}
+                  {embedState === 'failed' && (
+                    <span className="text-[11px]" style={{ color: 'var(--tx3)' }}>
+                      ⚠ fallback mode
+                    </span>
+                  )}
+                </div>
                 <button
                   onClick={handleIdentify}
                   disabled={isLoading}
