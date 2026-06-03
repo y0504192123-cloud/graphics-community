@@ -355,6 +355,12 @@ export async function identifyByLetterEmbedding(
   const admin = createAdminClient()
   const dbg: string[] = [`Single-letter identification: ${letterEmbedding.length} dims`]
 
+  // Count embeddings in DB for diagnostics
+  const { count: embCount, error: countErr } = await admin
+    .from('font_letter_embeddings')
+    .select('*', { count: 'exact', head: true })
+  dbg.push(`DB: ${embCount ?? 0} letter embeddings stored (count err: ${countErr?.message ?? 'none'})`)
+
   const { data, error } = await admin.rpc('match_fonts_by_letter', {
     query_embedding: letterEmbedding,
     match_count: 5,
@@ -367,7 +373,8 @@ export async function identifyByLetterEmbedding(
 
   type Row = { font_id: string; font_name: string; preview_image_url: string | null; matched_letter: string; similarity: number }
   const rows = (data ?? []) as Row[]
-  dbg.push(`Results: ${rows.map(r => `${r.font_name}(${(r.similarity * 100).toFixed(0)}%)`).join(', ')}`)
+  dbg.push(`RPC returned ${rows.length} rows`)
+  dbg.push(`Results: ${rows.map(r => `${r.font_name}(${(r.similarity * 100).toFixed(0)}%, letter="${r.matched_letter}")`).join(', ')}`)
 
   return {
     matches: rows.map(r => ({

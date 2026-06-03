@@ -69,7 +69,7 @@ export default function FontIdentifierClient({ identifyByLetterEmbedding, fonts 
   const [cropPreview, setCropPreview] = useState<string | null>(null)
   const [identifying, setIdentifying] = useState(false)
   const [result, setResult]           = useState<IdentifyResult | null>(null)
-  const [showDebug, setShowDebug]     = useState(false)
+  const [showDebug, setShowDebug]     = useState(true)
 
   const [search, setSearch]         = useState('')
   const [filterCat, setFilterCat]   = useState('')
@@ -196,7 +196,15 @@ export default function FontIdentifierClient({ identifyByLetterEmbedding, fonts 
     const srcW = Math.min(img.naturalWidth  - srcX, Math.round(selBox.w * scaleX))
     const srcH = Math.min(img.naturalHeight - srcY, Math.round(selBox.h * scaleY))
 
-    if (srcW < 5 || srcH < 5) return
+    console.log('[identify] img natural:', img.naturalWidth, '×', img.naturalHeight)
+    console.log('[identify] containerDims:', containerDims)
+    console.log('[identify] selBox:', selBox)
+    console.log('[identify] src crop:', { srcX, srcY, srcW, srcH })
+
+    if (srcW < 5 || srcH < 5) {
+      console.warn('[identify] crop too small, aborting')
+      return
+    }
 
     // Render cropped letter onto 112×112 white canvas
     const out = document.createElement('canvas')
@@ -210,16 +218,23 @@ export default function FontIdentifierClient({ identifyByLetterEmbedding, fonts 
     ctx.drawImage(img, srcX, srcY, srcW, srcH, (112 - dw) / 2, (112 - dh) / 2, dw, dh)
 
     const dataUrl = out.toDataURL('image/png')
+    console.log('[identify] 112×112 crop ready, dataUrl length:', dataUrl.length)
     setCropPreview(dataUrl)
     setIdentifying(true)
     setResult(null)
 
     try {
       const emb = await computeEmbeddingFromDataUrl(dataUrl)
+      console.log('[identify] embedding:', emb
+        ? `${emb.length} dims, norm=${Math.sqrt(emb.reduce((s,v)=>s+v*v,0)).toFixed(4)}, first3=[${emb.slice(0,3).map(v=>v.toFixed(4)).join(',')}]`
+        : 'NULL — failed to compute')
       if (!emb) { setResult({ error: 'שגיאה בחישוב embedding' }); setIdentifying(false); return }
       const res = await identifyByLetterEmbedding(emb)
+      console.log('[identify] server response:', res)
+      console.log('[identify] raw matches:', res.matches)
       setResult(res)
-    } catch {
+    } catch (err) {
+      console.error('[identify] error:', err)
       setResult({ error: 'שגיאת רשת' })
     }
     setIdentifying(false)
@@ -234,9 +249,19 @@ export default function FontIdentifierClient({ identifyByLetterEmbedding, fonts 
       && (filterFree === 'all' || (filterFree === 'free' && f.is_free) || (filterFree === 'paid' && !f.is_free))
   })
 
-  const matchedFonts = (result?.matches ?? [])
-    .map(m => ({ ...m, font: fonts.find(f => f.name === m.name) }))
-    .filter(m => m.font != null)
+  // Don't filter out results where font isn't in gallery — show them regardless
+  const matchedFonts = (result?.matches ?? []).map(m => ({
+    ...m,
+    font: fonts.find(f => f.name === m.name) ?? null,
+  }))
+
+  // Log whenever result/matchedFonts changes for debugging
+  React.useEffect(() => {
+    if (!result) return
+    console.log('[identify] result.matches:', result.matches)
+    console.log('[identify] matchedFonts (after gallery lookup):', matchedFonts.map(m => ({ name: m.name, foundInGallery: !!m.font, similarity: m.similarity })))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result])
 
   return (
     <div
@@ -394,10 +419,11 @@ export default function FontIdentifierClient({ identifyByLetterEmbedding, fonts 
                     </p>
                   </div>
                   <div className="space-y-2">
-                    {matchedFonts.map(({ font, similarity, matchedLetter }, i) => (
+                    {matchedFonts.map(({ font, name, similarity, matchedLetter }, i) => (
                       <FontResultRow
-                        key={font!.id}
-                        font={font!}
+                        key={font?.id ?? name}
+                        font={font}
+                        name={name}
                         rank={i + 1}
                         similarity={similarity}
                         matchedLetter={matchedLetter}
@@ -486,8 +512,8 @@ export default function FontIdentifierClient({ identifyByLetterEmbedding, fonts 
 }
 
 // ── Result row ────────────────────────────────────────────────────────────────
-function FontResultRow({ font, rank, similarity, matchedLetter }: {
-  font: Font; rank: number; similarity: number; matchedLetter: string
+function FontResultRow({ font, name, rank, similarity, matchedLetter }: {
+  font: Font | null; name: string; rank: number; similarity: number; matchedLetter: string
 }) {
   return (
     <div className="flex items-center gap-3 rounded-xl px-3 py-2.5"
@@ -497,14 +523,14 @@ function FontResultRow({ font, rank, similarity, matchedLetter }: {
         {rank}
       </div>
       <div className="h-10 w-16 shrink-0 overflow-hidden rounded-lg" style={{ background: 'var(--inp)' }}>
-        {font.preview_image_url
+        {font?.preview_image_url
           ? <img src={font.preview_image_url} alt="" className="h-full w-full object-cover" />
           : <div className="flex h-full w-full items-center justify-center text-xs font-black" style={{ color: 'rgba(124,58,237,.25)' }}>Aa</div>
         }
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate font-semibold" style={{ color: 'var(--tx)' }}>{font.name}</p>
-        {font.company && <p className="truncate text-xs" style={{ color: 'var(--tx3)' }}>{font.company}</p>}
+        <p className="truncate font-semibold" style={{ color: 'var(--tx)' }}>{font?.name ?? name}</p>
+        {font?.company && <p className="truncate text-xs" style={{ color: 'var(--tx3)' }}>{font.company}</p>}
       </div>
       <div className="shrink-0 text-xl font-bold" style={{ color: 'rgba(124,58,237,.55)', minWidth: '24px', textAlign: 'center' }}>
         {matchedLetter}
@@ -518,7 +544,7 @@ function FontResultRow({ font, rank, similarity, matchedLetter }: {
         }>
         {similarity}%
       </span>
-      {font.download_url && (
+      {font?.download_url && (
         <a href={font.download_url} target="_blank" rel="noopener noreferrer"
           className="shrink-0 flex items-center gap-1 rounded-lg px-2 py-1.5 text-[11px] font-bold text-white transition hover:opacity-90"
           style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)' }}>
