@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import FontIdentifierClient from './FontIdentifierClient'
-import { checkPreviewHealth, identifyByLetterEmbedding } from './actions'
+import { identifyFontSimple } from './actions'
 import type { Font } from '@/types'
 
 export default async function FontIdentifierPage() {
@@ -28,13 +28,9 @@ export default async function FontIdentifierPage() {
 
   const fonts = (fontsData ?? []) as Font[]
 
-  // Run diagnostic on page load (server-side, results in Vercel logs)
-  const health = await checkPreviewHealth()
-  console.log('[font-id-page] preview health:', JSON.stringify(health))
-
   return (
     <FontIdentifierClient
-      identifyByLetterEmbedding={identifyByLetterEmbedding}
+      identifyFont={identifyFontSimple}
       fonts={fonts}
     />
   )

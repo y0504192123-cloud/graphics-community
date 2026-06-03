@@ -28,6 +28,29 @@ async function downloadPreview(font: Font): Promise<Preview | null> {
   } catch { return null }
 }
 
+type DownloadStatus =
+  | { ok: true;  preview: Preview }
+  | { ok: false; fontName: string; reason: string }
+
+async function downloadPreviewTracked(font: Font): Promise<DownloadStatus> {
+  if (!font.preview_image_url) return { ok: false, fontName: font.name, reason: 'no URL' }
+  try {
+    const r = await fetch(font.preview_image_url, { signal: AbortSignal.timeout(8000) })
+    if (!r.ok) return { ok: false, fontName: font.name, reason: `HTTP ${r.status}` }
+    const buf = await r.arrayBuffer()
+    return {
+      ok: true,
+      preview: {
+        name: font.name,
+        base64: Buffer.from(buf).toString('base64'),
+        mimeType: (r.headers.get('content-type') ?? 'image/png').split(';')[0].trim(),
+      },
+    }
+  } catch (e) {
+    return { ok: false, fontName: font.name, reason: String(e).slice(0, 80) }
+  }
+}
+
 async function runConcurrent<T>(fns: (() => Promise<T>)[], limit: number): Promise<T[]> {
   const results: T[] = []
   for (let i = 0; i < fns.length; i += limit) {
@@ -240,11 +263,19 @@ DISTINCTIVE: describe unique letter shapes — curves, angles, counters, proport
   const serif = analysis.match(/SERIF:\s*(\w+)/i)?.[1]?.toLowerCase() === 'yes'
   const construction = analysis.match(/CONSTRUCTION:\s*(\w+)/i)?.[1] ?? ''
 
-  // Download all previews
+  // Download all previews with status tracking
   const t0 = Date.now()
-  const allPreviews = (await runConcurrent(fonts.map(f => () => downloadPreview(f)), DL_CONCUR))
-    .filter(Boolean) as Preview[]
+  const statuses = await runConcurrent(fonts.map(f => () => downloadPreviewTracked(f)), DL_CONCUR)
+  const allPreviews = statuses.filter(s => s.ok).map(s => (s as { ok: true; preview: Preview }).preview)
+  const failed     = statuses.filter(s => !s.ok) as { ok: false; fontName: string; reason: string }[]
   dbg.push(`Downloads: ${allPreviews.length}/${fonts.length} OK in ${Date.now() - t0}ms`)
+  if (failed.length > 0) {
+    const byReason: Record<string, string[]> = {}
+    for (const f of failed) (byReason[f.reason] ??= []).push(f.fontName)
+    for (const [reason, names] of Object.entries(byReason)) {
+      dbg.push(`  FAILED [${reason}]: ${names.slice(0, 5).join(', ')}${names.length > 5 ? ` …+${names.length - 5} more` : ''}`)
+    }
+  }
   if (!allPreviews.length) return { error: 'לא ניתן לטעון תמונות preview.', debug: dbg.join('\n') }
 
   const allFontNames = allPreviews.map(p => p.name)
@@ -337,6 +368,14 @@ SCORE 0-100 shape similarity. Up to 3 MATCH lines.`
     dbg.push(`Step 3 failed: ${err}`)
     return { description: buildDescription(serif, construction), matches: finalWinners.slice(0, 3), scores: finalWinners.slice(0, 3).map(() => 0), confident: false, debug: dbg.join('\n') }
   }
+}
+
+// ── Simple wrapper for client use ────────────────────────────────────────────
+export async function identifyFontSimple(
+  imageBase64: string,
+  imageMimeType: string,
+): Promise<{ matches?: string[]; scores?: number[]; confident?: boolean; description?: string; error?: string; debug?: string }> {
+  return identifyFontFromDB(imageBase64, imageMimeType)
 }
 
 // ── WhatTheFont: single letter → font_letter_embeddings RPC ──────────────────
