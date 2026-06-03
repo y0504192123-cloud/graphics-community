@@ -218,6 +218,7 @@ export type Font = {
   download_url: string | null
   preview_image_url: string | null
   font_file_path: string | null
+  preview_hash: string | null
   category: string | null
   style: string | null
   description: string | null

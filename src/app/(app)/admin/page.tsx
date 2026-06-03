@@ -398,9 +398,13 @@ export default async function AdminPage() {
 
       const { data: { publicUrl } } = a.storage.from('fonts-previews').getPublicUrl(previewPath)
 
+      const { computeDHash } = await import('@/lib/font-hash')
+      const previewHash = await computeDHash(pngBuf).catch(() => null)
+
       await a.from('fonts').update({
         preview_image_url: publicUrl,
         font_file_path: fontFilePath,
+        ...(previewHash ? { preview_hash: previewHash } : {}),
       }).eq('id', fontId)
 
       revalidatePath('/admin')
@@ -473,7 +477,13 @@ export default async function AdminPage() {
       }
 
       const { data: { publicUrl: previewUrl } } = a.storage.from('fonts-previews').getPublicUrl(previewPath)
-      await a.from('fonts').update({ preview_image_url: previewUrl, font_file_path: filePath }).eq('id', fontId)
+      const { computeDHash } = await import('@/lib/font-hash')
+      const previewHash = await computeDHash(pngBuf).catch(() => null)
+      await a.from('fonts').update({
+        preview_image_url: previewUrl,
+        font_file_path: filePath,
+        ...(previewHash ? { preview_hash: previewHash } : {}),
+      }).eq('id', fontId)
 
       revalidatePath('/admin')
       revalidatePath('/font-identifier')
@@ -512,6 +522,32 @@ export default async function AdminPage() {
     revalidatePath('/admin')
     revalidatePath('/font-identifier')
     return {}
+  }
+
+  async function recomputeAllHashes(): Promise<{ done: number; errors: number; error?: string }> {
+    'use server'
+    const a = createAdminClient()
+    const { data: fontsData } = await a
+      .from('fonts')
+      .select('id, preview_image_url')
+      .not('preview_image_url', 'is', null)
+    if (!fontsData?.length) return { done: 0, errors: 0 }
+    const { computeDHash } = await import('@/lib/font-hash')
+    let done = 0
+    let errors = 0
+    for (const font of fontsData) {
+      try {
+        const r = await fetch(font.preview_image_url!)
+        if (!r.ok) { errors++; continue }
+        const buf = Buffer.from(await r.arrayBuffer())
+        const hash = await computeDHash(buf)
+        await a.from('fonts').update({ preview_hash: hash }).eq('id', font.id)
+        done++
+      } catch { errors++ }
+    }
+    revalidatePath('/admin')
+    revalidatePath('/font-identifier')
+    return { done, errors }
   }
 
   return (
@@ -557,6 +593,7 @@ export default async function AdminPage() {
       createFontWithPreview={createFontWithPreview}
       updateFontsCompany={updateFontsCompany}
       quickUpdateFont={quickUpdateFont}
+      recomputeAllHashes={recomputeAllHashes}
     />
   )
 }

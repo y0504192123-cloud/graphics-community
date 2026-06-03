@@ -23,6 +23,7 @@ type Props = {
   createFontWithPreview: (filePath: string, fontName: string) => Promise<{ fontId?: string; fontName?: string; previewUrl?: string; error?: string }>
   updateFontsCompany: (fontIds: string[], company: string, downloadUrl: string) => Promise<{ error?: string }>
   quickUpdateFont: (id: string, updates: { name?: string; company?: string; download_url?: string; is_free?: boolean }) => Promise<{ error?: string }>
+  recomputeAllHashes: () => Promise<{ done: number; errors: number; error?: string }>
 }
 
 const inp = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition placeholder:text-slate-400 focus:border-purple-400 focus:ring-2 focus:ring-purple-100'
@@ -640,7 +641,7 @@ function FontTableRow({ font, quickUpdateFont, deleteFont, getFontFileUploadUrl,
 export default function FontsTab({
   fonts, fontWeights, saveFont, deleteFont,
   getFontPreviewUploadUrl, getFontFileUploadUrl, generateFontPreview,
-  createFontWithPreview, updateFontsCompany, quickUpdateFont,
+  createFontWithPreview, updateFontsCompany, quickUpdateFont, recomputeAllHashes,
 }: Props) {
   const router = useRouter()
   const [saveState, saveAction, savePending] = useActionState(saveFont, null)
@@ -648,6 +649,8 @@ export default function FontsTab({
   const [editingFont, setEditingFont]   = useState<Font | null>(null)
   const [search, setSearch]             = useState('')
   const [prefixGroups, setPrefixGroups] = useState<PrefixGroup[]>([])
+  const [rehashStatus, setRehashStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle')
+  const [rehashMsg, setRehashMsg]       = useState<string | null>(null)
 
   const handleEdit   = (font: Font) => { setEditingFont(font); setShowForm(true) }
   const handleCancel = () => { setShowForm(false); setEditingFont(null) }
@@ -677,6 +680,15 @@ export default function FontsTab({
     }
     router.refresh()
   }, [router])
+
+  const handleRehash = async () => {
+    setRehashStatus('running'); setRehashMsg(null)
+    const r = await recomputeAllHashes()
+    if (r.error) { setRehashStatus('error'); setRehashMsg(r.error); return }
+    setRehashStatus('done')
+    setRehashMsg(`${r.done} פונטים עודכנו${r.errors > 0 ? ` · ${r.errors} שגיאות` : ''}`)
+    setTimeout(() => { setRehashStatus('idle'); setRehashMsg(null) }, 5000)
+  }
 
   const filteredFonts = fonts.filter(f => {
     const q = search.toLowerCase()
@@ -713,6 +725,22 @@ export default function FontsTab({
             style={{ background: 'var(--inp)', border: '1px solid var(--bd)', color: 'var(--tx)' }} />
         </div>
         <p className="text-sm" style={{ color: 'var(--tx3)' }}>{fonts.length} פונטים</p>
+        <div className="flex flex-col items-end gap-0.5">
+          <button
+            onClick={handleRehash}
+            disabled={rehashStatus === 'running'}
+            title="חשב perceptual hash לכל תמונות ה-preview"
+            className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold transition hover:opacity-80 disabled:opacity-50"
+            style={{ background: 'rgba(16,185,129,.1)', border: '1px solid rgba(16,185,129,.3)', color: '#059669' }}>
+            {rehashStatus === 'running' ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+            {rehashStatus === 'running' ? 'מחשב...' : 'חשב hashes'}
+          </button>
+          {rehashMsg && (
+            <p className="text-[11px]" style={{ color: rehashStatus === 'error' ? '#ef4444' : '#059669' }}>
+              {rehashMsg}
+            </p>
+          )}
+        </div>
         <button
           onClick={() => { setEditingFont(null); setShowForm(s => !s) }}
           className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-bold text-white transition hover:opacity-90"

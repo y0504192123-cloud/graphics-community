@@ -52,6 +52,7 @@ type Props = {
   createFontWithPreview:       (filePath: string, fontName: string) => Promise<{ fontId?: string; fontName?: string; previewUrl?: string; error?: string }>
   updateFontsCompany:          (fontIds: string[], company: string, downloadUrl: string) => Promise<{ error?: string }>
   quickUpdateFont:             (id: string, updates: { name?: string; company?: string; download_url?: string; is_free?: boolean }) => Promise<{ error?: string }>
+  recomputeAllHashes:          () => Promise<{ done: number; errors: number; error?: string }>
 }
 
 const inputCls = 'w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition-all placeholder:text-slate-400 hover:border-slate-300 focus:border-purple-400 focus:ring-2 focus:ring-purple-100'
@@ -85,7 +86,7 @@ export default function AdminClient({
   getLogoUploadUrl, saveLogoUrl,
   fonts, fontWeights, saveFont, deleteFont,
   getFontPreviewUploadUrl, getFontFileUploadUrl, generateFontPreview,
-  createFontWithPreview, updateFontsCompany, quickUpdateFont,
+  createFontWithPreview, updateFontsCompany, quickUpdateFont, recomputeAllHashes,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('pending')
   const [isPending, startTransition] = useTransition()
@@ -778,6 +779,7 @@ export default function AdminClient({
             createFontWithPreview={createFontWithPreview}
             updateFontsCompany={updateFontsCompany}
             quickUpdateFont={quickUpdateFont}
+            recomputeAllHashes={recomputeAllHashes}
           />
         )}
 
