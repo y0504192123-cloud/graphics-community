@@ -24,6 +24,7 @@ type Props = {
   updateFontsCompany: (fontIds: string[], company: string, downloadUrl: string) => Promise<{ error?: string }>
   quickUpdateFont: (id: string, updates: { name?: string; company?: string; download_url?: string; is_free?: boolean }) => Promise<{ error?: string }>
   recomputeHashBatch: (offset: number, limit: number) => Promise<{ done: number; errors: number; total: number; batchSize: number }>
+  rebuildPreviewsBatch: (offset: number, limit: number) => Promise<{ done: number; errors: number; total: number; batchSize: number }>
 }
 
 const inp = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition placeholder:text-slate-400 focus:border-purple-400 focus:ring-2 focus:ring-purple-100'
@@ -653,7 +654,7 @@ function FontTableRow({ font, quickUpdateFont, deleteFont, getFontFileUploadUrl,
 export default function FontsTab({
   fonts, fontWeights, saveFont, deleteFont,
   getFontPreviewUploadUrl, getFontFileUploadUrl, generateFontPreview,
-  createFontWithPreview, updateFontsCompany, quickUpdateFont, recomputeHashBatch,
+  createFontWithPreview, updateFontsCompany, quickUpdateFont, recomputeHashBatch, rebuildPreviewsBatch,
 }: Props) {
   const router = useRouter()
   const [saveState, saveAction, savePending] = useActionState(saveFont, null)
@@ -663,6 +664,8 @@ export default function FontsTab({
   const [prefixGroups, setPrefixGroups] = useState<PrefixGroup[]>([])
   const [rehashStatus, setRehashStatus] = useState<'idle' | 'running' | 'done'>('idle')
   const [rehashProgress, setRehashProgress] = useState<{ processed: number; total: number; done: number; errors: number } | null>(null)
+  const [rebuildStatus, setRebuildStatus] = useState<'idle' | 'running' | 'done'>('idle')
+  const [rebuildProgress, setRebuildProgress] = useState<{ processed: number; total: number; done: number; errors: number } | null>(null)
 
   const handleEdit   = (font: Font) => { setEditingFont(font); setShowForm(true) }
   const handleCancel = () => { setShowForm(false); setEditingFont(null) }
@@ -713,6 +716,28 @@ export default function FontsTab({
     setTimeout(() => { setRehashStatus('idle'); setRehashProgress(null) }, 8000)
   }
 
+  const handleRebuild = async () => {
+    if (!confirm('זה יבנה מחדש את כל תמונות ה-preview מקבצי הפונט המקוריים. זה עלול לקחת מספר דקות. להמשיך?')) return
+    const BATCH = 5
+    setRebuildStatus('running')
+    setRebuildProgress({ processed: 0, total: 0, done: 0, errors: 0 })
+    let offset = 0
+    let totalDone = 0
+    let totalErrors = 0
+    while (true) {
+      const r = await rebuildPreviewsBatch(offset, BATCH)
+      totalDone   += r.done
+      totalErrors += r.errors
+      const processed = offset + r.batchSize
+      setRebuildProgress({ processed, total: r.total, done: totalDone, errors: totalErrors })
+      if (r.batchSize < BATCH || processed >= r.total) break
+      offset += BATCH
+    }
+    setRebuildStatus('done')
+    router.refresh()
+    setTimeout(() => { setRebuildStatus('idle'); setRebuildProgress(null) }, 10000)
+  }
+
   const filteredFonts = fonts.filter(f => {
     const q = search.toLowerCase()
     return !q || f.name.toLowerCase().includes(q) ||
@@ -751,7 +776,7 @@ export default function FontsTab({
         <div className="flex flex-col items-end gap-0.5">
           <button
             onClick={handleRehash}
-            disabled={rehashStatus === 'running'}
+            disabled={rehashStatus === 'running' || rebuildStatus === 'running'}
             title="חשב perceptual hash לכל תמונות ה-preview"
             className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold transition hover:opacity-80 disabled:opacity-50"
             style={{ background: 'rgba(16,185,129,.1)', border: '1px solid rgba(16,185,129,.3)', color: '#059669' }}>
@@ -776,6 +801,36 @@ export default function FontsTab({
             </p>
           )}
         </div>
+
+        <div className="flex flex-col items-end gap-0.5">
+          <button
+            onClick={handleRebuild}
+            disabled={rebuildStatus === 'running' || rehashStatus === 'running'}
+            title="בנה מחדש את כל תמונות ה-preview מקבצי הפונט"
+            className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold transition hover:opacity-80 disabled:opacity-50"
+            style={{ background: 'rgba(124,58,237,.1)', border: '1px solid rgba(124,58,237,.3)', color: '#7c3aed' }}>
+            {rebuildStatus === 'running' ? <Loader2 size={12} className="animate-spin" /> : <FileUp size={12} />}
+            {rebuildStatus === 'running'
+              ? rebuildProgress && rebuildProgress.total > 0
+                ? `${rebuildProgress.processed}/${rebuildProgress.total}`
+                : 'מחולל...'
+              : rebuildStatus === 'done' ? '✓ הושלם' : 'בנה מחדש previews'}
+          </button>
+          {rebuildProgress && rebuildStatus === 'running' && rebuildProgress.total > 0 && (
+            <div className="w-full overflow-hidden rounded-full" style={{ height: '3px', background: 'rgba(124,58,237,.15)' }}>
+              <div
+                className="h-full rounded-full transition-all duration-300"
+                style={{ width: `${Math.round((rebuildProgress.processed / rebuildProgress.total) * 100)}%`, background: '#7c3aed' }}
+              />
+            </div>
+          )}
+          {rebuildStatus === 'done' && rebuildProgress && (
+            <p className="text-[11px]" style={{ color: '#7c3aed' }}>
+              {rebuildProgress.done} נבנו{rebuildProgress.errors > 0 ? ` · ${rebuildProgress.errors} שגיאות` : ''}
+            </p>
+          )}
+        </div>
+
         <button
           onClick={() => { setEditingFont(null); setShowForm(s => !s) }}
           className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-bold text-white transition hover:opacity-90"

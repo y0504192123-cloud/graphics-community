@@ -562,6 +562,89 @@ export default async function AdminPage() {
     return { done, errors, total, batchSize: fontsData.length }
   }
 
+  async function rebuildPreviewsBatch(
+    offset: number,
+    limit: number,
+  ): Promise<{ done: number; errors: number; total: number; batchSize: number }> {
+    'use server'
+    const a = createAdminClient()
+    const [{ count }, { data: fontsData }] = await Promise.all([
+      a.from('fonts').select('id', { count: 'exact', head: true }).not('font_file_path', 'is', null),
+      a.from('fonts')
+        .select('id, font_file_path')
+        .not('font_file_path', 'is', null)
+        .order('id', { ascending: true })
+        .range(offset, offset + limit - 1),
+    ])
+    const total = count ?? 0
+    if (!fontsData?.length) return { done: 0, errors: 0, total, batchSize: 0 }
+
+    const satori    = (await import('satori')).default
+    const { createElement } = await import('react')
+    const { Resvg } = await import('@resvg/resvg-js')
+    const { computeDHash } = await import('@/lib/font-hash')
+
+    await a.storage.createBucket('fonts-previews', { public: true }).catch(() => {})
+
+    let done = 0
+    let errors = 0
+    for (const font of fontsData) {
+      try {
+        const { data: blob, error: dlErr } = await a.storage
+          .from('fonts-files')
+          .download(font.font_file_path!)
+        if (dlErr || !blob) { errors++; continue }
+
+        const fontArrayBuffer = await blob.arrayBuffer()
+
+        const svg = await satori(
+          createElement('div', {
+            style: {
+              display: 'flex', background: 'white', width: '100%', height: '100%',
+              alignItems: 'center', justifyContent: 'center', padding: '12px 28px',
+            },
+          },
+            createElement('p', {
+              style: {
+                fontFamily: 'PreviewFont', fontSize: 52, color: '#111111',
+                margin: 0, direction: 'rtl', textAlign: 'center' as const, letterSpacing: '0.02em',
+              },
+            }, 'אבגדהוזחטיכלמנסעפצקרשת'),
+          ),
+          {
+            width: 860, height: 110,
+            fonts: [{ name: 'PreviewFont', data: fontArrayBuffer, weight: 400, style: 'normal' as const }],
+          },
+        )
+
+        const pngBuf      = Buffer.from(new Resvg(svg).render().asPng())
+        const previewPath = `auto_${font.id}_${Date.now()}.png`
+
+        const { error: upErr } = await a.storage
+          .from('fonts-previews')
+          .upload(previewPath, pngBuf, { contentType: 'image/png', upsert: true })
+        if (upErr) { errors++; continue }
+
+        const { data: { publicUrl } } = a.storage.from('fonts-previews').getPublicUrl(previewPath)
+        const previewHash = await computeDHash(pngBuf).catch(() => null)
+
+        await a.from('fonts').update({
+          preview_image_url: publicUrl,
+          ...(previewHash ? { preview_hash: previewHash } : {}),
+        }).eq('id', font.id)
+
+        done++
+      } catch (err) {
+        console.error('[rebuildPreviewsBatch] font', font.id, err)
+        errors++
+      }
+    }
+
+    revalidatePath('/admin')
+    revalidatePath('/font-identifier')
+    return { done, errors, total, batchSize: fontsData.length }
+  }
+
   return (
     <AdminClient
       pendingUsers={pendingUsers}
@@ -606,6 +689,7 @@ export default async function AdminPage() {
       updateFontsCompany={updateFontsCompany}
       quickUpdateFont={quickUpdateFont}
       recomputeHashBatch={recomputeHashBatch}
+      rebuildPreviewsBatch={rebuildPreviewsBatch}
     />
   )
 }
