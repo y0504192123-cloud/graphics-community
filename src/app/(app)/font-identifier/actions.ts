@@ -79,7 +79,9 @@ export async function identifyFontFromDB(
     .order('name', { ascending: true })
 
   const fonts = (fontsData ?? []) as Font[]
-  console.log(`[font-id] fonts with previews: ${fonts.length}`)
+  console.log(`[font-id] DB: ${fonts.length} fonts with non-null preview_image_url`)
+  // Log first 3 URLs so we can verify they look correct
+  fonts.slice(0, 3).forEach(f => console.log(`[font-id] sample URL: "${f.name}" → ${f.preview_image_url}`))
   if (!fonts.length) return { error: 'אין פונטים עם תמונות preview במאגר.' }
 
   // ── Step 1: Detailed visual analysis ────────────────────────────────────────
@@ -104,10 +106,17 @@ FEATURES: 2-3 distinctive visual traits (e.g. "high stroke contrast, triangular 
   }
 
   // ── Download all previews in parallel ────────────────────────────────────────
+  const t0 = Date.now()
   const dlTasks = fonts.map(f => () => downloadPreview(f))
   const downloaded = await runConcurrent(dlTasks, DL_CONCUR)
   const allPreviews = downloaded.filter(Boolean) as Preview[]
-  console.log(`[font-id] downloaded: ${allPreviews.length}/${fonts.length}`)
+  const failed = downloaded.filter(x => x === null).length
+  console.log(`[font-id] downloads: ${allPreviews.length} OK, ${failed} failed — ${Date.now() - t0}ms`)
+  if (failed > 0) {
+    // Log which fonts failed to download
+    const failedNames = fonts.filter((_, i) => downloaded[i] === null).slice(0, 5).map(f => f.name)
+    console.log(`[font-id] failed downloads (first 5): ${failedNames.join(', ')}`)
+  }
 
   if (allPreviews.length === 0) return { error: 'לא ניתן לטעון תמונות preview.' }
 
@@ -144,7 +153,8 @@ If none of the samples match, write: BEST: NONE`
 
   const allFontNames = new Set(allPreviews.map(p => p.name))
 
-  const batchTasks = batches.map(batch => async (): Promise<string | null> => {
+  const t1 = Date.now()
+  const batchTasks = batches.map((batch, batchIdx) => async (): Promise<string | null> => {
     try {
       const content = [
         imgBlock(imageBase64, imageMimeType),
@@ -152,17 +162,22 @@ If none of the samples match, write: BEST: NONE`
         textBlock(makeBatchPrompt(batch)),
       ]
       const text = await claudeCall(apiKey, 'claude-haiku-4-5-20251001', 40, content)
+      const raw   = text.trim()
       const match = text.match(/BEST:\s*(.+)/i)?.[1]?.trim() ?? ''
-      return (match && match.toUpperCase() !== 'NONE' && allFontNames.has(match)) ? match : null
+      const valid = (match && match.toUpperCase() !== 'NONE' && allFontNames.has(match)) ? match : null
+      console.log(`[font-id] batch ${batchIdx + 1}/${batches.length}: raw="${raw}" → winner=${valid ?? 'NONE'}`)
+      return valid
     } catch (err) {
-      console.error('[font-id] batch error:', err)
+      console.error(`[font-id] batch ${batchIdx + 1} error:`, err)
       return null
     }
   })
 
   const rawWinners = await runConcurrent(batchTasks, BATCH_CONCUR)
+  console.log(`[font-id] step-2 done in ${Date.now() - t1}ms`)
+  console.log(`[font-id] batch results (raw):`, JSON.stringify(rawWinners))
   const winners = [...new Set(rawWinners.filter(Boolean) as string[])]
-  console.log(`[font-id] step-2 winners (${winners.length}): ${winners.join(', ')}`)
+  console.log(`[font-id] finalists (${winners.length}): ${winners.join(', ')}`)
 
   if (winners.length === 0) {
     return { description: buildDescription(analysis), matches: allPreviews.slice(0, 3).map(p => p.name) }
@@ -225,6 +240,40 @@ Order from best to least similar. Up to 3 MATCH lines.`
   } catch (err) {
     console.error('[font-id] step-3 failed:', err)
     return { description: buildDescription(analysis), matches: finalWinners.slice(0, 3) }
+  }
+}
+
+// ── Diagnostic: check preview URL health ─────────────────────────────────────
+export async function checkPreviewHealth(): Promise<{
+  total: number; withUrl: number; withoutUrl: number
+  sampleUrls: { name: string; url: string | null }[]
+  httpChecks: { name: string; url: string; status: number | string }[]
+}> {
+  'use server'
+  const admin = createAdminClient()
+  const { data } = await admin.from('fonts').select('id, name, preview_image_url').order('name', { ascending: true })
+  const fonts = data ?? []
+  const withUrl    = fonts.filter((f: { preview_image_url: string | null }) => f.preview_image_url)
+  const withoutUrl = fonts.filter((f: { preview_image_url: string | null }) => !f.preview_image_url)
+
+  // HTTP-check the first 5 URLs
+  const httpChecks = await Promise.all(
+    withUrl.slice(0, 5).map(async (f: { name: string; preview_image_url: string | null }) => {
+      try {
+        const r = await fetch(f.preview_image_url!, { method: 'HEAD', signal: AbortSignal.timeout(5000) })
+        return { name: f.name, url: f.preview_image_url!, status: r.status }
+      } catch (e) {
+        return { name: f.name, url: f.preview_image_url!, status: String(e) }
+      }
+    })
+  )
+
+  return {
+    total: fonts.length,
+    withUrl: withUrl.length,
+    withoutUrl: withoutUrl.length,
+    sampleUrls: withUrl.slice(0, 5).map((f: { name: string; preview_image_url: string | null }) => ({ name: f.name, url: f.preview_image_url })),
+    httpChecks,
   }
 }
 
