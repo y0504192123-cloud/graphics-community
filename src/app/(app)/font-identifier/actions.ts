@@ -285,31 +285,38 @@ DISTINCTIVE: describe unique letter shapes — curves, angles, counters, proport
   for (let i = 0; i < allPreviews.length; i += BATCH_SIZE) batches.push(allPreviews.slice(i, i + BATCH_SIZE))
   dbg.push(`\nStep 2: ${batches.length} batches × ${BATCH_SIZE}`)
 
-  const batchTasks = batches.map((batch, batchIdx) => async (): Promise<string | null> => {
+  const batchTasks = batches.map((batch, batchIdx) => async (): Promise<string[]> => {
     const imageLines = batch.map((p, i) => `  Image ${i + 2}: "${p.name}"`).join('\n')
     const nameLines  = batch.map((p, i) => `${i + 1}. ${p.name}`).join('\n')
-    const prompt = `Hebrew font identification.
+    const prompt = `Hebrew font identification. Rank the top 3 most similar fonts.
 Image 1: unknown font. ${imageLines}
 Target shape (IGNORE weight): ${analysis}
 IGNORE stroke thickness — Light/Bold of same family = IDENTICAL shapes.
 Focus on: skeleton, curves, terminals, counter shapes (ע מ כ ר ש ק א).
 ${nameLines}
-Reply ONE line: BEST: ExactFontName  (or BEST: NONE)`
+Reply ONLY in this exact format (copy font names exactly):
+TOP1: ExactFontName
+TOP2: ExactFontName
+TOP3: ExactFontName`
     try {
-      const text     = await claudeCall(apiKey, 'claude-haiku-4-5-20251001', 40, [
+      const text  = await claudeCall(apiKey, 'claude-haiku-4-5-20251001', 80, [
         imgBlock(imageBase64, imageMimeType),
         ...batch.map(p => imgBlock(p.base64, p.mimeType)),
         textBlock(prompt),
       ])
-      const parsed   = text.match(/BEST:\s*(.+)/i)?.[1]?.trim() ?? ''
-      const resolved = resolveMatch(parsed, allFontNames)
-      dbg.push(`  batch ${batchIdx + 1}: "${text.trim()}" → ${resolved ?? 'NONE'}`)
-      return resolved
-    } catch { return null }
+      const picks: string[] = []
+      for (const m of (text.match(/TOP\d:\s*.+/gi) ?? [])) {
+        const raw      = m.replace(/^TOP\d:\s*/i, '').trim()
+        const resolved = resolveMatch(raw, allFontNames)
+        if (resolved && !picks.includes(resolved)) picks.push(resolved)
+      }
+      dbg.push(`  batch ${batchIdx + 1}: [${picks.join(', ') || 'NONE'}]`)
+      return picks
+    } catch { return [] }
   })
 
   const rawWinners = await runConcurrent(batchTasks, BATCH_CONCUR)
-  const winners    = [...new Set(rawWinners.filter(Boolean) as string[])]
+  const winners    = [...new Set(rawWinners.flat())]
   dbg.push(`\nFinalists (${winners.length}): ${winners.join(', ')}`)
 
   if (winners.length === 0) {
