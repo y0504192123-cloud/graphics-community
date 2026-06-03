@@ -59,12 +59,25 @@ export default async function ProfilePage() {
 
     await supabase.from('portfolio_items').insert({
       user_id: user.id,
-      title: formData.get('title') as string,
-      description: formData.get('description') as string || null,
-      image_url: formData.get('image_url') as string || null,
+      title: (formData.get('title') as string)?.trim() || '',
+      description: (formData.get('description') as string)?.trim() || null,
+      image_url: (formData.get('image_url') as string)?.trim() || null,
     })
 
     revalidatePath('/profile')
+  }
+
+  async function getPortfolioItemUploadUrl(): Promise<{ signedUrl?: string; publicUrl?: string; error?: string }> {
+    'use server'
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { error: 'לא מחובר' }
+    const admin = createAdminClient()
+    const path = `${user.id}/${Date.now()}.jpg`
+    const { data, error } = await admin.storage.from('portfolio').createSignedUploadUrl(path)
+    if (error) return { error: error.message }
+    const { data: { publicUrl } } = admin.storage.from('portfolio').getPublicUrl(path)
+    return { signedUrl: data.signedUrl, publicUrl }
   }
 
   async function deletePortfolioItem(id: string) {
@@ -149,6 +162,7 @@ export default async function ProfilePage() {
       updateAvatarUrl={updateAvatarUrl}
       deleteAvatar={deleteAvatar}
       updateAvatarColor={updateAvatarColor}
+      getPortfolioItemUploadUrl={getPortfolioItemUploadUrl}
     />
   )
 }

@@ -14,6 +14,7 @@ export type Profile = {
   phone: string | null
   status: 'pending' | 'active' | 'rejected' | null
   created_at: string
+  last_seen: string | null
 }
 
 export type PortfolioItem = {

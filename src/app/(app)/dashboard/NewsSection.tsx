@@ -25,7 +25,7 @@ export default function NewsSection({ news, isAdmin, publishNews }: Props) {
       <div className="mb-5 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Newspaper size={18} className="text-purple-400" />
-          <h2 className="text-lg font-bold" style={{ color: 'var(--tx)' }}>חדשות הקהילה</h2>
+          <h2 className="text-lg font-bold" style={{ color: 'var(--tx)' }}>חדשות מעולם הגרפיקה</h2>
         </div>
         {isAdmin && (
           <button

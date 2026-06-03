@@ -16,6 +16,39 @@ type Props = {
   updateAvatarUrl: (url: string) => Promise<void>
   deleteAvatar: () => Promise<void>
   updateAvatarColor: (color: string) => Promise<void>
+  getPortfolioItemUploadUrl: () => Promise<{ signedUrl?: string; publicUrl?: string; error?: string }>
+}
+
+async function compressImage(file: File, maxMB = 3.5): Promise<File> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    const objectUrl = URL.createObjectURL(file)
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl)
+      const MAX_DIM = 2500
+      let { width, height } = img
+      if (width > MAX_DIM || height > MAX_DIM) {
+        if (width >= height) { height = Math.round(height * MAX_DIM / width); width = MAX_DIM }
+        else                 { width = Math.round(width * MAX_DIM / height); height = MAX_DIM }
+      }
+      const canvas = document.createElement('canvas')
+      canvas.width = width; canvas.height = height
+      canvas.getContext('2d')!.drawImage(img, 0, 0, width, height)
+      const maxBytes = maxMB * 1024 * 1024
+      const qualities = [0.9, 0.8, 0.7, 0.6, 0.5, 0.4]
+      const tryQuality = (i: number) => {
+        canvas.toBlob((blob) => {
+          if (!blob) { reject(new Error('toBlob failed')); return }
+          if (blob.size <= maxBytes || i >= qualities.length - 1) {
+            resolve(new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg', lastModified: Date.now() }))
+          } else { tryQuality(i + 1) }
+        }, 'image/jpeg', qualities[i] ?? 0.35)
+      }
+      tryQuality(0)
+    }
+    img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error('Image load failed')) }
+    img.src = objectUrl
+  })
 }
 
 const AVATAR_COLORS = [
@@ -62,9 +95,9 @@ export default function ProfileClient({
   profile, portfolioItems, allSpecializations, selectedSpecializationIds,
   updateProfile, addPortfolioItem, deletePortfolioItem,
   getAvatarUploadUrl, updateAvatarUrl, deleteAvatar, updateAvatarColor,
+  getPortfolioItemUploadUrl,
 }: Props) {
   const [editing, setEditing]               = useState(false)
-  const [showAddItem, setShowAddItem]         = useState(false)
   const [isPending, startTransition]         = useTransition()
   const [selectedIds, setSelectedIds]        = useState<string[]>(selectedSpecializationIds)
   const [avatarUrl, setAvatarUrl]            = useState<string | null>(profile.avatar_url)
@@ -72,6 +105,12 @@ export default function ProfileClient({
   const [avatarUploading, setAvatarUploading] = useState(false)
   const [avatarError, setAvatarError]        = useState<string | null>(null)
   const avatarInputRef = useRef<HTMLInputElement>(null)
+
+  const [portfolioFile, setPortfolioFile]       = useState<File | null>(null)
+  const [portfolioPreview, setPortfolioPreview] = useState<string | null>(null)
+  const [portfolioUploading, setPortfolioUploading] = useState(false)
+  const [portfolioError, setPortfolioError]     = useState<string | null>(null)
+  const portfolioFileRef = useRef<HTMLInputElement>(null)
 
   const selectedSpecs = allSpecializations.filter((s) => selectedIds.includes(s.id))
 
@@ -112,6 +151,55 @@ export default function ProfileClient({
   function handleColorChange(color: string) {
     setAvatarColor(color)
     startTransition(async () => { await updateAvatarColor(color) })
+  }
+
+  function handlePortfolioFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setPortfolioFile(file)
+    setPortfolioError(null)
+    const reader = new FileReader()
+    reader.onload = (ev) => setPortfolioPreview(ev.target?.result as string)
+    reader.readAsDataURL(file)
+    e.target.value = ''
+  }
+
+  async function handlePortfolioFormSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    if (!portfolioFile) return
+    setPortfolioUploading(true)
+    setPortfolioError(null)
+
+    let compressed = portfolioFile
+    try { compressed = await compressImage(portfolioFile) } catch {}
+
+    const urlResult = await getPortfolioItemUploadUrl()
+    if (urlResult.error || !urlResult.signedUrl) {
+      setPortfolioError(urlResult.error ?? 'שגיאה בהכנת ה-URL')
+      setPortfolioUploading(false)
+      return
+    }
+
+    const res = await fetch(urlResult.signedUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'image/jpeg' },
+      body: compressed,
+    })
+    if (!res.ok) {
+      setPortfolioError('שגיאה בהעלאת התמונה')
+      setPortfolioUploading(false)
+      return
+    }
+
+    const fd = new FormData(e.currentTarget)
+    fd.set('image_url', urlResult.publicUrl!)
+
+    startTransition(async () => {
+      await addPortfolioItem(fd)
+      setPortfolioFile(null)
+      setPortfolioPreview(null)
+      setPortfolioUploading(false)
+    })
   }
 
   function toggleSpec(id: string) {
@@ -389,65 +477,65 @@ export default function ProfileClient({
               <p className="mt-0.5 text-xs" style={{ color: 'var(--tx3)' }}>{portfolioItems.length} עבודות</p>
             </div>
             <button
-              onClick={() => setShowAddItem((s) => !s)}
-              className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all hover:opacity-90 hover:scale-[1.02]"
-              style={{ background: 'linear-gradient(135deg, #7c3aed, #6b21a8)', color: 'white', boxShadow: '0 4px 16px rgba(107,33,168,.3)' }}
+              onClick={() => portfolioFileRef.current?.click()}
+              disabled={portfolioUploading}
+              className="flex h-10 w-10 items-center justify-center rounded-xl text-white transition-all hover:opacity-90 hover:scale-[1.05] disabled:opacity-50"
+              style={{ background: 'linear-gradient(135deg, #7c3aed, #6b21a8)', boxShadow: '0 4px 16px rgba(107,33,168,.3)' }}
+              title="הוסף עבודה"
             >
-              <Plus size={15} style={{ color: 'white' }} />
-              <span style={{ color: 'white' }}>הוסף עבודה</span>
+              <Plus size={18} style={{ color: 'white' }} />
             </button>
+            <input ref={portfolioFileRef} type="file" accept="image/*" className="hidden" onChange={handlePortfolioFileChange} />
           </div>
 
-          {/* Add portfolio form */}
-          {showAddItem && (
+          {/* Upload form — appears after file is selected */}
+          {portfolioFile && (
             <div
-              className="mb-6 animate-fade-up rounded-2xl p-6"
+              className="mb-6 animate-fade-up rounded-2xl p-5"
               style={{ background: 'var(--s1)', border: '1px solid var(--bd)', boxShadow: '0 4px 24px rgba(0,0,0,.06)' }}
             >
-              <div className="mb-5 flex items-center justify-between">
-                <h3 className="text-sm font-bold" style={{ color: 'var(--tx)' }}>הוספת עבודה חדשה</h3>
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-sm font-bold" style={{ color: 'var(--tx)' }}>העלאת עבודה</h3>
                 <button
                   type="button"
-                  onClick={() => setShowAddItem(false)}
+                  onClick={() => { setPortfolioFile(null); setPortfolioPreview(null); setPortfolioError(null) }}
                   className="flex h-7 w-7 items-center justify-center rounded-lg transition hover:bg-slate-100"
                   style={{ color: 'var(--tx3)' }}
                 >
                   <X size={15} />
                 </button>
               </div>
-              <form
-                action={(formData) => {
-                  startTransition(async () => {
-                    await addPortfolioItem(formData)
-                    setShowAddItem(false)
-                  })
-                }}
-              >
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <FieldGroup label="כותרת" icon={<FileText size={11} />}>
-                    <input name="title" required className={inputCls} style={{ color: 'var(--tx)' }} placeholder="שם הפרויקט" />
-                  </FieldGroup>
-                  <FieldGroup label="קישור לתמונה" icon={<FileText size={11} />}>
-                    <input name="image_url" type="url" className={inputCls} style={{ color: 'var(--tx)' }} dir="ltr" placeholder="https://..." />
-                  </FieldGroup>
+              {portfolioPreview && (
+                <div className="mb-4 overflow-hidden rounded-xl" style={{ maxHeight: 200 }}>
+                  <img src={portfolioPreview} alt="תצוגה מקדימה" className="w-full object-cover" style={{ maxHeight: 200 }} />
+                </div>
+              )}
+              {portfolioError && (
+                <p className="mb-3 rounded-lg px-3 py-2 text-xs text-red-500" style={{ background: 'rgba(239,68,68,.08)' }}>{portfolioError}</p>
+              )}
+              <form onSubmit={handlePortfolioFormSubmit}>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className={labelCls}><FileText size={11} />כותרת (אופציונלי)</label>
+                    <input name="title" className={inputCls} style={{ color: 'var(--tx)' }} placeholder="שם הפרויקט" />
+                  </div>
                   <div className="sm:col-span-2">
-                    <FieldGroup label="תיאור" icon={<FileText size={11} />}>
-                      <textarea name="description" rows={3} className={`${inputCls} resize-none`} style={{ color: 'var(--tx)' }} placeholder="תאר את הפרויקט..." />
-                    </FieldGroup>
+                    <label className={labelCls}><FileText size={11} />תיאור (אופציונלי)</label>
+                    <textarea name="description" rows={2} className={`${inputCls} resize-none`} style={{ color: 'var(--tx)' }} placeholder="תאר את הפרויקט..." />
                   </div>
                 </div>
-                <div className="mt-5 flex items-center gap-3">
+                <div className="mt-4 flex items-center gap-3">
                   <button
                     type="submit"
-                    disabled={isPending}
+                    disabled={portfolioUploading || isPending}
                     className="flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold transition hover:opacity-90 disabled:opacity-50"
                     style={{ background: 'linear-gradient(135deg, #7c3aed, #6b21a8)', color: 'white', boxShadow: '0 4px 16px rgba(107,33,168,.3)' }}
                   >
-                    <span style={{ color: 'white' }}>{isPending ? 'מוסיף...' : 'הוסף עבודה'}</span>
+                    <span style={{ color: 'white' }}>{portfolioUploading || isPending ? 'מעלה...' : 'העלה'}</span>
                   </button>
                   <button
                     type="button"
-                    onClick={() => setShowAddItem(false)}
+                    onClick={() => { setPortfolioFile(null); setPortfolioPreview(null); setPortfolioError(null) }}
                     className="rounded-xl px-4 py-2.5 text-sm font-medium transition hover:bg-slate-100"
                     style={{ border: '1px solid var(--bd)', color: 'var(--tx2)' }}
                   >

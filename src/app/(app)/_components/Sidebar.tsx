@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Briefcase, MessageSquare, Library, Menu, X, ShieldCheck, Palette, Globe, MessagesSquare, ScanText } from 'lucide-react'
+import { LayoutDashboard, Briefcase, MessageSquare, Library, Menu, X, ShieldCheck, Palette, Globe, MessagesSquare, ScanText, LayoutGrid } from 'lucide-react'
 import { useState, useEffect, useMemo } from 'react'
 import LogoutButton from './LogoutButton'
 import { useLanguage } from '@/components/LanguageProvider'
@@ -16,12 +16,12 @@ const labels = {
   he: {
     home: 'ראשי', jobs: 'לוח עבודות', chat: "צ'אטים", forum: 'פורום',
     inspiration: 'ספריית השראה', assets: 'חומרים לשימוש', admin: 'פאנל ניהול',
-    designer: 'גרפיקאי', fontId: 'זיהוי פונט',
+    designer: 'גרפיקאי', fontId: 'זיהוי פונט', portfolio: 'גלריית עבודות',
   },
   en: {
     home: 'Home', jobs: 'Job Board', chat: 'Chats', forum: 'Forum',
     inspiration: 'Inspiration', assets: 'Resources', admin: 'Admin Panel',
-    designer: 'Designer', fontId: 'Font Identifier',
+    designer: 'Designer', fontId: 'Font Identifier', portfolio: 'Portfolio',
   },
 }
 
@@ -31,6 +31,8 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
   const { lang, toggleLang } = useLanguage()
   const t = labels[lang]
   const [unreadCount, setUnreadCount] = useState(0)
+  const [totalMembers, setTotalMembers] = useState(0)
+  const [onlineCount, setOnlineCount] = useState(0)
   const supabase = useMemo(() => createClient(), [])
 
   useEffect(() => {
@@ -51,14 +53,41 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
     return () => { supabase.removeChannel(ch) }
   }, [currentUserId, supabase])
 
+  useEffect(() => {
+    if (!currentUserId) return
+    const updateLastSeen = () => {
+      supabase.from('profiles').update({ last_seen: new Date().toISOString() }).eq('id', currentUserId).then(() => {})
+    }
+    updateLastSeen()
+    const interval = setInterval(updateLastSeen, 5 * 60 * 1000)
+    return () => clearInterval(interval)
+  }, [currentUserId, supabase])
+
+  useEffect(() => {
+    if (!currentUserId) return
+    const fetchMemberCounts = async () => {
+      const fifteenMinsAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString()
+      const [totalRes, onlineRes] = await Promise.all([
+        supabase.from('profiles').select('id', { count: 'exact', head: true }),
+        supabase.from('profiles').select('id', { count: 'exact', head: true }).gte('last_seen', fifteenMinsAgo),
+      ])
+      setTotalMembers(totalRes.count ?? 0)
+      if (!onlineRes.error) setOnlineCount(onlineRes.count ?? 0)
+    }
+    fetchMemberCounts()
+    const interval = setInterval(fetchMemberCounts, 60 * 1000)
+    return () => clearInterval(interval)
+  }, [currentUserId, supabase])
+
   const navItems: NavItem[] = [
-    { href: '/dashboard',   label: t.home,       icon: <LayoutDashboard size={17} /> },
-    { href: '/jobs',        label: t.jobs,        icon: <Briefcase size={17} /> },
-    { href: '/chat',        label: t.chat,        icon: <MessageSquare size={17} /> },
-    { href: '/forum',       label: t.forum,       icon: <MessagesSquare size={17} /> },
-    { href: '/inspiration', label: t.inspiration, icon: <Palette size={17} /> },
-    { href: '/assets',           label: t.assets,  icon: <Library size={17} /> },
-    { href: '/font-identifier',  label: t.fontId,  icon: <ScanText size={17} /> },
+    { href: '/dashboard',        label: t.home,        icon: <LayoutDashboard size={17} /> },
+    { href: '/jobs',             label: t.jobs,        icon: <Briefcase size={17} /> },
+    { href: '/chat',             label: t.chat,        icon: <MessageSquare size={17} /> },
+    { href: '/forum',            label: t.forum,       icon: <MessagesSquare size={17} /> },
+    { href: '/inspiration',      label: t.inspiration, icon: <Palette size={17} /> },
+    { href: '/portfolio',        label: t.portfolio,   icon: <LayoutGrid size={17} /> },
+    { href: '/assets',           label: t.assets,      icon: <Library size={17} /> },
+    { href: '/font-identifier',  label: t.fontId,      icon: <ScanText size={17} /> },
   ]
 
   const displayName = profile?.full_name ?? profile?.username ?? email.split('@')[0]
@@ -75,6 +104,18 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
       )}
 
       <div className="mx-4 mb-3 h-px" style={{ background: 'var(--bd)' }} />
+
+      {/* Member counter */}
+      {totalMembers > 0 && (
+        <div className="mx-3 mb-3 flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs" style={{ background: 'var(--s2)', border: '1px solid var(--bd)' }}>
+          <span style={{ color: 'var(--tx2)' }}>{totalMembers} חברים</span>
+          <span style={{ color: 'var(--tx3)' }}>|</span>
+          <span className="flex items-center gap-1" style={{ color: '#10b981' }}>
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+            {onlineCount} מחוברים עכשיו
+          </span>
+        </div>
+      )}
 
       {/* Nav */}
       <nav className="flex-1 space-y-0.5 px-3">
