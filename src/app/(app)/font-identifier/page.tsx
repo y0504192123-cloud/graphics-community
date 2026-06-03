@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import FontIdentifierClient from './FontIdentifierClient'
-import { identifyFontFromDB, checkPreviewHealth } from './actions'
+import { identifyFontFromDB, checkPreviewHealth, segmentLettersFromImage, identifyByLetterEmbeddings } from './actions'
 import type { Font } from '@/types'
 
 export default async function FontIdentifierPage() {
@@ -35,6 +35,8 @@ export default async function FontIdentifierPage() {
   return (
     <FontIdentifierClient
       identifyFontFromDB={identifyFontFromDB}
+      segmentLettersFromImage={segmentLettersFromImage}
+      identifyByLetterEmbeddings={identifyByLetterEmbeddings}
       fonts={fonts}
     />
   )

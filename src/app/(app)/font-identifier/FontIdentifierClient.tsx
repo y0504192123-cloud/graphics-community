@@ -4,90 +4,148 @@ import React, { useState, useRef } from 'react'
 import { ScanText, X, Search, ExternalLink, ImagePlus } from 'lucide-react'
 import type { Font } from '@/types'
 
+type IdentifyResult = { matches?: string[]; scores?: number[]; confident?: boolean; description?: string; error?: string; debug?: string }
+
 type Props = {
-  identifyFontFromDB: (
-    imageBase64: string,
-    imageMimeType: string,
-    userEmbedding?: number[],
-  ) => Promise<{ matches?: string[]; scores?: number[]; confident?: boolean; description?: string; error?: string; debug?: string }>
+  identifyFontFromDB: (imageBase64: string, imageMimeType: string, userEmbedding?: number[]) => Promise<IdentifyResult>
+  segmentLettersFromImage: (imageBase64: string) => Promise<{ letters?: string[]; error?: string }>
+  identifyByLetterEmbeddings: (letterEmbeddings: number[][], imageBase64: string, imageMimeType: string) => Promise<IdentifyResult>
   fonts: Font[]
 }
 
-// Compute CLIP embedding in the browser (WASM — no Vercel needed)
-async function computeEmbeddingBrowser(file: File): Promise<number[] | null> {
-  if (typeof window === 'undefined') return null
-  try {
+// ── CLIP model cache (module-level — persists across renders) ─────────────────
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _clipProcessor: any = null
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _clipModel: any = null
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _clipLoadPromise: Promise<{ processor: any; model: any }> | null = null
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function getClip(): Promise<{ processor: any; model: any }> {
+  if (_clipProcessor && _clipModel) return { processor: _clipProcessor, model: _clipModel }
+  if (_clipLoadPromise) return _clipLoadPromise
+  _clipLoadPromise = (async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const mod = await import('@huggingface/transformers') as any
-    mod.env.allowLocalModels  = false
-    mod.env.useBrowserCache   = true
-
+    mod.env.allowLocalModels = false
+    mod.env.useBrowserCache  = true
     const [processor, model] = await Promise.all([
       mod.AutoProcessor.from_pretrained('Xenova/clip-vit-base-patch32'),
       mod.CLIPVisionModelWithProjection.from_pretrained('Xenova/clip-vit-base-patch32', { dtype: 'fp32' }),
     ])
+    _clipProcessor = processor
+    _clipModel     = model
+    return { processor, model }
+  })()
+  return _clipLoadPromise
+}
 
+async function computeEmbeddingFromDataUrl(dataUrl: string): Promise<number[] | null> {
+  if (typeof window === 'undefined') return null
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mod = await import('@huggingface/transformers') as any
+    const { processor, model } = await getClip()
+    const image   = await mod.RawImage.fromURL(dataUrl)
+    const inputs  = await processor(image)
+    const { image_embeds } = await model(inputs)
+    const raw  = Array.from(image_embeds.data as Float32Array) as number[]
+    const norm = Math.sqrt(raw.reduce((s: number, v: number) => s + v * v, 0))
+    return norm > 0 ? raw.map((v: number) => v / norm) : raw
+  } catch (err) {
+    console.warn('[clip-browser] embedding failed:', err)
+    return null
+  }
+}
+
+async function computeEmbeddingBrowser(file: File): Promise<number[] | null> {
+  if (typeof window === 'undefined') return null
+  try {
     const dataUrl = await new Promise<string>((resolve) => {
       const reader = new FileReader()
       reader.onload = e => resolve(e.target?.result as string)
       reader.readAsDataURL(file)
     })
-
-    const image  = await mod.RawImage.fromURL(dataUrl)
-    const inputs = await processor(image)
-    const { image_embeds } = await model(inputs)
-
-    const raw  = Array.from(image_embeds.data as Float32Array) as number[]
-    const norm = Math.sqrt(raw.reduce((s: number, v: number) => s + v * v, 0))
-    return norm > 0 ? raw.map((v: number) => v / norm) : raw
+    return computeEmbeddingFromDataUrl(dataUrl)
   } catch (err) {
-    console.warn('[clip-browser] embedding failed (fallback to tournament):', err)
+    console.warn('[clip-browser] file read failed:', err)
     return null
   }
 }
 
-export default function FontIdentifierClient({ identifyFontFromDB, fonts }: Props) {
+export default function FontIdentifierClient({
+  identifyFontFromDB, segmentLettersFromImage, identifyByLetterEmbeddings, fonts,
+}: Props) {
   const [imageFile, setImageFile]       = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [imageBase64, setImageBase64]   = useState<string | null>(null)
   const [isLoading, setIsLoading]       = useState(false)
-  const [result, setResult]             = useState<{ matches?: string[]; scores?: number[]; confident?: boolean; description?: string; error?: string; debug?: string } | null>(null)
+  const [result, setResult]             = useState<IdentifyResult | null>(null)
   const [showDebug, setShowDebug]       = useState(false)
   const [search, setSearch]             = useState('')
   const [filterCat, setFilterCat]       = useState('')
   const [filterFree, setFilterFree]     = useState<'all' | 'free' | 'paid'>('all')
-  // Embedding computed in background as soon as image is selected
-  const [embedState, setEmbedState]     = useState<'idle' | 'computing' | 'done' | 'failed'>('idle')
-  const embeddingRef                    = useRef<number[] | null>(null)
+
+  // Whole-image embedding (fallback)
+  const [embedState, setEmbedState]   = useState<'idle' | 'computing' | 'done' | 'failed'>('idle')
+  const embeddingRef                  = useRef<number[] | null>(null)
+
+  // Letter segmentation + per-letter embeddings (primary path)
+  const [letterBase64s, setLetterBase64s]   = useState<string[]>([])
+  const [letterEmbState, setLetterEmbState] = useState<'idle' | 'segmenting' | 'computing' | 'done' | 'failed'>('idle')
+  const letterEmbeddingsRef                 = useRef<number[][] | null>(null)
 
   const fileRef = useRef<HTMLInputElement>(null)
 
   const loadImageFile = (file: File) => {
     setImageFile(file)
-    embeddingRef.current = null
-    setEmbedState('computing')
-    const reader = new FileReader()
-    reader.onload = ev => {
-      const dataUrl = ev.target?.result as string
-      setImagePreview(dataUrl)
-      setImageBase64(dataUrl.split(',')[1])
-    }
-    reader.readAsDataURL(file)
     setResult(null)
-    // Start embedding computation in background immediately
+    setLetterBase64s([])
+    setLetterEmbState('segmenting')
+    embeddingRef.current      = null
+    letterEmbeddingsRef.current = null
+    setEmbedState('computing')
+
+    // Whole-image embedding starts immediately (doesn't need base64)
     computeEmbeddingBrowser(file).then(emb => {
       embeddingRef.current = emb
       setEmbedState(emb ? 'done' : 'failed')
     })
+
+    // Read file for preview + base64 segmentation
+    const reader = new FileReader()
+    reader.onload = ev => {
+      const dataUrl = ev.target?.result as string
+      setImagePreview(dataUrl)
+      const base64 = dataUrl.split(',')[1]
+      setImageBase64(base64)
+
+      // Letter segmentation + per-letter embeddings
+      segmentLettersFromImage(base64).then(async ({ letters, error }) => {
+        if (error || !letters?.length) {
+          setLetterEmbState('failed')
+          return
+        }
+        setLetterBase64s(letters)
+        setLetterEmbState('computing')
+        // Compute sequentially to avoid concurrent model loads
+        const valid: number[][] = []
+        for (const b64 of letters) {
+          const emb = await computeEmbeddingFromDataUrl(`data:image/png;base64,${b64}`)
+          if (emb) valid.push(emb)
+        }
+        letterEmbeddingsRef.current = valid.length > 0 ? valid : null
+        setLetterEmbState(valid.length > 0 ? 'done' : 'failed')
+      })
+    }
+    reader.readAsDataURL(file)
   }
 
   const clearImage = () => {
-    setImageFile(null)
-    setImagePreview(null)
-    setImageBase64(null)
-    setResult(null)
-    embeddingRef.current = null
-    setEmbedState('idle')
+    setImageFile(null); setImagePreview(null); setImageBase64(null); setResult(null)
+    embeddingRef.current = null; setEmbedState('idle')
+    letterEmbeddingsRef.current = null; setLetterBase64s([]); setLetterEmbState('idle')
   }
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -114,19 +172,24 @@ export default function FontIdentifierClient({ identifyFontFromDB, fonts }: Prop
     if (!imageBase64 || !imageFile || isLoading) return
     setIsLoading(true)
     try {
-      // If still computing, wait up to 30s for embedding
-      if (embedState === 'computing') {
-        await new Promise<void>(resolve => {
-          const deadline = Date.now() + 30_000
-          const poll = setInterval(() => {
-            if (embeddingRef.current !== null || Date.now() > deadline) {
-              clearInterval(poll); resolve()
-            }
-          }, 200)
-        })
+      let res: IdentifyResult
+      // Prefer letter embeddings (WhatTheFont approach)
+      if (letterEmbeddingsRef.current?.length) {
+        res = await identifyByLetterEmbeddings(letterEmbeddingsRef.current, imageBase64, imageFile.type)
+      } else {
+        // Fall back: wait for whole-image embedding if still computing
+        if (embedState === 'computing') {
+          await new Promise<void>(resolve => {
+            const deadline = Date.now() + 30_000
+            const poll = setInterval(() => {
+              if (embeddingRef.current !== null || Date.now() > deadline) {
+                clearInterval(poll); resolve()
+              }
+            }, 200)
+          })
+        }
+        res = await identifyFontFromDB(imageBase64, imageFile.type, embeddingRef.current ?? undefined)
       }
-      const embedding = embeddingRef.current ?? undefined
-      const res = await identifyFontFromDB(imageBase64, imageFile.type, embedding)
       setResult(res)
     } catch {
       setResult({ error: 'שגיאת רשת' })
@@ -142,18 +205,26 @@ export default function FontIdentifierClient({ identifyFontFromDB, fonts }: Prop
 
   const filteredFonts = fonts.filter(f => {
     const q = search.toLowerCase()
-    const matchSearch = !q || f.name.toLowerCase().includes(q) || (f.name_hebrew?.toLowerCase().includes(q) ?? false) || (f.company?.toLowerCase().includes(q) ?? false)
+    const matchSearch = !q || f.name.toLowerCase().includes(q) ||
+      (f.name_hebrew?.toLowerCase().includes(q) ?? false) ||
+      (f.company?.toLowerCase().includes(q) ?? false)
     const matchCat  = !filterCat  || f.category === filterCat
     const matchFree = filterFree === 'all' || (filterFree === 'free' && f.is_free) || (filterFree === 'paid' && !f.is_free)
     return matchSearch && matchCat && matchFree
   })
 
+  // Status line text
+  const statusText = () => {
+    if (letterEmbState === 'segmenting') return { text: '⏳ מחלק לאותיות...', color: 'var(--tx3)' }
+    if (letterEmbState === 'computing')  return { text: '⏳ מחשב embeddings לאותיות...', color: 'var(--tx3)' }
+    if (letterEmbState === 'done')       return { text: `✓ ${letterBase64s.length} אותיות — חיפוש מדויק`, color: '#059669' }
+    if (embedState === 'computing')      return { text: '⏳ מחשב embedding...', color: 'var(--tx3)' }
+    if (embedState === 'done')           return { text: '✓ embedding מוכן — חיפוש מהיר', color: '#059669' }
+    return { text: '⚠ fallback mode', color: 'var(--tx3)' }
+  }
+
   return (
-    <div
-      className="min-h-full overflow-y-auto"
-      style={{ background: 'var(--bg)' }}
-      onPaste={handlePaste}
-    >
+    <div className="min-h-full overflow-y-auto" style={{ background: 'var(--bg)' }} onPaste={handlePaste}>
 
       {/* ── AI Identification ── */}
       <div className="px-4 py-6 lg:px-8">
@@ -193,16 +264,10 @@ export default function FontIdentifierClient({ identifyFontFromDB, fonts }: Prop
           ) : (
             <div className="overflow-hidden rounded-2xl" style={{ border: '1px solid var(--bd)' }}>
               <div className="relative">
-                <img
-                  src={imagePreview}
-                  alt=""
-                  className="max-h-72 w-full object-contain"
-                  style={{ background: 'var(--inp)' }}
-                />
-                <button
-                  onClick={clearImage}
-                  className="absolute end-3 top-3 flex h-7 w-7 items-center justify-center rounded-full bg-black/50 text-white transition hover:bg-black/70"
-                >
+                <img src={imagePreview} alt="" className="max-h-72 w-full object-contain"
+                  style={{ background: 'var(--inp)' }} />
+                <button onClick={clearImage}
+                  className="absolute end-3 top-3 flex h-7 w-7 items-center justify-center rounded-full bg-black/50 text-white transition hover:bg-black/70">
                   <X size={14} />
                 </button>
               </div>
@@ -212,28 +277,25 @@ export default function FontIdentifierClient({ identifyFontFromDB, fonts }: Prop
                   <span className="block truncate text-sm" style={{ color: 'var(--tx2)' }}>
                     {imageFile?.name}
                   </span>
-                  {embedState === 'computing' && (
-                    <span className="text-[11px]" style={{ color: 'var(--tx3)' }}>
-                      ⏳ מחשב embedding...
-                    </span>
-                  )}
-                  {embedState === 'done' && (
-                    <span className="text-[11px]" style={{ color: '#059669' }}>
-                      ✓ embedding מוכן — חיפוש מהיר
-                    </span>
-                  )}
-                  {embedState === 'failed' && (
-                    <span className="text-[11px]" style={{ color: 'var(--tx3)' }}>
-                      ⚠ fallback mode
-                    </span>
+                  <span className="text-[11px]" style={{ color: statusText().color }}>
+                    {statusText().text}
+                  </span>
+                  {/* Letter thumbnails */}
+                  {letterBase64s.length > 0 && (
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      {letterBase64s.map((b64, i) => (
+                        <img key={i} src={`data:image/png;base64,${b64}`} alt=""
+                          style={{
+                            height: '28px', width: '28px', objectFit: 'contain',
+                            background: '#fff', borderRadius: '4px', border: '1px solid var(--bd)',
+                          }} />
+                      ))}
+                    </div>
                   )}
                 </div>
-                <button
-                  onClick={handleIdentify}
-                  disabled={isLoading}
+                <button onClick={handleIdentify} disabled={isLoading}
                   className="flex shrink-0 items-center gap-2 rounded-xl px-5 py-2 text-sm font-bold text-white transition hover:opacity-90 disabled:opacity-50"
-                  style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)' }}
-                >
+                  style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)' }}>
                   <ScanText size={15} />
                   {isLoading ? 'מזהה...' : 'זהה פונט'}
                 </button>
@@ -243,13 +305,11 @@ export default function FontIdentifierClient({ identifyFontFromDB, fonts }: Prop
 
           {/* Result */}
           {result && (
-            <div className="mt-5 rounded-2xl p-5"
-              style={{ background: 'var(--s1)', border: '1px solid var(--bd)' }}>
+            <div className="mt-5 rounded-2xl p-5" style={{ background: 'var(--s1)', border: '1px solid var(--bd)' }}>
               {result.error ? (
                 <p className="text-sm text-red-400">{result.error}</p>
               ) : (
                 <>
-                  {/* Confidence banner */}
                   {result.confident === true && (
                     <div className="mb-4 flex items-center gap-2 rounded-xl px-3 py-2"
                       style={{ background: 'rgba(16,185,129,.1)', border: '1px solid rgba(16,185,129,.25)' }}>
@@ -278,13 +338,8 @@ export default function FontIdentifierClient({ identifyFontFromDB, fonts }: Prop
                       </p>
                       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                         {matchedFonts.map((font, i) => (
-                          <FontCard
-                            key={font.id}
-                            font={font}
-                            rank={i + 1}
-                            score={result.scores?.[i]}
-                            confident={result.confident}
-                          />
+                          <FontCard key={font.id} font={font} rank={i + 1}
+                            score={result.scores?.[i]} confident={result.confident} />
                         ))}
                       </div>
                     </>
@@ -296,18 +351,13 @@ export default function FontIdentifierClient({ identifyFontFromDB, fonts }: Prop
 
               {result.debug && (
                 <div className="mt-4 border-t pt-4" style={{ borderColor: 'var(--bd)' }}>
-                  <button
-                    onClick={() => setShowDebug(v => !v)}
-                    className="text-xs font-mono"
-                    style={{ color: 'var(--tx3)' }}
-                  >
+                  <button onClick={() => setShowDebug(v => !v)}
+                    className="text-xs font-mono" style={{ color: 'var(--tx3)' }}>
                     {showDebug ? '▲ הסתר debug' : '▼ הצג debug log'}
                   </button>
                   {showDebug && (
-                    <pre
-                      className="mt-2 overflow-x-auto rounded-xl p-3 text-[11px] leading-relaxed font-mono"
-                      style={{ background: 'var(--inp)', color: 'var(--tx2)', whiteSpace: 'pre-wrap', direction: 'ltr', textAlign: 'left' }}
-                    >
+                    <pre className="mt-2 overflow-x-auto rounded-xl p-3 text-[11px] leading-relaxed font-mono"
+                      style={{ background: 'var(--inp)', color: 'var(--tx2)', whiteSpace: 'pre-wrap', direction: 'ltr', textAlign: 'left' }}>
                       {result.debug}
                     </pre>
                   )}
@@ -324,44 +374,30 @@ export default function FontIdentifierClient({ identifyFontFromDB, fonts }: Prop
       {/* ── Font Gallery ── */}
       <div className="px-4 py-6 lg:px-8">
         <div className="mx-auto max-w-5xl">
-
           <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="font-bold" style={{ color: 'var(--tx)' }}>מאגר הפונטים</h2>
               <p className="text-xs" style={{ color: 'var(--tx3)' }}>{fonts.length} פונטים</p>
             </div>
-
             <div className="flex flex-wrap items-center gap-2">
               <div className="relative">
                 <Search size={13} className="absolute start-3 top-1/2 -translate-y-1/2 pointer-events-none"
                   style={{ color: 'var(--tx3)' }} />
-                <input
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  placeholder="חפש פונט..."
+                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="חפש פונט..."
                   className="rounded-xl py-2 pe-3 ps-8 text-sm outline-none"
-                  style={{ background: 'var(--inp)', border: '1px solid var(--bd)', color: 'var(--tx)', width: '160px' }}
-                />
+                  style={{ background: 'var(--inp)', border: '1px solid var(--bd)', color: 'var(--tx)', width: '160px' }} />
               </div>
-
               {categories.length > 0 && (
-                <select
-                  value={filterCat}
-                  onChange={e => setFilterCat(e.target.value)}
+                <select value={filterCat} onChange={e => setFilterCat(e.target.value)}
                   className="rounded-xl px-3 py-2 text-sm outline-none"
-                  style={{ background: 'var(--inp)', border: '1px solid var(--bd)', color: 'var(--tx)' }}
-                >
+                  style={{ background: 'var(--inp)', border: '1px solid var(--bd)', color: 'var(--tx)' }}>
                   <option value="">כל הקטגוריות</option>
                   {categories.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
               )}
-
-              <select
-                value={filterFree}
-                onChange={e => setFilterFree(e.target.value as 'all' | 'free' | 'paid')}
+              <select value={filterFree} onChange={e => setFilterFree(e.target.value as 'all' | 'free' | 'paid')}
                 className="rounded-xl px-3 py-2 text-sm outline-none"
-                style={{ background: 'var(--inp)', border: '1px solid var(--bd)', color: 'var(--tx)' }}
-              >
+                style={{ background: 'var(--inp)', border: '1px solid var(--bd)', color: 'var(--tx)' }}>
                 <option value="all">הכל</option>
                 <option value="free">חינמי</option>
                 <option value="paid">בתשלום</option>
@@ -372,9 +408,7 @@ export default function FontIdentifierClient({ identifyFontFromDB, fonts }: Prop
           {filteredFonts.length === 0 ? (
             <div className="rounded-2xl py-16 text-center text-sm"
               style={{ border: '2px dashed var(--bd)', background: 'var(--inp)', color: 'var(--tx3)' }}>
-              {fonts.length === 0
-                ? 'מאגר הפונטים ריק — הוסף פונטים מפאנל הניהול'
-                : 'לא נמצאו פונטים'}
+              {fonts.length === 0 ? 'מאגר הפונטים ריק — הוסף פונטים מפאנל הניהול' : 'לא נמצאו פונטים'}
             </div>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
@@ -393,80 +427,58 @@ function FontCard({ font, rank, score, confident }: { font: Font; rank?: number;
   return (
     <div className="flex flex-col overflow-hidden rounded-2xl transition-all hover:shadow-md"
       style={{ background: 'var(--s1)', border: '1px solid var(--bd)' }}>
-
-      {/* Preview */}
       <div className="relative h-28 overflow-hidden shrink-0" style={{ background: 'var(--inp)' }}>
         {font.preview_image_url ? (
           <img src={font.preview_image_url} alt={font.name} className="h-full w-full object-cover" />
         ) : (
           <div className="flex h-full w-full items-center justify-center"
             style={{ background: 'linear-gradient(135deg,rgba(124,58,237,.07),rgba(109,40,217,.13))' }}>
-            <span className="select-none text-4xl font-black"
-              style={{ color: 'rgba(124,58,237,.25)', fontFamily: 'Georgia, serif' }}>
-              Aa
-            </span>
+            <span className="select-none text-4xl font-black" style={{ color: 'rgba(124,58,237,.25)', fontFamily: 'Georgia, serif' }}>Aa</span>
           </div>
         )}
-
         {typeof rank === 'number' && (
           <div className="absolute start-2 top-2 flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-bold text-white"
             style={{ background: rank === 1 ? '#7c3aed' : rank === 2 ? '#6d28d9' : '#5b21b6' }}>
             {rank}
           </div>
         )}
-
         <div className="absolute end-2 top-2">
-          <span
-            className="rounded-full px-2 py-0.5 text-[10px] font-bold"
+          <span className="rounded-full px-2 py-0.5 text-[10px] font-bold"
             style={font.is_free
               ? { background: 'rgba(16,185,129,.15)', border: '1px solid rgba(16,185,129,.3)', color: '#059669' }
               : { background: 'rgba(245,158,11,.15)', border: '1px solid rgba(245,158,11,.3)', color: '#b45309' }
-            }
-          >
+            }>
             {font.is_free ? 'חינמי' : (font.price ?? 'בתשלום')}
           </span>
         </div>
       </div>
-
-      {/* Info */}
       <div className="flex flex-1 flex-col p-3">
         <div className="flex items-start justify-between gap-1">
           <p className="font-semibold leading-snug" style={{ color: 'var(--tx)' }}>{font.name}</p>
           {score !== undefined && (
-            <span
-              className="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold"
+            <span className="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold"
               style={score >= 70
                 ? { background: 'rgba(16,185,129,.15)', color: '#059669' }
                 : score >= 50
                   ? { background: 'rgba(245,158,11,.15)', color: '#b45309' }
                   : { background: 'rgba(124,58,237,.1)', color: '#7c3aed' }
-              }
-            >
+              }>
               {score}%{!confident && rank === 1 ? ' ?' : ''}
             </span>
           )}
         </div>
-        {font.name_hebrew && (
-          <p className="text-sm" style={{ color: 'var(--tx2)' }}>{font.name_hebrew}</p>
-        )}
-        {font.company && (
-          <p className="mt-0.5 text-xs" style={{ color: 'var(--tx3)' }}>{font.company}</p>
-        )}
+        {font.name_hebrew && <p className="text-sm" style={{ color: 'var(--tx2)' }}>{font.name_hebrew}</p>}
+        {font.company && <p className="mt-0.5 text-xs" style={{ color: 'var(--tx3)' }}>{font.company}</p>}
         {font.category && (
           <span className="mt-2 self-start rounded-full px-2 py-0.5 text-[10px] font-medium"
             style={{ background: 'rgba(124,58,237,.1)', color: '#7c3aed' }}>
             {font.category}
           </span>
         )}
-
         {font.download_url && (
-          <a
-            href={font.download_url}
-            target="_blank"
-            rel="noopener noreferrer"
+          <a href={font.download_url} target="_blank" rel="noopener noreferrer"
             className="mt-3 flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold text-white transition hover:opacity-90"
-            style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)', marginTop: 'auto' }}
-          >
+            style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)', marginTop: 'auto' }}>
             <ExternalLink size={11} />
             {font.is_free ? 'הורד חינם' : 'לרכישה'}
           </a>

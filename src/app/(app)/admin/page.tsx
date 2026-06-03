@@ -684,6 +684,76 @@ export default async function AdminPage() {
     return { done, errors, total, batchSize: fontsData.length }
   }
 
+  async function buildLetterEmbeddingsBatch(
+    offset: number,
+    limit: number,
+  ): Promise<{ done: number; errors: number; total: number; batchSize: number }> {
+    'use server'
+    const HEBREW_LETTERS = 'אבגדהוזחטיכלמנסעפצקרשת'.split('')
+    const a = createAdminClient()
+    const [{ count }, { data: fontsData }] = await Promise.all([
+      a.from('fonts').select('id', { count: 'exact', head: true }).not('font_file_path', 'is', null),
+      a.from('fonts')
+        .select('id, font_file_path')
+        .not('font_file_path', 'is', null)
+        .order('id', { ascending: true })
+        .range(offset, offset + limit - 1),
+    ])
+    const total = count ?? 0
+    if (!fontsData?.length) return { done: 0, errors: 0, total, batchSize: 0 }
+
+    const satori    = (await import('satori')).default
+    const { createElement } = await import('react')
+    const { Resvg } = await import('@resvg/resvg-js')
+    const { computeImageEmbedding } = await import('@/lib/clip-embeddings')
+
+    let done = 0, errors = 0
+    for (const font of fontsData) {
+      try {
+        const { data: blob, error: dlErr } = await a.storage.from('fonts-files').download(font.font_file_path!)
+        if (dlErr || !blob) { errors++; continue }
+        const fontArrayBuffer = await blob.arrayBuffer()
+
+        for (const letter of HEBREW_LETTERS) {
+          try {
+            const svg = await satori(
+              createElement('div', {
+                style: {
+                  display: 'flex', background: 'white', width: '100%', height: '100%',
+                  alignItems: 'center', justifyContent: 'center',
+                },
+              },
+                createElement('p', {
+                  style: {
+                    fontFamily: 'PreviewFont', fontSize: 80, color: '#111111',
+                    margin: 0, direction: 'rtl', textAlign: 'center' as const,
+                  },
+                }, letter),
+              ),
+              {
+                width: 112, height: 112,
+                fonts: [{ name: 'PreviewFont', data: fontArrayBuffer, weight: 400, style: 'normal' as const }],
+              },
+            )
+            const pngBuf = Buffer.from(new Resvg(svg).render().asPng())
+            const emb    = await computeImageEmbedding(pngBuf)
+            await a.from('font_letter_embeddings')
+              .upsert(
+                { font_id: font.id, letter, embedding: `[${emb.join(',')}]` },
+                { onConflict: 'font_id,letter' },
+              )
+          } catch { /* skip individual letter errors */ }
+        }
+        done++
+      } catch (err) {
+        console.error('[buildLetterEmbeddingsBatch] font', font.id, err)
+        errors++
+      }
+    }
+
+    return { done, errors, total, batchSize: fontsData.length }
+  }
+
   return (
     <AdminClient
       pendingUsers={pendingUsers}
@@ -730,6 +800,7 @@ export default async function AdminPage() {
       recomputeHashBatch={recomputeHashBatch}
       rebuildPreviewsBatch={rebuildPreviewsBatch}
       computeEmbeddingBatch={computeEmbeddingBatch}
+      buildLetterEmbeddingsBatch={buildLetterEmbeddingsBatch}
     />
   )
 }

@@ -339,6 +339,54 @@ SCORE 0-100 shape similarity. Up to 3 MATCH lines.`
   }
 }
 
+// ── Letter segmentation + letter-based identification ────────────────────────
+
+export async function segmentLettersFromImage(
+  imageBase64: string,
+): Promise<{ letters?: string[]; error?: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+  try {
+    const buf = Buffer.from(imageBase64, 'base64')
+    const { segmentLetters } = await import('@/lib/letter-segment')
+    const letterBufs = await segmentLetters(buf)
+    return { letters: letterBufs.map(b => b.toString('base64')) }
+  } catch (err) {
+    return { error: String(err) }
+  }
+}
+
+export async function identifyByLetterEmbeddings(
+  letterEmbeddings: number[][],
+  imageBase64: string,
+  imageMimeType: string,
+): Promise<{ matches?: string[]; scores?: number[]; confident?: boolean; description?: string; error?: string; debug?: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+
+  if (!letterEmbeddings.length) return { error: 'לא סופקו embeddings' }
+
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) return { error: 'ANTHROPIC_API_KEY חסר' }
+
+  const dbg: string[] = []
+  dbg.push(`Letter-based identification: ${letterEmbeddings.length} letter embeddings`)
+
+  const dim = letterEmbeddings[0].length
+  const centroid = new Array(dim).fill(0) as number[]
+  for (const emb of letterEmbeddings) {
+    for (let i = 0; i < dim; i++) centroid[i] += emb[i]
+  }
+  for (let i = 0; i < dim; i++) centroid[i] /= letterEmbeddings.length
+  const norm = Math.sqrt(centroid.reduce((s, v) => s + v * v, 0))
+  const normalized = norm > 0 ? centroid.map(v => v / norm) : centroid
+
+  dbg.push('Centroid of letter embeddings → DB query')
+  return identifyWithEmbedding(imageBase64, imageMimeType, normalized, apiKey, dbg)
+}
+
 // ── Diagnostic ────────────────────────────────────────────────────────────────
 export async function checkPreviewHealth(): Promise<{
   total: number; withUrl: number; withoutUrl: number
