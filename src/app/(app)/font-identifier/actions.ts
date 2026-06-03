@@ -87,15 +87,13 @@ export async function identifyFontFromDB(
   if (!fonts.length) return { error: 'אין פונטים עם תמונות preview במאגר.', debug: dbg.join('\n') }
 
   // ── Step 1: Detailed visual analysis ────────────────────────────────────────
-  const step1Prompt = `You are a Hebrew typography expert. Analyze the letterform characteristics of the font in this image.
+  const step1Prompt = `You are a Hebrew typography expert. Analyze the SHAPE of the letterforms in this image — ignore stroke weight entirely.
 
 Reply ONLY in this exact format (one value per line):
 SERIF: yes | no
-WEIGHT: thin | light | regular | medium | bold | black
-WIDTH: condensed | normal | wide
-TERMINALS: rounded | sharp | square
-XHEIGHT: low | medium | high
-FEATURES: 2-3 distinctive visual traits (e.g. "high stroke contrast, triangular serifs, open counters")`
+TERMINALS: sharp | rounded | flat | wedge
+CONSTRUCTION: geometric | humanist | calligraphic | grotesque
+DISTINCTIVE: describe the unique shapes of specific letters — curves, angles, counters, proportions (e.g. "triangular ear on ר, open counter on פ, angular joints on כ")`
 
   let analysis: string
   try {
@@ -144,12 +142,14 @@ FEATURES: 2-3 distinctive visual traits (e.g. "high stroke contrast, triangular 
 Image 1: user's image (unknown font).
 ${imageLines}
 
-Each Image 2+ shows the Hebrew alphabet in a specific font.
+Each Image 2+ shows Hebrew letters in a specific font.
 
-Target font characteristics:
+Target font characteristics (SHAPE ONLY — ignore stroke weight):
 ${analysis}
 
-Compare Image 1 against each sample. Consider: letter shapes (especially א ג ד ה כ מ ע ר ש ת), stroke weight, terminal style, proportions.
+Compare Image 1 against each sample based ONLY on letterform shapes.
+IGNORE stroke thickness — a Light and Bold version of the same font have identical shapes.
+Focus on: letter skeleton, curves, angles, terminals, counter shapes (especially ע מ כ ר ש ק א).
 
 Font list (copy name exactly):
 ${nameLines}
@@ -221,28 +221,32 @@ If none of the samples match, write: BEST: NONE`
 Image 1: user's image (unknown font).
 ${winnerImageLines}
 
-These fonts were each selected as the best match from their group.
+These fonts were pre-selected as the closest shape matches.
 
-Target font characteristics:
+Target font characteristics (SHAPE ONLY):
 ${analysis}
 
-Carefully compare Image 1 against each candidate. Focus on the most distinctive letterforms (especially א ג ד ה כ מ ע ר ש ת), stroke contrast, terminal style, and proportions.
+CRITICAL RULE: Focus ONLY on letterform shapes — completely ignore stroke thickness.
+A Light weight and Bold weight of the same typeface have IDENTICAL shapes and must receive the same high score.
+Matching is based on: letter skeleton geometry, curve style, terminal shapes, counter proportions, angle of stress.
+
+Carefully compare Image 1 against each candidate using these shape criteria.
 
 Font names (copy exactly):
 ${winnerNameLines}
 
 Reply ONLY in this format:
-DESCRIPTION: one sentence in Hebrew describing the font style
+DESCRIPTION: one sentence in Hebrew describing the font style (shape, not weight)
 MATCH: ExactFontName (SCORE: 85)
 MATCH: ExactFontName (SCORE: 60)
 MATCH: ExactFontName (SCORE: 30)
 
-SCORE is 0-100: how confident you are this font matches Image 1.
-- 80-100: very high confidence, nearly certain match
-- 50-79: moderate confidence, likely similar
-- 0-49: low confidence, possible resemblance only
+SCORE is 0-100 shape similarity only:
+- 80-100: shapes are nearly identical — same typeface family
+- 50-79: shapes are similar — likely the same design
+- 0-49: shapes differ noticeably
 
-Order from highest to lowest score. Up to 3 MATCH lines. If no candidate is a good match, still list the 3 closest but with low scores.`
+Order from highest to lowest score. Up to 3 MATCH lines.`
 
   try {
     const content = [
@@ -356,7 +360,7 @@ function resolveMatch(claudeName: string, fontNames: string[]): string | null {
 }
 
 function buildDescription(analysis: string): string {
-  const serif  = analysis.match(/SERIF:\s*(\w+)/i)?.[1]?.toLowerCase() === 'yes'
-  const weight = analysis.match(/WEIGHT:\s*(\w+)/i)?.[1] ?? ''
-  return `פונט ${serif ? 'סריף' : 'סאן-סריף'} במשקל ${weight}`
+  const serif        = analysis.match(/SERIF:\s*(\w+)/i)?.[1]?.toLowerCase() === 'yes'
+  const construction = analysis.match(/CONSTRUCTION:\s*(\w+)/i)?.[1] ?? ''
+  return `פונט ${serif ? 'סריף' : 'סאן-סריף'}${construction ? ` · ${construction}` : ''}`
 }
