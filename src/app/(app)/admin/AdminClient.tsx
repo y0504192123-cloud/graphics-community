@@ -54,6 +54,7 @@ type Props = {
   quickUpdateFont:             (id: string, updates: { name?: string; company?: string; download_url?: string; is_free?: boolean }) => Promise<{ error?: string }>
   recomputeHashBatch:          (offset: number, limit: number) => Promise<{ done: number; errors: number; total: number; batchSize: number }>
   rebuildPreviewsBatch:        (offset: number, limit: number) => Promise<{ done: number; errors: number; total: number; batchSize: number }>
+  computeEmbeddingBatch:       (offset: number, limit: number) => Promise<{ done: number; errors: number; total: number; batchSize: number }>
 }
 
 const inputCls = 'w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition-all placeholder:text-slate-400 hover:border-slate-300 focus:border-purple-400 focus:ring-2 focus:ring-purple-100'
@@ -87,7 +88,8 @@ export default function AdminClient({
   getLogoUploadUrl, saveLogoUrl,
   fonts, fontWeights, saveFont, deleteFont,
   getFontPreviewUploadUrl, getFontFileUploadUrl, generateFontPreview,
-  createFontWithPreview, updateFontsCompany, quickUpdateFont, recomputeHashBatch, rebuildPreviewsBatch,
+  createFontWithPreview, updateFontsCompany, quickUpdateFont,
+  recomputeHashBatch, rebuildPreviewsBatch, computeEmbeddingBatch,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('pending')
   const [isPending, startTransition] = useTransition()
@@ -782,6 +784,7 @@ export default function AdminClient({
             quickUpdateFont={quickUpdateFont}
             recomputeHashBatch={recomputeHashBatch}
             rebuildPreviewsBatch={rebuildPreviewsBatch}
+            computeEmbeddingBatch={computeEmbeddingBatch}
           />
         )}
 

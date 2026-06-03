@@ -25,6 +25,7 @@ type Props = {
   quickUpdateFont: (id: string, updates: { name?: string; company?: string; download_url?: string; is_free?: boolean }) => Promise<{ error?: string }>
   recomputeHashBatch: (offset: number, limit: number) => Promise<{ done: number; errors: number; total: number; batchSize: number }>
   rebuildPreviewsBatch: (offset: number, limit: number) => Promise<{ done: number; errors: number; total: number; batchSize: number }>
+  computeEmbeddingBatch: (offset: number, limit: number) => Promise<{ done: number; errors: number; total: number; batchSize: number }>
 }
 
 const inp = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition placeholder:text-slate-400 focus:border-purple-400 focus:ring-2 focus:ring-purple-100'
@@ -654,7 +655,8 @@ function FontTableRow({ font, quickUpdateFont, deleteFont, getFontFileUploadUrl,
 export default function FontsTab({
   fonts, fontWeights, saveFont, deleteFont,
   getFontPreviewUploadUrl, getFontFileUploadUrl, generateFontPreview,
-  createFontWithPreview, updateFontsCompany, quickUpdateFont, recomputeHashBatch, rebuildPreviewsBatch,
+  createFontWithPreview, updateFontsCompany, quickUpdateFont,
+  recomputeHashBatch, rebuildPreviewsBatch, computeEmbeddingBatch,
 }: Props) {
   const router = useRouter()
   const [saveState, saveAction, savePending] = useActionState(saveFont, null)
@@ -666,6 +668,8 @@ export default function FontsTab({
   const [rehashProgress, setRehashProgress] = useState<{ processed: number; total: number; done: number; errors: number } | null>(null)
   const [rebuildStatus, setRebuildStatus] = useState<'idle' | 'running' | 'done'>('idle')
   const [rebuildProgress, setRebuildProgress] = useState<{ processed: number; total: number; done: number; errors: number } | null>(null)
+  const [embedStatus, setEmbedStatus] = useState<'idle' | 'running' | 'done'>('idle')
+  const [embedProgress, setEmbedProgress] = useState<{ processed: number; total: number; done: number; errors: number } | null>(null)
 
   const handleEdit   = (font: Font) => { setEditingFont(font); setShowForm(true) }
   const handleCancel = () => { setShowForm(false); setEditingFont(null) }
@@ -736,6 +740,27 @@ export default function FontsTab({
     setRebuildStatus('done')
     router.refresh()
     setTimeout(() => { setRebuildStatus('idle'); setRebuildProgress(null) }, 10000)
+  }
+
+  const handleEmbed = async () => {
+    if (!confirm('זה יחשב CLIP embeddings לכל 472 הפונטים. הפעם הראשונה תיקח 2-3 דקות בגלל טעינת המודל. להמשיך?')) return
+    const BATCH = 3
+    setEmbedStatus('running')
+    setEmbedProgress({ processed: 0, total: 0, done: 0, errors: 0 })
+    let offset = 0
+    let totalDone = 0
+    let totalErrors = 0
+    while (true) {
+      const r = await computeEmbeddingBatch(offset, BATCH)
+      totalDone   += r.done
+      totalErrors += r.errors
+      const processed = offset + r.batchSize
+      setEmbedProgress({ processed, total: r.total, done: totalDone, errors: totalErrors })
+      if (r.batchSize < BATCH || processed >= r.total) break
+      offset += BATCH
+    }
+    setEmbedStatus('done')
+    setTimeout(() => { setEmbedStatus('idle'); setEmbedProgress(null) }, 10000)
   }
 
   const filteredFonts = fonts.filter(f => {
@@ -827,6 +852,35 @@ export default function FontsTab({
           {rebuildStatus === 'done' && rebuildProgress && (
             <p className="text-[11px]" style={{ color: '#7c3aed' }}>
               {rebuildProgress.done} נבנו{rebuildProgress.errors > 0 ? ` · ${rebuildProgress.errors} שגיאות` : ''}
+            </p>
+          )}
+        </div>
+
+        <div className="flex flex-col items-end gap-0.5">
+          <button
+            onClick={handleEmbed}
+            disabled={embedStatus === 'running' || rebuildStatus === 'running' || rehashStatus === 'running'}
+            title="חשב CLIP embeddings לכל הפונטים (נדרש לזיהוי)"
+            className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold transition hover:opacity-80 disabled:opacity-50"
+            style={{ background: 'rgba(59,130,246,.1)', border: '1px solid rgba(59,130,246,.3)', color: '#1d4ed8' }}>
+            {embedStatus === 'running' ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+            {embedStatus === 'running'
+              ? embedProgress && embedProgress.total > 0
+                ? `${embedProgress.processed}/${embedProgress.total}`
+                : 'טוען מודל...'
+              : embedStatus === 'done' ? '✓ הושלם' : 'חשב embeddings'}
+          </button>
+          {embedProgress && embedStatus === 'running' && embedProgress.total > 0 && (
+            <div className="w-full overflow-hidden rounded-full" style={{ height: '3px', background: 'rgba(59,130,246,.15)' }}>
+              <div
+                className="h-full rounded-full transition-all duration-300"
+                style={{ width: `${Math.round((embedProgress.processed / embedProgress.total) * 100)}%`, background: '#3b82f6' }}
+              />
+            </div>
+          )}
+          {embedStatus === 'done' && embedProgress && (
+            <p className="text-[11px]" style={{ color: '#1d4ed8' }}>
+              {embedProgress.done} עובדו{embedProgress.errors > 0 ? ` · ${embedProgress.errors} שגיאות` : ''}
             </p>
           )}
         </div>

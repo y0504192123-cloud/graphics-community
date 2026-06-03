@@ -645,6 +645,45 @@ export default async function AdminPage() {
     return { done, errors, total, batchSize: fontsData.length }
   }
 
+  async function computeEmbeddingBatch(
+    offset: number,
+    limit: number,
+  ): Promise<{ done: number; errors: number; total: number; batchSize: number }> {
+    'use server'
+    const a = createAdminClient()
+    const [{ count }, { data: fontsData }] = await Promise.all([
+      a.from('fonts').select('id', { count: 'exact', head: true }).not('preview_image_url', 'is', null),
+      a.from('fonts')
+        .select('id, preview_image_url')
+        .not('preview_image_url', 'is', null)
+        .order('id', { ascending: true })
+        .range(offset, offset + limit - 1),
+    ])
+    const total = count ?? 0
+    if (!fontsData?.length) return { done: 0, errors: 0, total, batchSize: 0 }
+
+    const { computeImageEmbedding } = await import('@/lib/clip-embeddings')
+    let done = 0, errors = 0
+
+    for (const font of fontsData) {
+      try {
+        const r = await fetch(font.preview_image_url!, { signal: AbortSignal.timeout(15_000) })
+        if (!r.ok) { errors++; continue }
+        const buf  = Buffer.from(await r.arrayBuffer())
+        const emb  = await computeImageEmbedding(buf)
+        await a.from('fonts')
+          .update({ embedding: `[${emb.join(',')}]` })
+          .eq('id', font.id)
+        done++
+      } catch (err) {
+        console.error('[computeEmbeddingBatch] font', font.id, err)
+        errors++
+      }
+    }
+
+    return { done, errors, total, batchSize: fontsData.length }
+  }
+
   return (
     <AdminClient
       pendingUsers={pendingUsers}
@@ -690,6 +729,7 @@ export default async function AdminPage() {
       quickUpdateFont={quickUpdateFont}
       recomputeHashBatch={recomputeHashBatch}
       rebuildPreviewsBatch={rebuildPreviewsBatch}
+      computeEmbeddingBatch={computeEmbeddingBatch}
     />
   )
 }
