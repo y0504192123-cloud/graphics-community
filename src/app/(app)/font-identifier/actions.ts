@@ -285,10 +285,13 @@ DISTINCTIVE: describe unique letter shapes — curves, angles, counters, proport
   for (let i = 0; i < allPreviews.length; i += BATCH_SIZE) batches.push(allPreviews.slice(i, i + BATCH_SIZE))
   dbg.push(`\nStep 2: ${batches.length} batches × ${BATCH_SIZE}`)
 
+  const TRACKED_FONT = 'FbAkapulco Black'
   const batchTasks = batches.map((batch, batchIdx) => async (): Promise<string[]> => {
     const imageLines = batch.map((p, i) => `  Image ${i + 2}: "${p.name}"`).join('\n')
     const nameLines  = batch.map((p, i) => `${i + 1}. ${p.name}`).join('\n')
-    const prompt = `Hebrew font identification. Rank the top 3 most similar fonts.
+    const hasTracked = batch.some(p => p.name === TRACKED_FONT)
+    if (hasTracked) dbg.push(`  [track] ${TRACKED_FONT} is in batch ${batchIdx + 1} (${batch.map(p => p.name).join(', ')})`)
+    const prompt = `Hebrew font identification. Rank the top 5 most similar fonts.
 Image 1: unknown font. ${imageLines}
 Target shape (IGNORE weight): ${analysis}
 IGNORE stroke thickness — Light/Bold of same family = IDENTICAL shapes.
@@ -297,9 +300,11 @@ ${nameLines}
 Reply ONLY in this exact format (copy font names exactly):
 TOP1: ExactFontName
 TOP2: ExactFontName
-TOP3: ExactFontName`
+TOP3: ExactFontName
+TOP4: ExactFontName
+TOP5: ExactFontName`
     try {
-      const text  = await claudeCall(apiKey, 'claude-haiku-4-5-20251001', 80, [
+      const text  = await claudeCall(apiKey, 'claude-haiku-4-5-20251001', 120, [
         imgBlock(imageBase64, imageMimeType),
         ...batch.map(p => imgBlock(p.base64, p.mimeType)),
         textBlock(prompt),
@@ -310,9 +315,13 @@ TOP3: ExactFontName`
         const resolved = resolveMatch(raw, allFontNames)
         if (resolved && !picks.includes(resolved)) picks.push(resolved)
       }
-      dbg.push(`  batch ${batchIdx + 1}: [${picks.join(', ') || 'NONE'}]`)
+      const trackedPicked = picks.includes(TRACKED_FONT)
+      dbg.push(`  batch ${batchIdx + 1}: [${picks.join(', ') || 'NONE'}]${hasTracked ? ` ← ${TRACKED_FONT} ${trackedPicked ? 'PICKED ✓' : 'DROPPED ✗'} | raw: "${text.trim()}"` : ''}`)
       return picks
-    } catch { return [] }
+    } catch (err) {
+      if (hasTracked) dbg.push(`  batch ${batchIdx + 1}: ERROR ${err}`)
+      return []
+    }
   })
 
   const rawWinners = await runConcurrent(batchTasks, BATCH_CONCUR)
