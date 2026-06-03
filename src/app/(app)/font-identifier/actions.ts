@@ -151,7 +151,7 @@ BEST: ExactFontName
 If none of the samples match, write: BEST: NONE`
   }
 
-  const allFontNames = new Set(allPreviews.map(p => p.name))
+  const allFontNames = allPreviews.map(p => p.name)
 
   const t1 = Date.now()
   const batchTasks = batches.map((batch, batchIdx) => async (): Promise<string | null> => {
@@ -161,12 +161,12 @@ If none of the samples match, write: BEST: NONE`
         ...batch.map(p => imgBlock(p.base64, p.mimeType)),
         textBlock(makeBatchPrompt(batch)),
       ]
-      const text = await claudeCall(apiKey, 'claude-haiku-4-5-20251001', 40, content)
-      const raw   = text.trim()
-      const match = text.match(/BEST:\s*(.+)/i)?.[1]?.trim() ?? ''
-      const valid = (match && match.toUpperCase() !== 'NONE' && allFontNames.has(match)) ? match : null
-      console.log(`[font-id] batch ${batchIdx + 1}/${batches.length}: raw="${raw}" → winner=${valid ?? 'NONE'}`)
-      return valid
+      const text     = await claudeCall(apiKey, 'claude-haiku-4-5-20251001', 40, content)
+      const raw      = text.trim()
+      const parsed   = text.match(/BEST:\s*(.+)/i)?.[1]?.trim() ?? ''
+      const resolved = resolveMatch(parsed, allFontNames)
+      console.log(`[font-id] batch ${batchIdx + 1}/${batches.length}: raw="${raw}" parsed="${parsed}" → ${resolved ?? 'NONE'}`)
+      return resolved
     } catch (err) {
       console.error(`[font-id] batch ${batchIdx + 1} error:`, err)
       return null
@@ -228,7 +228,8 @@ Order from best to least similar. Up to 3 MATCH lines.`
     const finalDescription = finalText.match(/DESCRIPTION:\s*(.+)/i)?.[1]?.trim() ?? buildDescription(analysis)
     const matches = (finalText.match(/MATCH:\s*(.+)/gi) ?? [])
       .map(l => l.replace(/^MATCH:\s*/i, '').trim())
-      .filter(m => m && m.toUpperCase() !== 'NONE' && allFontNames.has(m))
+      .map(m => resolveMatch(m, allFontNames))
+      .filter((m): m is string => m !== null)
       .filter((m, i, arr) => arr.indexOf(m) === i)
       .slice(0, 3)
 
@@ -275,6 +276,16 @@ export async function checkPreviewHealth(): Promise<{
     sampleUrls: withUrl.slice(0, 5).map((f: { name: string; preview_image_url: string | null }) => ({ name: f.name, url: f.preview_image_url })),
     httpChecks,
   }
+}
+
+// Resolve Claude's output to an exact DB name by normalizing spaces/separators.
+// "Fb Galbyan Light" and "FbGalbyan Light" both normalize to "fbgalbyanlight".
+function resolveMatch(claudeName: string, fontNames: string[]): string | null {
+  if (!claudeName || claudeName.toUpperCase() === 'NONE') return null
+  if (fontNames.includes(claudeName)) return claudeName
+  const norm = (s: string) => s.toLowerCase().replace(/[\s_-]/g, '')
+  const target = norm(claudeName)
+  return fontNames.find(n => norm(n) === target) ?? null
 }
 
 function buildDescription(analysis: string): string {

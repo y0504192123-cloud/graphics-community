@@ -322,8 +322,20 @@ function BulkUploadZone({ getFontFileUploadUrl, createFontWithPreview, onBatchDo
   const [dragging, setDragging] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const cleanName = (fileName: string) =>
-    fileName.replace(/\.(ttf|otf)$/i, '').replace(/[_-]/g, ' ').replace(/\s+/g, ' ').trim()
+  const cleanName = (fileName: string): string => {
+    let name = fileName.replace(/\.(ttf|otf)$/i, '')
+    name = name.replace(/[_-]/g, ' ')
+    // Split "MLDavid" → "ML David" (uppercase run before Title word)
+    name = name.replace(/([A-Z]+?)([A-Z][a-z])/g, '$1 $2')
+    // Split "FbGalbyan" → "Fb Galbyan" (lowercase → uppercase)
+    name = name.replace(/([a-z])([A-Z])/g, '$1 $2')
+    name = name.replace(/\s+/g, ' ').trim()
+    // Title-case each word
+    name = name.replace(/\b\w/g, c => c.toUpperCase())
+    // Fix ALL-CAPS prefix (2-4 chars) at start: "FB " → "Fb ", "ML " → "Ml "
+    name = name.replace(/^([A-Z]{2,4})\b/, m => m[0] + m.slice(1).toLowerCase())
+    return name
+  }
 
   const processFiles = useCallback(async (files: File[]) => {
     const valid = files.filter(f => /\.(ttf|otf)$/i.test(f.name))
