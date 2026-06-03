@@ -39,8 +39,14 @@ export async function identifyFontFromDB(
 
   // Compute dHash of the uploaded image
   const imageBuffer = Buffer.from(imageBase64, 'base64')
-  const userHash = await computeDHash(imageBuffer)
-  console.log(`[font-id] user image hash: ${userHash}`)
+  let userHash: string
+  try {
+    userHash = await computeDHash(imageBuffer)
+    console.log(`[font-id] user image hash: ${userHash}`)
+  } catch (err) {
+    console.error('[font-id] computeDHash failed:', err)
+    return { error: `שגיאה בעיבוד התמונה: ${err instanceof Error ? err.message : String(err)}` }
+  }
 
   // Sort by Hamming distance (lower = more similar)
   const allScored = fonts
