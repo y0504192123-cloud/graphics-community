@@ -8,7 +8,7 @@ type Props = {
   identifyFontFromDB: (
     imageBase64: string,
     imageMimeType: string,
-  ) => Promise<{ matches?: string[]; description?: string; error?: string; debug?: string }>
+  ) => Promise<{ matches?: string[]; scores?: number[]; confident?: boolean; description?: string; error?: string; debug?: string }>
   fonts: Font[]
 }
 
@@ -17,7 +17,7 @@ export default function FontIdentifierClient({ identifyFontFromDB, fonts }: Prop
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [imageBase64, setImageBase64] = useState<string | null>(null)
   const [isLoading, setIsLoading]     = useState(false)
-  const [result, setResult]           = useState<{ matches?: string[]; description?: string; error?: string; debug?: string } | null>(null)
+  const [result, setResult]           = useState<{ matches?: string[]; scores?: number[]; confident?: boolean; description?: string; error?: string; debug?: string } | null>(null)
   const [showDebug, setShowDebug]     = useState(false)
   const [search, setSearch]           = useState('')
   const [filterCat, setFilterCat]     = useState('')
@@ -174,17 +174,42 @@ export default function FontIdentifierClient({ identifyFontFromDB, fonts }: Prop
                 <p className="text-sm text-red-400">{result.error}</p>
               ) : (
                 <>
+                  {/* Confidence banner */}
+                  {result.confident === true && (
+                    <div className="mb-4 flex items-center gap-2 rounded-xl px-3 py-2"
+                      style={{ background: 'rgba(16,185,129,.1)', border: '1px solid rgba(16,185,129,.25)' }}>
+                      <span className="text-sm font-bold" style={{ color: '#059669' }}>✓ זיהוי בטוח</span>
+                      {result.scores?.[0] !== undefined && (
+                        <span className="text-xs" style={{ color: '#059669' }}>({result.scores[0]}%)</span>
+                      )}
+                    </div>
+                  )}
+                  {result.confident === false && matchedFonts.length > 0 && (
+                    <div className="mb-4 rounded-xl px-3 py-2"
+                      style={{ background: 'rgba(245,158,11,.1)', border: '1px solid rgba(245,158,11,.25)' }}>
+                      <p className="text-sm font-semibold" style={{ color: '#92400e' }}>לא הצלחתי לזהות את הפונט בוודאות</p>
+                      <p className="mt-0.5 text-xs" style={{ color: '#b45309' }}>הפונטים הדומים ביותר שנמצאו:</p>
+                    </div>
+                  )}
+
                   {result.description && (
                     <p className="mb-4 text-sm" style={{ color: 'var(--tx2)' }}>{result.description}</p>
                   )}
+
                   {matchedFonts.length > 0 ? (
                     <>
                       <p className="mb-3 text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--tx3)' }}>
-                        פונטים מתאימים ({matchedFonts.length})
+                        {result.confident ? `פונטים מזוהים (${matchedFonts.length})` : `אולי דומה ל... (${matchedFonts.length})`}
                       </p>
                       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                         {matchedFonts.map((font, i) => (
-                          <FontCard key={font.id} font={font} rank={i + 1} />
+                          <FontCard
+                            key={font.id}
+                            font={font}
+                            rank={i + 1}
+                            score={result.scores?.[i]}
+                            confident={result.confident}
+                          />
                         ))}
                       </div>
                     </>
@@ -289,7 +314,7 @@ export default function FontIdentifierClient({ identifyFontFromDB, fonts }: Prop
   )
 }
 
-function FontCard({ font, rank }: { font: Font; rank?: number }) {
+function FontCard({ font, rank, score, confident }: { font: Font; rank?: number; score?: number; confident?: boolean }) {
   return (
     <div className="flex flex-col overflow-hidden rounded-2xl transition-all hover:shadow-md"
       style={{ background: 'var(--s1)', border: '1px solid var(--bd)' }}>
@@ -330,7 +355,22 @@ function FontCard({ font, rank }: { font: Font; rank?: number }) {
 
       {/* Info */}
       <div className="flex flex-1 flex-col p-3">
-        <p className="font-semibold leading-snug" style={{ color: 'var(--tx)' }}>{font.name}</p>
+        <div className="flex items-start justify-between gap-1">
+          <p className="font-semibold leading-snug" style={{ color: 'var(--tx)' }}>{font.name}</p>
+          {score !== undefined && (
+            <span
+              className="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold"
+              style={score >= 70
+                ? { background: 'rgba(16,185,129,.15)', color: '#059669' }
+                : score >= 50
+                  ? { background: 'rgba(245,158,11,.15)', color: '#b45309' }
+                  : { background: 'rgba(124,58,237,.1)', color: '#7c3aed' }
+              }
+            >
+              {score}%{!confident && rank === 1 ? ' ?' : ''}
+            </span>
+          )}
+        </div>
         {font.name_hebrew && (
           <p className="text-sm" style={{ color: 'var(--tx2)' }}>{font.name_hebrew}</p>
         )}

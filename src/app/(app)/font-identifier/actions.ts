@@ -63,7 +63,7 @@ function textBlock(text: string) {
 export async function identifyFontFromDB(
   imageBase64: string,
   imageMimeType: string,
-): Promise<{ matches?: string[]; description?: string; error?: string; debug?: string }> {
+): Promise<{ matches?: string[]; scores?: number[]; confident?: boolean; description?: string; error?: string; debug?: string }> {
   const dbg: string[] = []
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -195,8 +195,15 @@ If none of the samples match, write: BEST: NONE`
   console.log(`[font-id] finalists (${winners.length}): ${winners.join(', ')}`)
 
   if (winners.length === 0) {
-    dbg.push('\nNo winners — returning first 3 previews as fallback')
-    return { description: buildDescription(analysis), matches: allPreviews.slice(0, 3).map(p => p.name), debug: dbg.join('\n') }
+    dbg.push('\nNo winners — returning first 3 previews as fallback (not confident)')
+    const fallbackMatches = allPreviews.slice(0, 3).map(p => p.name)
+    return {
+      description: buildDescription(analysis),
+      matches: fallbackMatches,
+      scores: fallbackMatches.map(() => 0),
+      confident: false,
+      debug: dbg.join('\n'),
+    }
   }
 
   // ── Step 3: Final — Sonnet compares all winners ──────────────────────────────
@@ -219,18 +226,23 @@ These fonts were each selected as the best match from their group.
 Target font characteristics:
 ${analysis}
 
-Carefully compare Image 1 against each candidate. Focus on the most distinctive letterforms.
+Carefully compare Image 1 against each candidate. Focus on the most distinctive letterforms (especially א ג ד ה כ מ ע ר ש ת), stroke contrast, terminal style, and proportions.
 
 Font names (copy exactly):
 ${winnerNameLines}
 
 Reply ONLY in this format:
-DESCRIPTION: one sentence in Hebrew describing the matched font style
-MATCH: ExactFontName
-MATCH: ExactFontName
-MATCH: ExactFontName
+DESCRIPTION: one sentence in Hebrew describing the font style
+MATCH: ExactFontName (SCORE: 85)
+MATCH: ExactFontName (SCORE: 60)
+MATCH: ExactFontName (SCORE: 30)
 
-Order from best to least similar. Up to 3 MATCH lines.`
+SCORE is 0-100: how confident you are this font matches Image 1.
+- 80-100: very high confidence, nearly certain match
+- 50-79: moderate confidence, likely similar
+- 0-49: low confidence, possible resemblance only
+
+Order from highest to lowest score. Up to 3 MATCH lines. If no candidate is a good match, still list the 3 closest but with low scores.`
 
   try {
     const content = [
@@ -238,29 +250,53 @@ Order from best to least similar. Up to 3 MATCH lines.`
       ...winnerPreviews.map(p => imgBlock(p.base64, p.mimeType)),
       textBlock(finalPrompt),
     ]
-    const finalText = await claudeCall(apiKey, 'claude-sonnet-4-6', 200, content)
+    const finalText = await claudeCall(apiKey, 'claude-sonnet-4-6', 300, content)
     dbg.push(`\n--- Step 3 (Sonnet final) ---\n${finalText}`)
     console.log(`[font-id] step-3:\n${finalText}`)
 
     const finalDescription = finalText.match(/DESCRIPTION:\s*(.+)/i)?.[1]?.trim() ?? buildDescription(analysis)
-    const matches = (finalText.match(/MATCH:\s*(.+)/gi) ?? [])
-      .map(l => l.replace(/^MATCH:\s*/i, '').trim())
-      .map(m => resolveMatch(m, allFontNames))
-      .filter((m): m is string => m !== null)
-      .filter((m, i, arr) => arr.indexOf(m) === i)
-      .slice(0, 3)
 
-    dbg.push(`\nFinal matches: ${JSON.stringify(matches)}`)
-    console.log(`[font-id] final: ${JSON.stringify(matches)}`)
+    // Parse "MATCH: FontName (SCORE: 85)" lines
+    type MatchEntry = { name: string; score: number }
+    const matchEntries: MatchEntry[] = []
+    for (const line of (finalText.match(/MATCH:\s*.+/gi) ?? [])) {
+      const scoreMatch = line.match(/\(SCORE:\s*(\d+)\)/i)
+      const score      = scoreMatch ? Math.min(100, Math.max(0, parseInt(scoreMatch[1]))) : 0
+      const rawName    = line.replace(/^MATCH:\s*/i, '').replace(/\s*\(SCORE:\s*\d+\)/i, '').trim()
+      const resolved   = resolveMatch(rawName, allFontNames)
+      if (resolved && !matchEntries.find(e => e.name === resolved)) {
+        matchEntries.push({ name: resolved, score })
+      }
+    }
+
+    // Fallback if parsing found nothing
+    if (matchEntries.length === 0) {
+      finalWinners.slice(0, 3).forEach(name => matchEntries.push({ name, score: 0 }))
+    }
+
+    const topEntries = matchEntries.slice(0, 3)
+    const topScore   = topEntries[0]?.score ?? 0
+    const confident  = topScore >= 70
+
+    dbg.push(`\nFinal matches+scores: ${JSON.stringify(topEntries)}, confident: ${confident}`)
+    console.log(`[font-id] final: ${JSON.stringify(topEntries)}, confident: ${confident}`)
     return {
       description: finalDescription,
-      matches: matches.length > 0 ? matches : finalWinners.slice(0, 3),
+      matches: topEntries.map(e => e.name),
+      scores:  topEntries.map(e => e.score),
+      confident,
       debug: dbg.join('\n'),
     }
   } catch (err) {
     console.error('[font-id] step-3 failed:', err)
     dbg.push(`\nStep 3 failed: ${err}`)
-    return { description: buildDescription(analysis), matches: finalWinners.slice(0, 3), debug: dbg.join('\n') }
+    return {
+      description: buildDescription(analysis),
+      matches: finalWinners.slice(0, 3),
+      scores: finalWinners.slice(0, 3).map(() => 0),
+      confident: false,
+      debug: dbg.join('\n'),
+    }
   }
 }
 
