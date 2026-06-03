@@ -329,23 +329,93 @@ TOP3: ExactFontName`
     }
   }
 
-  // Step 3: Sonnet final
-  const finalWinners  = winners.slice(0, 20)
+  // Step 2b: narrow finalists → top 20 via a second visual pass (skip if already ≤ 20)
+  const PRE_BATCH = 18
+  const PRE_TOP   = 5
+  let top20: string[]
+
+  if (winners.length <= 20) {
+    top20 = winners
+    dbg.push(`\nStep 2b: skipped (${winners.length} finalists ≤ 20)`)
+  } else {
+    const semifinalPreviews = winners
+      .map(name => allPreviews.find(p => p.name === name))
+      .filter(Boolean) as Preview[]
+    const preBatches: Preview[][] = []
+    for (let i = 0; i < semifinalPreviews.length; i += PRE_BATCH)
+      preBatches.push(semifinalPreviews.slice(i, i + PRE_BATCH))
+    dbg.push(`\nStep 2b: ${preBatches.length} batches × ${PRE_BATCH}, keeping TOP${PRE_TOP}`)
+
+    const preTasks = preBatches.map((batch, bIdx) => async (): Promise<string[]> => {
+      const imageLines = batch.map((p, i) => `  Image ${i + 2}: "${p.name}"`).join('\n')
+      const nameLines  = batch.map((p, i) => `${i + 1}. ${p.name}`).join('\n')
+      const prompt = `Hebrew font identification — semi-final round. Pick the ${PRE_TOP} most similar fonts.
+Image 1: unknown font. ${imageLines}
+Target shape: ${analysis}
+IGNORE stroke weight — focus on letterform shapes: ר bend, א diagonals, ב/כ/מ counter shape, ג/ד angles, ו/ז top, ק descender.
+${nameLines}
+Reply ONLY:
+TOP1: ExactFontName
+TOP2: ExactFontName
+TOP3: ExactFontName
+TOP4: ExactFontName
+TOP5: ExactFontName`
+      try {
+        const text = await claudeCall(apiKey, 'claude-haiku-4-5-20251001', 120, [
+          imgBlock(imageBase64, imageMimeType),
+          ...batch.map(p => imgBlock(p.base64, p.mimeType)),
+          textBlock(prompt),
+        ])
+        const picks: string[] = []
+        for (const m of (text.match(/TOP\d:\s*.+/gi) ?? [])) {
+          const raw      = m.replace(/^TOP\d:\s*/i, '').trim()
+          const resolved = resolveMatch(raw, allFontNames)
+          if (resolved && !picks.includes(resolved)) picks.push(resolved)
+        }
+        dbg.push(`  2b-batch ${bIdx + 1}: [${picks.join(', ') || 'NONE'}]`)
+        return picks
+      } catch { return [] }
+    })
+
+    const preFinalResults = await runConcurrent(preTasks, BATCH_CONCUR)
+    top20 = [...new Set(preFinalResults.flat())]
+    dbg.push(`\nTop for Sonnet (${top20.length}): ${top20.join(', ')}`)
+  }
+
+  // Step 3: Sonnet final — ≤ 20 candidates, deep letterform comparison
+  const finalWinners   = top20.slice(0, 20)
   const winnerPreviews = finalWinners.map(name => allPreviews.find(p => p.name === name)).filter(Boolean) as Preview[]
-  const winnerImgLines = winnerPreviews.map((p, i) => `  Image ${i + 2}: "${p.name}"`).join('\n')
+  const winnerImgLines  = winnerPreviews.map((p, i) => `  Image ${i + 2}: "${p.name}"`).join('\n')
   const winnerNameLines = winnerPreviews.map((p, i) => `${i + 1}. ${p.name}`).join('\n')
 
-  const finalPrompt = `Hebrew font identification expert — final selection.
-Image 1: unknown font. ${winnerImgLines}
-Target shape: ${analysis}
-CRITICAL: shapes only, ignore stroke weight. Light/Bold of same family = score equally.
+  const finalPrompt = `You are a Hebrew typography expert performing final font identification.
+
+Image 1: the unknown font to identify.
+${winnerImgLines}
+
+These ${winnerPreviews.length} fonts were pre-selected as the closest visual matches.
+Target analysis: ${analysis}
+
+Compare LETTERFORM SHAPES ONLY — completely ignore stroke weight and thickness.
+A Light and Bold of the same typeface are identical in shape and must score equally.
+
+Examine these specific letterforms:
+• ר — curvature and angle of the top-right bend
+• א — how the diagonal strokes connect at top and bottom
+• ב כ מ — counter shape: open or closed, round or angular?
+• ג ד — angle and style of the right leg
+• ו ז — top treatment: flat, rounded, or swash?
+• ע מ — skeleton width and counter proportions
+• ק — descender style
+
 ${winnerNameLines}
+
 Reply ONLY:
-DESCRIPTION: one Hebrew sentence about font style
+DESCRIPTION: one Hebrew sentence describing the distinctive letterform features
 MATCH: ExactFontName (SCORE: 85)
-MATCH: ExactFontName (SCORE: 60)
-MATCH: ExactFontName (SCORE: 30)
-SCORE 0-100 shape similarity. Up to 3 MATCH lines.`
+MATCH: ExactFontName (SCORE: 70)
+MATCH: ExactFontName (SCORE: 55)
+SCORE is letterform shape similarity 0–100. Up to 3 MATCH lines.`
 
   try {
     const text = await claudeCall(apiKey, 'claude-sonnet-4-6', 300, [
