@@ -63,7 +63,8 @@ function textBlock(text: string) {
 export async function identifyFontFromDB(
   imageBase64: string,
   imageMimeType: string,
-): Promise<{ matches?: string[]; description?: string; error?: string }> {
+): Promise<{ matches?: string[]; description?: string; error?: string; debug?: string }> {
+  const dbg: string[] = []
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
@@ -79,10 +80,11 @@ export async function identifyFontFromDB(
     .order('name', { ascending: true })
 
   const fonts = (fontsData ?? []) as Font[]
+  dbg.push(`DB: ${fonts.length} fonts with preview_image_url`)
+  fonts.slice(0, 3).forEach(f => dbg.push(`  sample: "${f.name}" → ${f.preview_image_url}`))
   console.log(`[font-id] DB: ${fonts.length} fonts with non-null preview_image_url`)
-  // Log first 3 URLs so we can verify they look correct
   fonts.slice(0, 3).forEach(f => console.log(`[font-id] sample URL: "${f.name}" → ${f.preview_image_url}`))
-  if (!fonts.length) return { error: 'אין פונטים עם תמונות preview במאגר.' }
+  if (!fonts.length) return { error: 'אין פונטים עם תמונות preview במאגר.', debug: dbg.join('\n') }
 
   // ── Step 1: Detailed visual analysis ────────────────────────────────────────
   const step1Prompt = `You are a Hebrew typography expert. Analyze the letterform characteristics of the font in this image.
@@ -99,10 +101,11 @@ FEATURES: 2-3 distinctive visual traits (e.g. "high stroke contrast, triangular 
   try {
     analysis = await claudeCall(apiKey, 'claude-haiku-4-5-20251001', 120,
       [imgBlock(imageBase64, imageMimeType), textBlock(step1Prompt)])
+    dbg.push(`\n--- Step 1 (analysis) ---\n${analysis}`)
     console.log(`[font-id] step-1:\n${analysis}`)
   } catch (err) {
     console.error('[font-id] step-1 failed:', err)
-    return { error: 'שגיאה בניתוח התמונה' }
+    return { error: 'שגיאה בניתוח התמונה', debug: dbg.join('\n') }
   }
 
   // ── Download all previews in parallel ────────────────────────────────────────
@@ -111,20 +114,26 @@ FEATURES: 2-3 distinctive visual traits (e.g. "high stroke contrast, triangular 
   const downloaded = await runConcurrent(dlTasks, DL_CONCUR)
   const allPreviews = downloaded.filter(Boolean) as Preview[]
   const failed = downloaded.filter(x => x === null).length
-  console.log(`[font-id] downloads: ${allPreviews.length} OK, ${failed} failed — ${Date.now() - t0}ms`)
+  const dlMs = Date.now() - t0
+  dbg.push(`\n--- Downloads ---\nOK: ${allPreviews.length}, failed: ${failed}, time: ${dlMs}ms`)
   if (failed > 0) {
-    // Log which fonts failed to download
+    const failedNames = fonts.filter((_, i) => downloaded[i] === null).slice(0, 5).map(f => f.name)
+    dbg.push(`Failed (first 5): ${failedNames.join(', ')}`)
+  }
+  console.log(`[font-id] downloads: ${allPreviews.length} OK, ${failed} failed — ${dlMs}ms`)
+  if (failed > 0) {
     const failedNames = fonts.filter((_, i) => downloaded[i] === null).slice(0, 5).map(f => f.name)
     console.log(`[font-id] failed downloads (first 5): ${failedNames.join(', ')}`)
   }
 
-  if (allPreviews.length === 0) return { error: 'לא ניתן לטעון תמונות preview.' }
+  if (allPreviews.length === 0) return { error: 'לא ניתן לטעון תמונות preview.', debug: dbg.join('\n') }
 
   // ── Step 2: Tournament — each batch picks its best match ─────────────────────
   const batches: Preview[][] = []
   for (let i = 0; i < allPreviews.length; i += BATCH_SIZE) {
     batches.push(allPreviews.slice(i, i + BATCH_SIZE))
   }
+  dbg.push(`\n--- Step 2 (batches) ---\n${batches.length} batches × ${BATCH_SIZE}`)
   console.log(`[font-id] step-2: ${batches.length} batches × ${BATCH_SIZE}`)
 
   const makeBatchPrompt = (batch: Preview[]): string => {
@@ -165,7 +174,9 @@ If none of the samples match, write: BEST: NONE`
       const raw      = text.trim()
       const parsed   = text.match(/BEST:\s*(.+)/i)?.[1]?.trim() ?? ''
       const resolved = resolveMatch(parsed, allFontNames)
-      console.log(`[font-id] batch ${batchIdx + 1}/${batches.length}: raw="${raw}" parsed="${parsed}" → ${resolved ?? 'NONE'}`)
+      const logLine = `batch ${batchIdx + 1}/${batches.length}: raw="${raw}" parsed="${parsed}" → ${resolved ?? 'NONE'}`
+      dbg.push(`  ${logLine}`)
+      console.log(`[font-id] ${logLine}`)
       return resolved
     } catch (err) {
       console.error(`[font-id] batch ${batchIdx + 1} error:`, err)
@@ -174,13 +185,18 @@ If none of the samples match, write: BEST: NONE`
   })
 
   const rawWinners = await runConcurrent(batchTasks, BATCH_CONCUR)
-  console.log(`[font-id] step-2 done in ${Date.now() - t1}ms`)
-  console.log(`[font-id] batch results (raw):`, JSON.stringify(rawWinners))
+  const step2Ms = Date.now() - t1
   const winners = [...new Set(rawWinners.filter(Boolean) as string[])]
+  dbg.push(`\nStep 2 done in ${step2Ms}ms`)
+  dbg.push(`Batch results (raw): ${JSON.stringify(rawWinners)}`)
+  dbg.push(`Finalists (${winners.length}): ${winners.join(', ')}`)
+  console.log(`[font-id] step-2 done in ${step2Ms}ms`)
+  console.log(`[font-id] batch results (raw):`, JSON.stringify(rawWinners))
   console.log(`[font-id] finalists (${winners.length}): ${winners.join(', ')}`)
 
   if (winners.length === 0) {
-    return { description: buildDescription(analysis), matches: allPreviews.slice(0, 3).map(p => p.name) }
+    dbg.push('\nNo winners — returning first 3 previews as fallback')
+    return { description: buildDescription(analysis), matches: allPreviews.slice(0, 3).map(p => p.name), debug: dbg.join('\n') }
   }
 
   // ── Step 3: Final — Sonnet compares all winners ──────────────────────────────
@@ -223,6 +239,7 @@ Order from best to least similar. Up to 3 MATCH lines.`
       textBlock(finalPrompt),
     ]
     const finalText = await claudeCall(apiKey, 'claude-sonnet-4-6', 200, content)
+    dbg.push(`\n--- Step 3 (Sonnet final) ---\n${finalText}`)
     console.log(`[font-id] step-3:\n${finalText}`)
 
     const finalDescription = finalText.match(/DESCRIPTION:\s*(.+)/i)?.[1]?.trim() ?? buildDescription(analysis)
@@ -233,14 +250,17 @@ Order from best to least similar. Up to 3 MATCH lines.`
       .filter((m, i, arr) => arr.indexOf(m) === i)
       .slice(0, 3)
 
+    dbg.push(`\nFinal matches: ${JSON.stringify(matches)}`)
     console.log(`[font-id] final: ${JSON.stringify(matches)}`)
     return {
       description: finalDescription,
       matches: matches.length > 0 ? matches : finalWinners.slice(0, 3),
+      debug: dbg.join('\n'),
     }
   } catch (err) {
     console.error('[font-id] step-3 failed:', err)
-    return { description: buildDescription(analysis), matches: finalWinners.slice(0, 3) }
+    dbg.push(`\nStep 3 failed: ${err}`)
+    return { description: buildDescription(analysis), matches: finalWinners.slice(0, 3), debug: dbg.join('\n') }
   }
 }
 

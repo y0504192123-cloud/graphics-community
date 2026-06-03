@@ -8,7 +8,7 @@ type Props = {
   identifyFontFromDB: (
     imageBase64: string,
     imageMimeType: string,
-  ) => Promise<{ matches?: string[]; description?: string; error?: string }>
+  ) => Promise<{ matches?: string[]; description?: string; error?: string; debug?: string }>
   fonts: Font[]
 }
 
@@ -17,7 +17,8 @@ export default function FontIdentifierClient({ identifyFontFromDB, fonts }: Prop
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [imageBase64, setImageBase64] = useState<string | null>(null)
   const [isLoading, setIsLoading]     = useState(false)
-  const [result, setResult]           = useState<{ matches?: string[]; description?: string; error?: string } | null>(null)
+  const [result, setResult]           = useState<{ matches?: string[]; description?: string; error?: string; debug?: string } | null>(null)
+  const [showDebug, setShowDebug]     = useState(false)
   const [search, setSearch]           = useState('')
   const [filterCat, setFilterCat]     = useState('')
   const [filterFree, setFilterFree]   = useState<'all' | 'free' | 'paid'>('all')
@@ -191,6 +192,26 @@ export default function FontIdentifierClient({ identifyFontFromDB, fonts }: Prop
                     <p className="text-sm" style={{ color: 'var(--tx3)' }}>לא נמצאו פונטים מתאימים במאגר</p>
                   )}
                 </>
+              )}
+
+              {result.debug && (
+                <div className="mt-4 border-t pt-4" style={{ borderColor: 'var(--bd)' }}>
+                  <button
+                    onClick={() => setShowDebug(v => !v)}
+                    className="text-xs font-mono"
+                    style={{ color: 'var(--tx3)' }}
+                  >
+                    {showDebug ? '▲ הסתר debug' : '▼ הצג debug log'}
+                  </button>
+                  {showDebug && (
+                    <pre
+                      className="mt-2 overflow-x-auto rounded-xl p-3 text-[11px] leading-relaxed font-mono"
+                      style={{ background: 'var(--inp)', color: 'var(--tx2)', whiteSpace: 'pre-wrap', direction: 'ltr', textAlign: 'left' }}
+                    >
+                      {result.debug}
+                    </pre>
+                  )}
+                </div>
               )}
             </div>
           )}
