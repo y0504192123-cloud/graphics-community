@@ -26,7 +26,7 @@ type Props = {
   recomputeHashBatch: (offset: number, limit: number) => Promise<{ done: number; errors: number; total: number; batchSize: number }>
   rebuildPreviewsBatch: (offset: number, limit: number) => Promise<{ done: number; errors: number; total: number; batchSize: number }>
   computeEmbeddingBatch: (offset: number, limit: number) => Promise<{ done: number; errors: number; total: number; batchSize: number }>
-  buildLetterEmbeddingsBatch: (offset: number, limit: number) => Promise<{ done: number; errors: number; total: number; batchSize: number }>
+  buildLetterEmbeddingsBatch: (offset: number, limit: number, nameFilter?: string) => Promise<{ done: number; errors: number; total: number; batchSize: number }>
 }
 
 const inp = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition placeholder:text-slate-400 focus:border-purple-400 focus:ring-2 focus:ring-purple-100'
@@ -673,6 +673,7 @@ export default function FontsTab({
   const [embedProgress, setEmbedProgress] = useState<{ processed: number; total: number; done: number; errors: number } | null>(null)
   const [letterEmbStatus, setLetterEmbStatus] = useState<'idle' | 'running' | 'done'>('idle')
   const [letterEmbProgress, setLetterEmbProgress] = useState<{ processed: number; total: number; done: number; errors: number } | null>(null)
+  const [letterEmbFilter, setLetterEmbFilter] = useState('')
 
   const handleEdit   = (font: Font) => { setEditingFont(font); setShowForm(true) }
   const handleCancel = () => { setShowForm(false); setEditingFont(null) }
@@ -746,14 +747,18 @@ export default function FontsTab({
   }
 
   const handleLetterEmbed = async () => {
-    if (!confirm('זה יחשב CLIP embeddings לכל 22 האותיות לכל 472 הפונטים. תהליך ארוך מאוד (~2-3 שעות). להמשיך?')) return
+    const filter = letterEmbFilter.trim()
+    const msg = filter
+      ? `יחשב CLIP embeddings לכל 22 האותיות עבור פונטים שמכילים "${filter}". להמשיך?`
+      : 'זה יחשב CLIP embeddings לכל 22 האותיות לכל הפונטים. תהליך ארוך מאוד (~2-3 שעות). להמשיך?'
+    if (!confirm(msg)) return
     setLetterEmbStatus('running')
     setLetterEmbProgress({ processed: 0, total: 0, done: 0, errors: 0 })
     let offset = 0
     let totalDone = 0
     let totalErrors = 0
     while (true) {
-      const r = await buildLetterEmbeddingsBatch(offset, 1)
+      const r = await buildLetterEmbeddingsBatch(offset, 1, filter || undefined)
       totalDone   += r.done
       totalErrors += r.errors
       const processed = offset + r.batchSize
@@ -909,19 +914,29 @@ export default function FontsTab({
         </div>
 
         <div className="flex flex-col items-end gap-0.5">
-          <button
-            onClick={handleLetterEmbed}
-            disabled={letterEmbStatus === 'running' || embedStatus === 'running' || rebuildStatus === 'running' || rehashStatus === 'running'}
-            title="חשב CLIP embeddings לכל 22 אותיות לכל פונט (WhatTheFont)"
-            className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold transition hover:opacity-80 disabled:opacity-50"
-            style={{ background: 'rgba(168,85,247,.1)', border: '1px solid rgba(168,85,247,.3)', color: '#7c3aed' }}>
-            {letterEmbStatus === 'running' ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
-            {letterEmbStatus === 'running'
-              ? letterEmbProgress && letterEmbProgress.total > 0
-                ? `${letterEmbProgress.processed}/${letterEmbProgress.total}`
-                : 'מחשב...'
-              : letterEmbStatus === 'done' ? '✓ הושלם' : 'בנה letter embeddings'}
-          </button>
+          <div className="flex items-center gap-1.5">
+            <input
+              value={letterEmbFilter}
+              onChange={e => setLetterEmbFilter(e.target.value)}
+              placeholder="סנן לפי שם (ריק = הכל)"
+              disabled={letterEmbStatus === 'running'}
+              className="rounded-lg px-2 py-1.5 text-xs outline-none"
+              style={{ background: 'var(--inp)', border: '1px solid var(--bd)', color: 'var(--tx)', width: '160px' }}
+            />
+            <button
+              onClick={handleLetterEmbed}
+              disabled={letterEmbStatus === 'running' || embedStatus === 'running' || rebuildStatus === 'running' || rehashStatus === 'running'}
+              title="חשב CLIP embeddings לכל 22 אותיות לכל פונט (WhatTheFont)"
+              className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold transition hover:opacity-80 disabled:opacity-50"
+              style={{ background: 'rgba(168,85,247,.1)', border: '1px solid rgba(168,85,247,.3)', color: '#7c3aed' }}>
+              {letterEmbStatus === 'running' ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+              {letterEmbStatus === 'running'
+                ? letterEmbProgress && letterEmbProgress.total > 0
+                  ? `${letterEmbProgress.processed}/${letterEmbProgress.total}`
+                  : 'מחשב...'
+                : letterEmbStatus === 'done' ? '✓ הושלם' : 'בנה letter embeddings'}
+            </button>
+          </div>
           {letterEmbProgress && letterEmbStatus === 'running' && letterEmbProgress.total > 0 && (
             <div className="w-full overflow-hidden rounded-full" style={{ height: '3px', background: 'rgba(168,85,247,.15)' }}>
               <div

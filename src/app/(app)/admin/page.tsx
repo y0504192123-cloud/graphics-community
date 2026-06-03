@@ -687,18 +687,22 @@ export default async function AdminPage() {
   async function buildLetterEmbeddingsBatch(
     offset: number,
     limit: number,
+    nameFilter?: string,
   ): Promise<{ done: number; errors: number; total: number; batchSize: number }> {
     'use server'
     const HEBREW_LETTERS = 'אבגדהוזחטיכלמנסעפצקרשת'.split('')
     const a = createAdminClient()
-    const [{ count }, { data: fontsData }] = await Promise.all([
-      a.from('fonts').select('id', { count: 'exact', head: true }).not('font_file_path', 'is', null),
-      a.from('fonts')
-        .select('id, font_file_path')
-        .not('font_file_path', 'is', null)
-        .order('id', { ascending: true })
-        .range(offset, offset + limit - 1),
-    ])
+    const baseQuery = () => {
+      let q = a.from('fonts').select('id', { count: 'exact', head: true }).not('font_file_path', 'is', null)
+      if (nameFilter?.trim()) q = q.ilike('name', `%${nameFilter.trim()}%`)
+      return q
+    }
+    const dataQuery = () => {
+      let q = a.from('fonts').select('id, font_file_path, name').not('font_file_path', 'is', null)
+      if (nameFilter?.trim()) q = q.ilike('name', `%${nameFilter.trim()}%`)
+      return q.order('id', { ascending: true }).range(offset, offset + limit - 1)
+    }
+    const [{ count }, { data: fontsData }] = await Promise.all([baseQuery(), dataQuery()])
     const total = count ?? 0
     if (!fontsData?.length) return { done: 0, errors: 0, total, batchSize: 0 }
 
