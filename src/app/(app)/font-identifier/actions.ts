@@ -274,7 +274,18 @@ Order from highest to lowest score. Up to 3 MATCH lines. If no candidate is a go
       finalWinners.slice(0, 3).forEach(name => matchEntries.push({ name, score: 0 }))
     }
 
-    const topEntries = matchEntries.slice(0, 3)
+    // Deduplicate by base name — strip trailing version markers (v2, v3, " 2", " II", etc.)
+    const baseName = (s: string) => s.replace(/\s+(v\d+|\d+|II|III|IV)$/i, '').trim().toLowerCase()
+    const seen = new Map<string, { name: string; score: number }>()
+    for (const e of matchEntries) {
+      const key = baseName(e.name)
+      const existing = seen.get(key)
+      if (!existing || e.score > existing.score) seen.set(key, e)
+    }
+    const dedupedEntries = [...seen.values()]
+      .sort((a, b) => b.score - a.score)
+
+    const topEntries = dedupedEntries.slice(0, 3)
     const topScore   = topEntries[0]?.score ?? 0
     const confident  = topScore >= 70
 

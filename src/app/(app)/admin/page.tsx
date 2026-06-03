@@ -375,7 +375,7 @@ export default async function AdminPage() {
               textAlign: 'center' as const,
               letterSpacing: '0.02em',
             },
-          }, 'אבגדהוזחטיכלמנסעפצקרשת'),
+          }, 'אעצקשמרכבד'),
         ),
         {
           width: 860,
@@ -461,7 +461,7 @@ export default async function AdminPage() {
         },
           createElement('p', {
             style: { fontFamily: 'PreviewFont', fontSize: 52, color: '#111111', margin: 0, direction: 'rtl', textAlign: 'center' as const, letterSpacing: '0.02em' },
-          }, 'אבגדהוזחטיכלמנסעפצקרשת'),
+          }, 'אעצקשמרכבד'),
         ),
         { width: 860, height: 110, fonts: [{ name: 'PreviewFont', data: fontArrayBuffer, weight: 400, style: 'normal' as const }] },
       )
@@ -609,7 +609,7 @@ export default async function AdminPage() {
                 fontFamily: 'PreviewFont', fontSize: 52, color: '#111111',
                 margin: 0, direction: 'rtl', textAlign: 'center' as const, letterSpacing: '0.02em',
               },
-            }, 'אבגדהוזחטיכלמנסעפצקרשת'),
+            }, 'אעצקשמרכבד'),
           ),
           {
             width: 860, height: 110,
