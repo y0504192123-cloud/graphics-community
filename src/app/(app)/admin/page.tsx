@@ -524,30 +524,42 @@ export default async function AdminPage() {
     return {}
   }
 
-  async function recomputeAllHashes(): Promise<{ done: number; errors: number; error?: string }> {
+  async function recomputeHashBatch(
+    offset: number,
+    limit: number,
+  ): Promise<{ done: number; errors: number; total: number; batchSize: number }> {
     'use server'
     const a = createAdminClient()
-    const { data: fontsData } = await a
-      .from('fonts')
-      .select('id, preview_image_url')
-      .not('preview_image_url', 'is', null)
-    if (!fontsData?.length) return { done: 0, errors: 0 }
+    const [{ count }, { data: fontsData }] = await Promise.all([
+      a.from('fonts').select('id', { count: 'exact', head: true }).not('preview_image_url', 'is', null),
+      a.from('fonts')
+        .select('id, preview_image_url')
+        .not('preview_image_url', 'is', null)
+        .order('id', { ascending: true })
+        .range(offset, offset + limit - 1),
+    ])
+    const total = count ?? 0
+    if (!fontsData?.length) return { done: 0, errors: 0, total, batchSize: 0 }
     const { computeDHash } = await import('@/lib/font-hash')
     let done = 0
     let errors = 0
     for (const font of fontsData) {
+      const controller = new AbortController()
+      const tid = setTimeout(() => controller.abort(), 10_000)
       try {
-        const r = await fetch(font.preview_image_url!)
+        const r = await fetch(font.preview_image_url!, { signal: controller.signal })
+        clearTimeout(tid)
         if (!r.ok) { errors++; continue }
         const buf = Buffer.from(await r.arrayBuffer())
         const hash = await computeDHash(buf)
         await a.from('fonts').update({ preview_hash: hash }).eq('id', font.id)
         done++
-      } catch { errors++ }
+      } catch {
+        clearTimeout(tid)
+        errors++
+      }
     }
-    revalidatePath('/admin')
-    revalidatePath('/font-identifier')
-    return { done, errors }
+    return { done, errors, total, batchSize: fontsData.length }
   }
 
   return (
@@ -593,7 +605,7 @@ export default async function AdminPage() {
       createFontWithPreview={createFontWithPreview}
       updateFontsCompany={updateFontsCompany}
       quickUpdateFont={quickUpdateFont}
-      recomputeAllHashes={recomputeAllHashes}
+      recomputeHashBatch={recomputeHashBatch}
     />
   )
 }

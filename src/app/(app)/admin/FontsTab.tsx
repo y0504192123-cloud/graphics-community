@@ -23,7 +23,7 @@ type Props = {
   createFontWithPreview: (filePath: string, fontName: string) => Promise<{ fontId?: string; fontName?: string; previewUrl?: string; error?: string }>
   updateFontsCompany: (fontIds: string[], company: string, downloadUrl: string) => Promise<{ error?: string }>
   quickUpdateFont: (id: string, updates: { name?: string; company?: string; download_url?: string; is_free?: boolean }) => Promise<{ error?: string }>
-  recomputeAllHashes: () => Promise<{ done: number; errors: number; error?: string }>
+  recomputeHashBatch: (offset: number, limit: number) => Promise<{ done: number; errors: number; total: number; batchSize: number }>
 }
 
 const inp = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition placeholder:text-slate-400 focus:border-purple-400 focus:ring-2 focus:ring-purple-100'
@@ -641,7 +641,7 @@ function FontTableRow({ font, quickUpdateFont, deleteFont, getFontFileUploadUrl,
 export default function FontsTab({
   fonts, fontWeights, saveFont, deleteFont,
   getFontPreviewUploadUrl, getFontFileUploadUrl, generateFontPreview,
-  createFontWithPreview, updateFontsCompany, quickUpdateFont, recomputeAllHashes,
+  createFontWithPreview, updateFontsCompany, quickUpdateFont, recomputeHashBatch,
 }: Props) {
   const router = useRouter()
   const [saveState, saveAction, savePending] = useActionState(saveFont, null)
@@ -649,8 +649,8 @@ export default function FontsTab({
   const [editingFont, setEditingFont]   = useState<Font | null>(null)
   const [search, setSearch]             = useState('')
   const [prefixGroups, setPrefixGroups] = useState<PrefixGroup[]>([])
-  const [rehashStatus, setRehashStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle')
-  const [rehashMsg, setRehashMsg]       = useState<string | null>(null)
+  const [rehashStatus, setRehashStatus] = useState<'idle' | 'running' | 'done'>('idle')
+  const [rehashProgress, setRehashProgress] = useState<{ processed: number; total: number; done: number; errors: number } | null>(null)
 
   const handleEdit   = (font: Font) => { setEditingFont(font); setShowForm(true) }
   const handleCancel = () => { setShowForm(false); setEditingFont(null) }
@@ -682,12 +682,23 @@ export default function FontsTab({
   }, [router])
 
   const handleRehash = async () => {
-    setRehashStatus('running'); setRehashMsg(null)
-    const r = await recomputeAllHashes()
-    if (r.error) { setRehashStatus('error'); setRehashMsg(r.error); return }
+    const BATCH = 20
+    setRehashStatus('running')
+    setRehashProgress({ processed: 0, total: 0, done: 0, errors: 0 })
+    let offset = 0
+    let totalDone = 0
+    let totalErrors = 0
+    while (true) {
+      const r = await recomputeHashBatch(offset, BATCH)
+      totalDone   += r.done
+      totalErrors += r.errors
+      const processed = offset + r.batchSize
+      setRehashProgress({ processed, total: r.total, done: totalDone, errors: totalErrors })
+      if (r.batchSize < BATCH || processed >= r.total) break
+      offset += BATCH
+    }
     setRehashStatus('done')
-    setRehashMsg(`${r.done} פונטים עודכנו${r.errors > 0 ? ` · ${r.errors} שגיאות` : ''}`)
-    setTimeout(() => { setRehashStatus('idle'); setRehashMsg(null) }, 5000)
+    setTimeout(() => { setRehashStatus('idle'); setRehashProgress(null) }, 8000)
   }
 
   const filteredFonts = fonts.filter(f => {
@@ -733,11 +744,23 @@ export default function FontsTab({
             className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold transition hover:opacity-80 disabled:opacity-50"
             style={{ background: 'rgba(16,185,129,.1)', border: '1px solid rgba(16,185,129,.3)', color: '#059669' }}>
             {rehashStatus === 'running' ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
-            {rehashStatus === 'running' ? 'מחשב...' : 'חשב hashes'}
+            {rehashStatus === 'running'
+              ? rehashProgress && rehashProgress.total > 0
+                ? `${rehashProgress.processed}/${rehashProgress.total}`
+                : 'מחשב...'
+              : rehashStatus === 'done' ? '✓ הושלם' : 'חשב hashes'}
           </button>
-          {rehashMsg && (
-            <p className="text-[11px]" style={{ color: rehashStatus === 'error' ? '#ef4444' : '#059669' }}>
-              {rehashMsg}
+          {rehashProgress && rehashStatus === 'running' && rehashProgress.total > 0 && (
+            <div className="w-full overflow-hidden rounded-full" style={{ height: '3px', background: 'rgba(16,185,129,.15)' }}>
+              <div
+                className="h-full rounded-full transition-all duration-300"
+                style={{ width: `${Math.round((rehashProgress.processed / rehashProgress.total) * 100)}%`, background: '#10b981' }}
+              />
+            </div>
+          )}
+          {rehashStatus === 'done' && rehashProgress && (
+            <p className="text-[11px]" style={{ color: '#059669' }}>
+              {rehashProgress.done} עודכנו{rehashProgress.errors > 0 ? ` · ${rehashProgress.errors} שגיאות` : ''}
             </p>
           )}
         </div>
