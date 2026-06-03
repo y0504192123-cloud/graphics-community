@@ -339,6 +339,46 @@ SCORE 0-100 shape similarity. Up to 3 MATCH lines.`
   }
 }
 
+// ── WhatTheFont: single letter → font_letter_embeddings RPC ──────────────────
+
+export async function identifyByLetterEmbedding(
+  letterEmbedding: number[],
+): Promise<{
+  matches?: { name: string; similarity: number; matchedLetter: string }[]
+  error?: string
+  debug?: string
+}> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+
+  const admin = createAdminClient()
+  const dbg: string[] = [`Single-letter identification: ${letterEmbedding.length} dims`]
+
+  const { data, error } = await admin.rpc('match_fonts_by_letter', {
+    query_embedding: letterEmbedding,
+    match_count: 5,
+  })
+
+  if (error) {
+    dbg.push(`RPC error: ${error.message}`)
+    return { error: `שגיאה: ${error.message}`, debug: dbg.join('\n') }
+  }
+
+  type Row = { font_id: string; font_name: string; preview_image_url: string | null; matched_letter: string; similarity: number }
+  const rows = (data ?? []) as Row[]
+  dbg.push(`Results: ${rows.map(r => `${r.font_name}(${(r.similarity * 100).toFixed(0)}%)`).join(', ')}`)
+
+  return {
+    matches: rows.map(r => ({
+      name: r.font_name,
+      similarity: Math.round(r.similarity * 100),
+      matchedLetter: r.matched_letter,
+    })),
+    debug: dbg.join('\n'),
+  }
+}
+
 // ── Letter segmentation + letter-based identification ────────────────────────
 
 export async function segmentLettersFromImage(
