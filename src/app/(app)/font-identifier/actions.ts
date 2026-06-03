@@ -26,18 +26,37 @@ export async function identifyFontFromDB(
     return { error: 'אין פונטים עם hash במאגר. לחץ "חשב hashes" בפאנל הניהול כדי לאתחל את המאגר.' }
   }
 
+  // DEBUG: check if target font has a hash
+  const targetFont = fonts.find(f => f.name === 'Fb Galbyan Light')
+  if (targetFont) {
+    console.log(`[font-id] DEBUG "Fb Galbyan Light" hash: ${targetFont.preview_hash}`)
+  } else {
+    console.log(`[font-id] DEBUG "Fb Galbyan Light" NOT FOUND in hashed fonts`)
+    // show all font names containing "galbyan" case-insensitive
+    const similar = fonts.filter(f => f.name.toLowerCase().includes('galbyan'))
+    console.log(`[font-id] DEBUG galbyan variants in DB: ${similar.map(f => `"${f.name}"`).join(', ') || 'none'}`)
+  }
+
   // Compute dHash of the uploaded image
   const imageBuffer = Buffer.from(imageBase64, 'base64')
   const userHash = await computeDHash(imageBuffer)
   console.log(`[font-id] user image hash: ${userHash}`)
 
   // Sort by Hamming distance (lower = more similar)
-  const scored = fonts
+  const allScored = fonts
     .map(f => ({ name: f.name, dist: hammingDistance(userHash, f.preview_hash) }))
     .sort((a, b) => a.dist - b.dist)
-    .slice(0, 5)
 
-  console.log(`[font-id] top-5: ${scored.map(s => `${s.name}(${s.dist})`).join(', ')}`)
+  const scored = allScored.slice(0, 5)
+  console.log(`[font-id] top-5 by hamming:`)
+  scored.forEach((s, i) => console.log(`  ${i + 1}. "${s.name}" dist=${s.dist}`))
+
+  // DEBUG: where does the target font rank?
+  if (targetFont) {
+    const rank = allScored.findIndex(s => s.name === 'Fb Galbyan Light')
+    const dist = allScored[rank]?.dist
+    console.log(`[font-id] DEBUG "Fb Galbyan Light" rank=${rank + 1}/${allScored.length} dist=${dist}`)
+  }
 
   const matches = scored.map(s => s.name)
 
