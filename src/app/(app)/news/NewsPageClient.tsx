@@ -31,23 +31,9 @@ function ExpiryBadge({ expiresAt }: { expiresAt: string | null }) {
   )
 }
 
-function NewsImage({ src, alt, height }: { src: string | null; alt: string; height: number }) {
-  return (
-    <div className="flex w-full items-center justify-center overflow-hidden"
-      style={{ height, background: 'var(--inp)' }}>
-      {src ? (
-        <img src={src} alt={alt}
-          style={{ maxWidth: '100%', maxHeight: height, width: 'auto', height: 'auto', display: 'block' }} />
-      ) : (
-        <span style={{ fontSize: height > 150 ? '4rem' : '2.5rem', opacity: 0.15 }}>📰</span>
-      )}
-    </div>
-  )
-}
-
 // ── Hero ──────────────────────────────────────────────────────────────────────
-// In RTL flex-row: lower order = rightmost. Text (order-1) on RIGHT, Image (order-2) on LEFT.
-// On mobile (flex-col): Image (order-1) on TOP, Text (order-2) on BOTTOM.
+// RTL flex-row: order-1 = rightmost (text), order-2 = leftmost (image)
+// Mobile flex-col: order-1 = top (image), order-2 = bottom (text)
 
 function HeroCard({ item, onClick }: { item: NewsItem; onClick: () => void }) {
   return (
@@ -56,7 +42,7 @@ function HeroCard({ item, onClick }: { item: NewsItem; onClick: () => void }) {
       className="group mb-6 flex cursor-pointer flex-col overflow-hidden rounded-2xl transition-all duration-300 hover:shadow-2xl lg:flex-row"
       style={{ background: 'var(--s1)', border: '1px solid var(--bd)' }}
     >
-      {/* Text — right side on desktop (RTL first = rightmost) */}
+      {/* Text — right on desktop */}
       <div className="order-2 flex flex-1 flex-col justify-center p-6 lg:order-1 lg:p-8">
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <CategoryBadge cat={item.news_categories} />
@@ -73,15 +59,16 @@ function HeroCard({ item, onClick }: { item: NewsItem; onClick: () => void }) {
         </div>
         <p className="mt-4 text-sm font-black" style={{ color: '#7c3aed' }}>קרא עוד ←</p>
       </div>
-      {/* Image — left side on desktop (RTL second = leftmost) */}
-      <div className="order-1 flex shrink-0 items-center justify-center overflow-hidden lg:order-2 lg:w-[55%]"
-        style={{ background: 'var(--inp)', minHeight: '240px' }}>
+      {/* Image — left on desktop, no cropping */}
+      <div className="order-1 shrink-0 overflow-hidden lg:order-2 lg:w-[55%]">
         {item.image_url ? (
           <img src={item.image_url} alt={item.title}
             className="transition-transform duration-500 group-hover:scale-[1.02]"
-            style={{ maxWidth: '100%', maxHeight: '420px', width: 'auto', height: 'auto', display: 'block' }} />
+            style={{ width: '100%', height: 'auto', display: 'block' }} />
         ) : (
-          <span style={{ fontSize: '5rem', opacity: 0.12 }}>📰</span>
+          <div className="flex items-center justify-center py-16" style={{ background: 'var(--inp)' }}>
+            <span style={{ fontSize: '5rem', opacity: 0.12 }}>📰</span>
+          </div>
         )}
       </div>
     </article>
@@ -97,8 +84,16 @@ function MediumCard({ item, onClick }: { item: NewsItem; onClick: () => void }) 
       className="group flex cursor-pointer flex-col overflow-hidden rounded-2xl transition-all duration-300 hover:translate-y-[-3px] hover:shadow-xl"
       style={{ background: 'var(--s1)', border: '1px solid var(--bd)' }}
     >
-      <div className="relative shrink-0">
-        <NewsImage src={item.image_url} alt={item.title} height={200} />
+      <div className="relative overflow-hidden">
+        {item.image_url ? (
+          <img src={item.image_url} alt={item.title}
+            className="transition-transform duration-500 group-hover:scale-[1.02]"
+            style={{ width: '100%', height: 'auto', display: 'block' }} />
+        ) : (
+          <div className="flex items-center justify-center py-12" style={{ background: 'var(--inp)' }}>
+            <span style={{ fontSize: '3rem', opacity: 0.12 }}>📰</span>
+          </div>
+        )}
         <div className="absolute bottom-2 start-2">
           <CategoryBadge cat={item.news_categories} />
         </div>
@@ -132,8 +127,15 @@ function SmallCard({ item, onClick }: { item: NewsItem; onClick: () => void }) {
       className="group flex cursor-pointer flex-col overflow-hidden rounded-xl transition-all duration-300 hover:translate-y-[-2px] hover:shadow-lg"
       style={{ background: 'var(--s1)', border: '1px solid var(--bd)' }}
     >
-      <div className="relative shrink-0">
-        <NewsImage src={item.image_url} alt={item.title} height={130} />
+      <div className="relative overflow-hidden">
+        {item.image_url ? (
+          <img src={item.image_url} alt={item.title}
+            style={{ width: '100%', height: 'auto', display: 'block' }} />
+        ) : (
+          <div className="flex items-center justify-center py-8" style={{ background: 'var(--inp)' }}>
+            <span style={{ fontSize: '2.5rem', opacity: 0.12 }}>📰</span>
+          </div>
+        )}
         <div className="absolute bottom-2 start-2">
           <CategoryBadge cat={item.news_categories} />
         </div>
@@ -174,11 +176,8 @@ function ArticleModal({ item, onClose }: { item: NewsItem; onClose: () => void }
         </button>
 
         {item.image_url && (
-          <div className="flex w-full items-center justify-center overflow-hidden"
-            style={{ background: 'var(--inp)', minHeight: '200px' }}>
-            <img src={item.image_url} alt={item.title}
-              style={{ maxWidth: '100%', maxHeight: '420px', width: 'auto', height: 'auto', display: 'block' }} />
-          </div>
+          <img src={item.image_url} alt={item.title}
+            style={{ width: '100%', height: 'auto', display: 'block' }} />
         )}
 
         <div className="p-6 lg:p-8">

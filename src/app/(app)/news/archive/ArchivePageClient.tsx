@@ -19,20 +19,6 @@ function fmtDate(d: string) {
   return new Date(d).toLocaleDateString('he-IL', { day: 'numeric', month: 'long', year: 'numeric' })
 }
 
-function NewsImage({ src, alt, height }: { src: string | null; alt: string; height: number }) {
-  return (
-    <div className="flex w-full items-center justify-center overflow-hidden"
-      style={{ height, background: 'var(--inp)' }}>
-      {src ? (
-        <img src={src} alt={alt}
-          style={{ maxWidth: '100%', maxHeight: height, width: 'auto', height: 'auto', display: 'block', opacity: 0.75 }} />
-      ) : (
-        <span style={{ fontSize: '2.5rem', opacity: 0.12 }}>📰</span>
-      )}
-    </div>
-  )
-}
-
 function ArticleModal({ item, onClose }: { item: NewsItem; onClose: () => void }) {
   return (
     <div
@@ -52,11 +38,8 @@ function ArticleModal({ item, onClose }: { item: NewsItem; onClose: () => void }
         </button>
 
         {item.image_url && (
-          <div className="flex w-full items-center justify-center overflow-hidden"
-            style={{ background: 'var(--inp)', minHeight: '180px' }}>
-            <img src={item.image_url} alt={item.title}
-              style={{ maxWidth: '100%', maxHeight: '380px', width: 'auto', height: 'auto', display: 'block', opacity: 0.8 }} />
-          </div>
+          <img src={item.image_url} alt={item.title}
+            style={{ width: '100%', height: 'auto', display: 'block', opacity: 0.85 }} />
         )}
 
         <div className="p-6 lg:p-8">
@@ -131,8 +114,15 @@ export default function ArchivePageClient({ newsItems }: { newsItems: NewsItem[]
                 className="group flex cursor-pointer flex-col overflow-hidden rounded-2xl transition-all duration-300 hover:translate-y-[-2px] hover:shadow-lg"
                 style={{ background: 'var(--s1)', border: '1px solid var(--bd)', opacity: 0.88 }}
               >
-                <div className="relative shrink-0">
-                  <NewsImage src={item.image_url} alt={item.title} height={170} />
+                <div className="relative overflow-hidden">
+                  {item.image_url ? (
+                    <img src={item.image_url} alt={item.title}
+                      style={{ width: '100%', height: 'auto', display: 'block', opacity: 0.8 }} />
+                  ) : (
+                    <div className="flex items-center justify-center py-10" style={{ background: 'var(--inp)' }}>
+                      <span style={{ fontSize: '3rem', opacity: 0.12 }}>📰</span>
+                    </div>
+                  )}
                   <div className="absolute end-0 top-3">
                     <span className="rounded-s-full px-2.5 py-0.5 text-[10px] font-bold"
                       style={{ background: 'rgba(107,114,128,.8)', color: '#fff' }}>ארכיון</span>
