@@ -428,15 +428,19 @@ async function playForumSound(type: SoundType) {
 function ForumSoundPicker({ current, onSelect, onClose }: { current: SoundType; onSelect: (s: SoundType) => void; onClose: () => void }) {
   return (
     <>
-      <div className="fixed inset-0 z-40" onClick={onClose} />
-      <div className="absolute end-0 top-full z-50 mt-1 overflow-hidden rounded-2xl shadow-xl"
-        style={{ background: 'var(--s1)', border: '1px solid var(--bd)', minWidth: '140px' }}>
-        {SOUND_OPTIONS.map(opt => (
-          <button key={opt.value} onClick={() => { playForumSound(opt.value); onSelect(opt.value) }}
-            className="flex w-full items-center gap-2.5 px-3 py-2 text-sm transition hover:bg-purple-50"
-            style={{ color: current === opt.value ? '#7c3aed' : 'var(--tx)', fontWeight: current === opt.value ? 700 : 400 }}>
-            <span>{opt.icon}</span><span>{opt.label}</span>
-            {current === opt.value && <Check size={12} className="ms-auto text-purple-600" />}
+      <div className="fixed inset-0 z-[99]" onClick={onClose} />
+      <div className="absolute start-0 top-full z-[100] mt-1 overflow-hidden rounded-xl shadow-2xl"
+        style={{ background: 'var(--s1)', border: '1px solid var(--bd)', width: '160px' }}>
+        {SOUND_OPTIONS.map((opt, i) => (
+          <button key={opt.value} onClick={() => { playForumSound(opt.value); onSelect(opt.value); onClose() }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-xs transition hover:bg-purple-50/60"
+            style={{
+              color: 'var(--tx)',
+              borderTop: i > 0 ? '1px solid var(--bd)' : undefined,
+              background: current === opt.value ? 'rgba(124,58,237,.08)' : undefined,
+            }}>
+            <span>{opt.icon}</span><span className="flex-1 text-start">{opt.label}</span>
+            {current === opt.value && <Check size={11} className="ms-auto text-purple-600" />}
           </button>
         ))}
       </div>

@@ -341,9 +341,9 @@ function playSound(type: SoundType) {
 function SoundPicker({ current, onSelect, onClose }: { current: SoundType; onSelect: (s: SoundType) => void; onClose: () => void }) {
   return (
     <>
-      <div className="fixed inset-0 z-30" onClick={onClose} />
-      <div className="absolute end-0 top-full z-40 mt-1 w-36 overflow-hidden rounded-xl shadow-xl"
-        style={{ background: 'var(--s1)', border: '1px solid var(--bd)' }}>
+      <div className="fixed inset-0 z-[99]" onClick={onClose} />
+      <div className="absolute start-0 top-full z-[100] mt-1 overflow-hidden rounded-xl shadow-2xl"
+        style={{ background: 'var(--s1)', border: '1px solid var(--bd)', width: '160px' }}>
         {SOUND_OPTIONS.map((opt, i) => (
           <button key={opt.value}
             onClick={() => { playSound(opt.value); onSelect(opt.value); onClose() }}
