@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import {
   Heart, Trash2, Edit2, CornerUpLeft, CheckCircle2, ChevronLeft,
   ImageIcon, X, Bold, Italic, List, Quote, ZoomIn, ChevronRight,
-  AlertCircle, Bell, BellOff, Link2, Check, Tag,
+  AlertCircle, Bell, BellOff, Link2, Check, Tag, Volume2,
 } from 'lucide-react'
 import type { ForumThread, ForumReply, Profile } from '@/types'
 import ReportButton from '@/components/ReportButton'
@@ -367,6 +367,83 @@ function ReplyEditor({ value, onChange, quotedText, onClearQuote, imageFiles, im
   )
 }
 
+// ── Audio system ──────────────────────────────────────────
+
+type SoundType = 'ping' | 'chime' | 'pop' | 'bell' | 'none'
+const SOUND_OPTIONS: { value: SoundType; label: string; icon: string }[] = [
+  { value: 'ping',  label: 'Ping',  icon: '🔔' },
+  { value: 'chime', label: 'Chime', icon: '🎵' },
+  { value: 'pop',   label: 'Pop',   icon: '💬' },
+  { value: 'bell',  label: 'Bell',  icon: '🔕' },
+  { value: 'none',  label: 'השתק',  icon: '🔇' },
+]
+const FORUM_SOUND_PREF_PREFIX = 'sndPref_thread_'
+let _forumCtx: AudioContext | null = null
+function getForumCtx() {
+  if (!_forumCtx) _forumCtx = new (window.AudioContext || (window as any).webkitAudioContext)()
+  return _forumCtx
+}
+function unlockForumAudio() {
+  try { const c = getForumCtx(); if (c.state === 'suspended') c.resume() } catch {}
+}
+async function playForumSound(type: SoundType) {
+  if (type === 'none') return
+  try {
+    const ctx = getForumCtx()
+    if (ctx.state === 'suspended') await ctx.resume()
+    const t = ctx.currentTime
+    if (type === 'ping') {
+      const o = ctx.createOscillator(); const g = ctx.createGain()
+      o.connect(g); g.connect(ctx.destination)
+      o.frequency.setValueAtTime(800, t); o.frequency.exponentialRampToValueAtTime(400, t + 0.3)
+      g.gain.setValueAtTime(0.3, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.3)
+      o.start(t); o.stop(t + 0.3)
+    } else if (type === 'chime') {
+      ;([[523, 0], [659, 0.12], [784, 0.24]] as [number, number][]).forEach(([freq, delay]) => {
+        const o = ctx.createOscillator(); const g = ctx.createGain()
+        o.type = 'sine'; o.connect(g); g.connect(ctx.destination)
+        o.frequency.value = freq
+        g.gain.setValueAtTime(0, t + delay); g.gain.linearRampToValueAtTime(0.25, t + delay + 0.02)
+        g.gain.exponentialRampToValueAtTime(0.001, t + delay + 0.5)
+        o.start(t + delay); o.stop(t + delay + 0.5)
+      })
+    } else if (type === 'pop') {
+      const o = ctx.createOscillator(); const g = ctx.createGain()
+      o.connect(g); g.connect(ctx.destination)
+      o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(600, t + 0.08)
+      g.gain.setValueAtTime(0.4, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.08)
+      o.start(t); o.stop(t + 0.08)
+    } else {
+      ;([440, 1320] as number[]).forEach((freq, i) => {
+        const o = ctx.createOscillator(); const g = ctx.createGain()
+        o.type = 'sine'; o.connect(g); g.connect(ctx.destination)
+        o.frequency.value = freq
+        g.gain.setValueAtTime(i === 0 ? 0.3 : 0.1, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.9)
+        o.start(t); o.stop(t + 0.9)
+      })
+    }
+  } catch (e) { console.error('sound error:', e) }
+}
+
+function ForumSoundPicker({ current, onSelect, onClose }: { current: SoundType; onSelect: (s: SoundType) => void; onClose: () => void }) {
+  return (
+    <>
+      <div className="fixed inset-0 z-40" onClick={onClose} />
+      <div className="absolute end-0 top-full z-50 mt-1 overflow-hidden rounded-2xl shadow-xl"
+        style={{ background: 'var(--s1)', border: '1px solid var(--bd)', minWidth: '140px' }}>
+        {SOUND_OPTIONS.map(opt => (
+          <button key={opt.value} onClick={() => { playForumSound(opt.value); onSelect(opt.value) }}
+            className="flex w-full items-center gap-2.5 px-3 py-2 text-sm transition hover:bg-purple-50"
+            style={{ color: current === opt.value ? '#7c3aed' : 'var(--tx)', fontWeight: current === opt.value ? 700 : 400 }}>
+            <span>{opt.icon}</span><span>{opt.label}</span>
+            {current === opt.value && <Check size={12} className="ms-auto text-purple-600" />}
+          </button>
+        ))}
+      </div>
+    </>
+  )
+}
+
 // ── Props ─────────────────────────────────────────────────
 
 type Props = {
@@ -419,16 +496,55 @@ export default function ThreadClient({
   // Profile popup
   const [profilePopup, setProfilePopup] = useState<{ profile: Profile; uid: string } | null>(null)
 
+  // Sound
+  const [threadSoundPref, setThreadSoundPref] = useState<SoundType>('ping')
+  const [soundPickerOpen, setSoundPickerOpen] = useState(false)
+  const threadSoundPrefRef = useRef<SoundType>('ping')
+  threadSoundPrefRef.current = threadSoundPref
+  const isFollowingRef = useRef(false)
+  isFollowingRef.current = isFollowing
+  const prevReplyCountRef = useRef(-1)
+  const hasInitializedRef = useRef(false)
+
   // Last read banner
   const [lastReadReplyId, setLastReadReplyId] = useState<string | null>(null)
   const [showLastReadBanner, setShowLastReadBanner] = useState(false)
 
   const refresh = () => { startTransition(() => { router.refresh() }) }
 
-  // Sync replies from server + reset pagination
+  // Sync replies from server — play sound if new replies arrived while following
   useEffect(() => {
+    if (!hasInitializedRef.current) {
+      hasInitializedRef.current = true
+      prevReplyCountRef.current = initialReplies.length
+      setReplies(initialReplies)
+      return
+    }
+    if (initialReplies.length > prevReplyCountRef.current) {
+      const newReplies = initialReplies.slice(prevReplyCountRef.current)
+      const hasOtherReply = newReplies.some(r => r.user_id !== currentUserId)
+      if (isFollowingRef.current && hasOtherReply) {
+        playForumSound(threadSoundPrefRef.current)
+      }
+    }
+    prevReplyCountRef.current = initialReplies.length
     setReplies(initialReplies)
-  }, [initialReplies])
+  }, [initialReplies]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sound pref — restore from localStorage + register audio unlock gesture
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(FORUM_SOUND_PREF_PREFIX + thread.id) as SoundType | null
+      if (saved && SOUND_OPTIONS.some(o => o.value === saved)) setThreadSoundPref(saved)
+    } catch {}
+    const unlock = () => unlockForumAudio()
+    window.addEventListener('click', unlock, { once: true })
+    window.addEventListener('keydown', unlock, { once: true })
+    return () => {
+      window.removeEventListener('click', unlock)
+      window.removeEventListener('keydown', unlock)
+    }
+  }, [thread.id])
 
   // Reply draft — restore on mount
   useEffect(() => {
@@ -716,15 +832,35 @@ export default function ThreadClient({
                       buttonClassName="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs transition hover:bg-red-50 hover:text-red-400"
                       buttonStyle={{ color: 'var(--tx3)', border: '1px solid var(--bd)' }} />
                   )}
-                  <button onClick={handleFollowThread}
-                    className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs transition ms-auto"
-                    style={{
-                      background: isFollowing ? 'rgba(124,58,237,.1)' : undefined,
-                      color: isFollowing ? '#7c3aed' : 'var(--tx3)',
-                      border: isFollowing ? '1px solid rgba(124,58,237,.3)' : '1px solid var(--bd)',
-                    }}>
-                    {isFollowing ? <><BellOff size={11} /> עוקב</> : <><Bell size={11} /> עקוב</>}
-                  </button>
+                  <div className="relative ms-auto flex items-center gap-1">
+                    <button onClick={handleFollowThread}
+                      className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs transition"
+                      style={{
+                        background: isFollowing ? 'rgba(124,58,237,.1)' : undefined,
+                        color: isFollowing ? '#7c3aed' : 'var(--tx3)',
+                        border: isFollowing ? '1px solid rgba(124,58,237,.3)' : '1px solid var(--bd)',
+                      }}>
+                      {isFollowing ? <><BellOff size={11} /> עוקב</> : <><Bell size={11} /> עקוב</>}
+                    </button>
+                    <button
+                      onClick={() => setSoundPickerOpen(o => !o)}
+                      title="בחר צליל לאשון"
+                      className="flex h-7 w-7 items-center justify-center rounded-lg transition hover:bg-purple-50"
+                      style={{ color: 'var(--tx3)', border: '1px solid var(--bd)' }}>
+                      <Volume2 size={11} />
+                    </button>
+                    {soundPickerOpen && (
+                      <ForumSoundPicker
+                        current={threadSoundPref}
+                        onSelect={s => {
+                          setThreadSoundPref(s)
+                          try { localStorage.setItem(FORUM_SOUND_PREF_PREFIX + thread.id, s) } catch {}
+                          setSoundPickerOpen(false)
+                        }}
+                        onClose={() => setSoundPickerOpen(false)}
+                      />
+                    )}
+                  </div>
                 </div>
               )}
             </div>
