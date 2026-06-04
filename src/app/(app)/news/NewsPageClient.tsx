@@ -5,13 +5,11 @@ import { X, Clock, Archive, CalendarX } from 'lucide-react'
 import Link from 'next/link'
 import type { NewsItem, NewsCategory } from '@/types'
 
-// ── Shared helpers ────────────────────────────────────────────────────────────
-
 function CategoryBadge({ cat }: { cat?: NewsCategory | null }) {
   if (!cat) return null
   return (
-    <span className="rounded-full px-2.5 py-1 text-xs font-black uppercase tracking-wide"
-      style={{ background: cat.color, color: '#fff', letterSpacing: '0.04em' }}>
+    <span className="rounded-full px-2.5 py-0.5 text-xs font-black"
+      style={{ background: cat.color + '22', color: cat.color, border: `1px solid ${cat.color}44` }}>
       {cat.name}
     </span>
   )
@@ -33,92 +31,86 @@ function ExpiryBadge({ expiresAt }: { expiresAt: string | null }) {
   )
 }
 
-// ── Hero card ─────────────────────────────────────────────────────────────────
+function NewsImage({ src, alt, height }: { src: string | null; alt: string; height: number }) {
+  return (
+    <div className="flex w-full items-center justify-center overflow-hidden"
+      style={{ height, background: 'var(--inp)' }}>
+      {src ? (
+        <img src={src} alt={alt}
+          style={{ maxWidth: '100%', maxHeight: height, width: 'auto', height: 'auto', display: 'block' }} />
+      ) : (
+        <span style={{ fontSize: height > 150 ? '4rem' : '2.5rem', opacity: 0.15 }}>📰</span>
+      )}
+    </div>
+  )
+}
+
+// ── Hero ──────────────────────────────────────────────────────────────────────
+// In RTL flex-row: lower order = rightmost. Text (order-1) on RIGHT, Image (order-2) on LEFT.
+// On mobile (flex-col): Image (order-1) on TOP, Text (order-2) on BOTTOM.
 
 function HeroCard({ item, onClick }: { item: NewsItem; onClick: () => void }) {
   return (
     <article
       onClick={onClick}
-      className="group mb-8 cursor-pointer overflow-hidden rounded-2xl transition-all duration-300 hover:shadow-2xl"
+      className="group mb-6 flex cursor-pointer flex-col overflow-hidden rounded-2xl transition-all duration-300 hover:shadow-2xl lg:flex-row"
       style={{ background: 'var(--s1)', border: '1px solid var(--bd)' }}
     >
-      {/* Image */}
-      <div className="relative aspect-[21/9] overflow-hidden">
-        {item.image_url ? (
-          <img src={item.image_url} alt={item.title}
-            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
-        ) : (
-          <div className="h-full w-full flex items-center justify-center"
-            style={{ background: 'linear-gradient(135deg,#1e1b4b,#312e81,#4c1d95)' }}>
-            <span className="text-7xl opacity-20">📰</span>
-          </div>
-        )}
-        {/* Gradient overlay */}
-        <div className="pointer-events-none absolute inset-0"
-          style={{ background: 'linear-gradient(to top, rgba(0,0,0,.7) 0%, rgba(0,0,0,.1) 60%, transparent 100%)' }} />
-        {/* Badge overlaid */}
-        <div className="absolute bottom-4 start-4">
+      {/* Text — right side on desktop (RTL first = rightmost) */}
+      <div className="order-2 flex flex-1 flex-col justify-center p-6 lg:order-1 lg:p-8">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
           <CategoryBadge cat={item.news_categories} />
         </div>
-      </div>
-
-      {/* Body */}
-      <div className="p-6 lg:p-8">
-        <div className="mb-3 flex flex-wrap items-center gap-3">
-          <span className="flex items-center gap-1.5 text-xs font-medium" style={{ color: 'var(--tx3)' }}>
+        <h2 className="mb-3 text-2xl font-black lg:text-3xl" style={{ color: 'var(--tx)', lineHeight: 1.25 }}>
+          {item.title}
+        </h2>
+        <p className="mb-4 line-clamp-4 text-base leading-relaxed" style={{ color: 'var(--tx2)' }}>{item.content}</p>
+        <div className="mt-auto flex flex-wrap items-center gap-3">
+          <span className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--tx3)' }}>
             <Clock size={12} />{fmtDate(item.created_at)}
           </span>
           <ExpiryBadge expiresAt={item.expires_at ?? null} />
         </div>
-        <h2 className="mb-3 text-2xl font-black leading-tight lg:text-3xl" style={{ color: 'var(--tx)', lineHeight: 1.25 }}>
-          {item.title}
-        </h2>
-        <p className="line-clamp-3 text-base leading-relaxed" style={{ color: 'var(--tx2)' }}>{item.content}</p>
-        <div className="mt-5 flex items-center gap-1.5">
-          <span className="text-sm font-black" style={{ color: '#7c3aed' }}>קרא עוד</span>
-          <span className="text-sm font-black" style={{ color: '#7c3aed' }}>←</span>
-        </div>
+        <p className="mt-4 text-sm font-black" style={{ color: '#7c3aed' }}>קרא עוד ←</p>
+      </div>
+      {/* Image — left side on desktop (RTL second = leftmost) */}
+      <div className="order-1 flex shrink-0 items-center justify-center overflow-hidden lg:order-2 lg:w-[55%]"
+        style={{ background: 'var(--inp)', minHeight: '240px' }}>
+        {item.image_url ? (
+          <img src={item.image_url} alt={item.title}
+            className="transition-transform duration-500 group-hover:scale-[1.02]"
+            style={{ maxWidth: '100%', maxHeight: '420px', width: 'auto', height: 'auto', display: 'block' }} />
+        ) : (
+          <span style={{ fontSize: '5rem', opacity: 0.12 }}>📰</span>
+        )}
       </div>
     </article>
   )
 }
 
-// ── News card ─────────────────────────────────────────────────────────────────
+// ── Medium card ───────────────────────────────────────────────────────────────
 
-function NewsCard({ item, onClick }: { item: NewsItem; onClick: () => void }) {
+function MediumCard({ item, onClick }: { item: NewsItem; onClick: () => void }) {
   return (
     <article
       onClick={onClick}
       className="group flex cursor-pointer flex-col overflow-hidden rounded-2xl transition-all duration-300 hover:translate-y-[-3px] hover:shadow-xl"
       style={{ background: 'var(--s1)', border: '1px solid var(--bd)' }}
     >
-      {/* Image */}
-      <div className="relative aspect-[16/9] shrink-0 overflow-hidden">
-        {item.image_url ? (
-          <img src={item.image_url} alt={item.title}
-            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
-        ) : (
-          <div className="h-full w-full flex items-center justify-center"
-            style={{ background: 'linear-gradient(135deg,#1e1b4b,#312e81,#4c1d95)' }}>
-            <span className="text-4xl opacity-20">📰</span>
-          </div>
-        )}
-        <div className="absolute bottom-3 start-3">
+      <div className="relative shrink-0">
+        <NewsImage src={item.image_url} alt={item.title} height={200} />
+        <div className="absolute bottom-2 start-2">
           <CategoryBadge cat={item.news_categories} />
         </div>
       </div>
-
-      {/* Body */}
       <div className="flex flex-1 flex-col p-4">
-        <div className="mb-2 flex flex-wrap items-center gap-2">
-          <span className="flex items-center gap-1 text-[11px] font-medium" style={{ color: 'var(--tx3)' }}>
-            <Clock size={10} />{fmtDate(item.created_at)}
-          </span>
+        <div className="mb-1.5 flex items-center gap-1.5 text-[11px]" style={{ color: 'var(--tx3)' }}>
+          <Clock size={10} />{fmtDate(item.created_at)}
         </div>
-        <h3 className="mb-2 line-clamp-2 font-black leading-snug" style={{ color: 'var(--tx)', fontSize: '1rem', lineHeight: 1.3 }}>
+        <h3 className="line-clamp-2 font-black leading-snug" style={{ color: 'var(--tx)', fontSize: '1rem', lineHeight: 1.3 }}>
           {item.title}
         </h3>
-        <p className="line-clamp-2 flex-1 text-sm leading-relaxed" style={{ color: 'var(--tx2)' }}>
+        <p className="mt-1.5 line-clamp-3 flex-1 text-sm leading-relaxed" style={{ color: 'var(--tx2)' }}>
           {item.content}
         </p>
         {item.expires_at && (
@@ -126,6 +118,36 @@ function NewsCard({ item, onClick }: { item: NewsItem; onClick: () => void }) {
             <ExpiryBadge expiresAt={item.expires_at} />
           </div>
         )}
+      </div>
+    </article>
+  )
+}
+
+// ── Small card ────────────────────────────────────────────────────────────────
+
+function SmallCard({ item, onClick }: { item: NewsItem; onClick: () => void }) {
+  return (
+    <article
+      onClick={onClick}
+      className="group flex cursor-pointer flex-col overflow-hidden rounded-xl transition-all duration-300 hover:translate-y-[-2px] hover:shadow-lg"
+      style={{ background: 'var(--s1)', border: '1px solid var(--bd)' }}
+    >
+      <div className="relative shrink-0">
+        <NewsImage src={item.image_url} alt={item.title} height={130} />
+        <div className="absolute bottom-2 start-2">
+          <CategoryBadge cat={item.news_categories} />
+        </div>
+      </div>
+      <div className="flex flex-1 flex-col p-3">
+        <div className="mb-1 flex items-center gap-1 text-[10px]" style={{ color: 'var(--tx3)' }}>
+          <Clock size={9} />{fmtDate(item.created_at)}
+        </div>
+        <h3 className="line-clamp-2 font-black leading-snug text-sm" style={{ color: 'var(--tx)' }}>
+          {item.title}
+        </h3>
+        <p className="mt-1 line-clamp-2 flex-1 text-xs leading-relaxed" style={{ color: 'var(--tx2)' }}>
+          {item.content}
+        </p>
       </div>
     </article>
   )
@@ -152,8 +174,10 @@ function ArticleModal({ item, onClose }: { item: NewsItem; onClose: () => void }
         </button>
 
         {item.image_url && (
-          <div className="aspect-[21/9] overflow-hidden">
-            <img src={item.image_url} alt={item.title} className="h-full w-full object-cover" />
+          <div className="flex w-full items-center justify-center overflow-hidden"
+            style={{ background: 'var(--inp)', minHeight: '200px' }}>
+            <img src={item.image_url} alt={item.title}
+              style={{ maxWidth: '100%', maxHeight: '420px', width: 'auto', height: 'auto', display: 'block' }} />
           </div>
         )}
 
@@ -182,7 +206,7 @@ function ArticleModal({ item, onClose }: { item: NewsItem; onClose: () => void }
   )
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
+// ── Main ──────────────────────────────────────────────────────────────────────
 
 export default function NewsPageClient({
   newsItems,
@@ -192,7 +216,7 @@ export default function NewsPageClient({
   archiveCount?: number
 }) {
   const [selected, setSelected] = useState<NewsItem | null>(null)
-  const [hero, ...rest] = newsItems
+  const [hero, second, third, ...rest] = newsItems
 
   return (
     <div className="min-h-full" style={{ background: 'var(--bg)' }}>
@@ -232,12 +256,19 @@ export default function NewsPageClient({
           </div>
         ) : (
           <>
-            <HeroCard item={hero} onClick={() => setSelected(hero)} />
+            {hero && <HeroCard item={hero} onClick={() => setSelected(hero)} />}
+
+            {(second || third) && (
+              <div className="mb-6 grid gap-5 sm:grid-cols-2">
+                {second && <MediumCard item={second} onClick={() => setSelected(second)} />}
+                {third && <MediumCard item={third} onClick={() => setSelected(third)} />}
+              </div>
+            )}
 
             {rest.length > 0 && (
-              <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {rest.map(item => (
-                  <NewsCard key={item.id} item={item} onClick={() => setSelected(item)} />
+                  <SmallCard key={item.id} item={item} onClick={() => setSelected(item)} />
                 ))}
               </div>
             )}

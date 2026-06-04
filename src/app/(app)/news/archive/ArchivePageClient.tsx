@@ -8,8 +8,8 @@ import type { NewsItem, NewsCategory } from '@/types'
 function CategoryBadge({ cat }: { cat?: NewsCategory | null }) {
   if (!cat) return null
   return (
-    <span className="rounded-full px-2.5 py-1 text-xs font-black"
-      style={{ background: cat.color + '33', color: cat.color, border: `1px solid ${cat.color}55` }}>
+    <span className="rounded-full px-2.5 py-0.5 text-xs font-black"
+      style={{ background: cat.color + '22', color: cat.color, border: `1px solid ${cat.color}44` }}>
       {cat.name}
     </span>
   )
@@ -17,6 +17,20 @@ function CategoryBadge({ cat }: { cat?: NewsCategory | null }) {
 
 function fmtDate(d: string) {
   return new Date(d).toLocaleDateString('he-IL', { day: 'numeric', month: 'long', year: 'numeric' })
+}
+
+function NewsImage({ src, alt, height }: { src: string | null; alt: string; height: number }) {
+  return (
+    <div className="flex w-full items-center justify-center overflow-hidden"
+      style={{ height, background: 'var(--inp)' }}>
+      {src ? (
+        <img src={src} alt={alt}
+          style={{ maxWidth: '100%', maxHeight: height, width: 'auto', height: 'auto', display: 'block', opacity: 0.75 }} />
+      ) : (
+        <span style={{ fontSize: '2.5rem', opacity: 0.12 }}>📰</span>
+      )}
+    </div>
+  )
 }
 
 function ArticleModal({ item, onClose }: { item: NewsItem; onClose: () => void }) {
@@ -36,11 +50,15 @@ function ArticleModal({ item, onClose }: { item: NewsItem; onClose: () => void }
           style={{ background: 'rgba(0,0,0,.55)', color: '#fff' }}>
           <X size={16} />
         </button>
+
         {item.image_url && (
-          <div className="aspect-[21/9] overflow-hidden">
-            <img src={item.image_url} alt={item.title} className="h-full w-full object-cover opacity-75" />
+          <div className="flex w-full items-center justify-center overflow-hidden"
+            style={{ background: 'var(--inp)', minHeight: '180px' }}>
+            <img src={item.image_url} alt={item.title}
+              style={{ maxWidth: '100%', maxHeight: '380px', width: 'auto', height: 'auto', display: 'block', opacity: 0.8 }} />
           </div>
         )}
+
         <div className="p-6 lg:p-8">
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <span className="rounded-full px-2.5 py-0.5 text-xs font-bold"
@@ -105,36 +123,25 @@ export default function ArchivePageClient({ newsItems }: { newsItems: NewsItem[]
             <p className="font-semibold" style={{ color: 'var(--tx2)' }}>הארכיון ריק</p>
           </div>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {newsItems.map(item => (
               <article
                 key={item.id}
                 onClick={() => setSelected(item)}
-                className="group flex cursor-pointer flex-col overflow-hidden rounded-2xl transition-all hover:translate-y-[-2px] hover:shadow-lg"
-                style={{ background: 'var(--s1)', border: '1px solid var(--bd)', opacity: 0.85 }}
+                className="group flex cursor-pointer flex-col overflow-hidden rounded-2xl transition-all duration-300 hover:translate-y-[-2px] hover:shadow-lg"
+                style={{ background: 'var(--s1)', border: '1px solid var(--bd)', opacity: 0.88 }}
               >
-                {/* Image */}
-                <div className="relative aspect-[16/9] shrink-0 overflow-hidden">
-                  {item.image_url ? (
-                    <img src={item.image_url} alt={item.title}
-                      className="h-full w-full object-cover grayscale-[30%] transition-all duration-500 group-hover:grayscale-0 group-hover:scale-105" />
-                  ) : (
-                    <div className="h-full w-full flex items-center justify-center"
-                      style={{ background: 'linear-gradient(135deg,rgba(55,65,81,.4),rgba(75,85,99,.3))' }}>
-                      <span className="text-4xl opacity-20">📰</span>
-                    </div>
-                  )}
-                  {/* Archive ribbon */}
+                <div className="relative shrink-0">
+                  <NewsImage src={item.image_url} alt={item.title} height={170} />
                   <div className="absolute end-0 top-3">
                     <span className="rounded-s-full px-2.5 py-0.5 text-[10px] font-bold"
                       style={{ background: 'rgba(107,114,128,.8)', color: '#fff' }}>ארכיון</span>
                   </div>
-                  <div className="absolute bottom-3 start-3">
+                  <div className="absolute bottom-2 start-2">
                     <CategoryBadge cat={item.news_categories} />
                   </div>
                 </div>
 
-                {/* Body */}
                 <div className="flex flex-1 flex-col p-4">
                   <div className="mb-1.5 flex flex-wrap items-center gap-2">
                     <span className="flex items-center gap-1 text-[11px]" style={{ color: 'var(--tx3)' }}>
