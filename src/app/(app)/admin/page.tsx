@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import AdminClient from './AdminClient'
 import { addForumCategory, deleteForumCategory } from '../forum/actions'
-import type { Profile, NewsItem, ChatCategory, Specialization, InspirationCategory, JobCategory, AssetCategory, ForumCategory, Font, FontWeight } from '@/types'
+import type { Profile, NewsItem, NewsCategory, ChatCategory, Specialization, InspirationCategory, JobCategory, AssetCategory, ForumCategory, Font, FontWeight } from '@/types'
 import { sendApprovalEmail } from '@/lib/email'
 
 export default async function AdminPage() {
@@ -16,10 +16,11 @@ export default async function AdminPage() {
   if (profileData?.role !== 'admin') redirect('/dashboard')
 
   const admin = createAdminClient()
-  const [pendingRes, activeRes, newsRes, catRes, specsRes, inspCatsRes, jobCatsRes, assetCatsRes, logoRes, forumCatsRes, fontsRes, fontWeightsRes] = await Promise.all([
+  const [pendingRes, activeRes, newsRes, newsCatRes, catRes, specsRes, inspCatsRes, jobCatsRes, assetCatsRes, logoRes, forumCatsRes, fontsRes, fontWeightsRes] = await Promise.all([
     admin.from('profiles').select('*').eq('status', 'pending').order('created_at', { ascending: false }),
     admin.from('profiles').select('*').eq('status', 'active').order('created_at', { ascending: false }),
-    supabase.from('news').select('*, profiles(*)').order('created_at', { ascending: false }),
+    admin.from('news').select('*, profiles(*), news_categories(*)').order('created_at', { ascending: false }),
+    admin.from('news_categories').select('*').order('name', { ascending: true }),
     supabase.from('chat_categories').select('*').order('created_at', { ascending: true }),
     supabase.from('specializations').select('*').order('name', { ascending: true }),
     supabase.from('inspiration_categories').select('*').order('name', { ascending: true }),
@@ -34,6 +35,7 @@ export default async function AdminPage() {
   const pendingUsers          = (pendingRes.data    ?? []) as Profile[]
   const activeUsers           = (activeRes.data     ?? []) as Profile[]
   const newsItems             = (newsRes.data       ?? []) as NewsItem[]
+  const newsCategories        = (newsCatRes.data   ?? []) as NewsCategory[]
   const categories            = (catRes.data        ?? []) as ChatCategory[]
   const specializations       = (specsRes.data      ?? []) as Specialization[]
   const inspirationCategories = (inspCatsRes.data   ?? []) as InspirationCategory[]
@@ -115,14 +117,16 @@ export default async function AdminPage() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return { error: 'לא מחובר' }
     const { error } = await supabase.from('news').insert({
-      title: formData.get('title') as string,
-      content: formData.get('content') as string,
-      image_url: (formData.get('image_url') as string) || null,
-      created_by: user.id,
+      title:       formData.get('title') as string,
+      content:     formData.get('content') as string,
+      image_url:   (formData.get('image_url') as string) || null,
+      category_id: (formData.get('category_id') as string) || null,
+      created_by:  user.id,
     })
     if (error) return { error: error.message }
     revalidatePath('/admin')
     revalidatePath('/dashboard')
+    revalidatePath('/news')
     return null
   }
 
@@ -132,6 +136,38 @@ export default async function AdminPage() {
     await supabase.from('news').delete().eq('id', newsId)
     revalidatePath('/admin')
     revalidatePath('/dashboard')
+    revalidatePath('/news')
+  }
+
+  async function addNewsCategory(
+    _prev: { error?: string } | null,
+    formData: FormData,
+  ): Promise<{ error?: string } | null> {
+    'use server'
+    const name  = (formData.get('name') as string)?.trim()
+    const color = (formData.get('color') as string) || '#6B21A8'
+    if (!name) return { error: 'שם הקטגוריה לא יכול להיות ריק' }
+    const { error } = await createAdminClient().from('news_categories').insert({ name, color })
+    if (error) return { error: error.message }
+    revalidatePath('/admin')
+    return null
+  }
+
+  async function deleteNewsCategory(id: string): Promise<void> {
+    'use server'
+    await createAdminClient().from('news_categories').delete().eq('id', id)
+    revalidatePath('/admin')
+  }
+
+  async function getNewsImageUploadUrl(): Promise<{ signedUrl?: string; publicUrl?: string; error?: string }> {
+    'use server'
+    const a = createAdminClient()
+    await a.storage.createBucket('news-images', { public: true }).catch(() => {})
+    const path = `news_${Date.now()}.jpg`
+    const { data, error } = await a.storage.from('news-images').createSignedUploadUrl(path)
+    if (error) return { error: error.message }
+    const { data: { publicUrl } } = a.storage.from('news-images').getPublicUrl(path)
+    return { signedUrl: data.signedUrl, publicUrl }
   }
 
   async function addCategory(
@@ -763,6 +799,10 @@ export default async function AdminPage() {
       pendingUsers={pendingUsers}
       activeUsers={activeUsers}
       newsItems={newsItems}
+      newsCategories={newsCategories}
+      addNewsCategory={addNewsCategory}
+      deleteNewsCategory={deleteNewsCategory}
+      getNewsImageUploadUrl={getNewsImageUploadUrl}
       categories={categories}
       specializations={specializations}
       approveUser={approveUser}

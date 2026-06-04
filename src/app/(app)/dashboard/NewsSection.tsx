@@ -111,12 +111,17 @@ export default function NewsSection({ news, isAdmin, publishNews }: Props) {
               )}
               <div className="p-5">
                 <div className="mb-2 flex items-center gap-2">
-                  <span
-                    className="rounded-full px-2.5 py-0.5 text-xs font-bold text-purple-700"
-                    style={{ background: 'rgba(124,58,237,.08)' }}
-                  >
-                    📢 עדכון קהילה
-                  </span>
+                  {item.news_categories ? (
+                    <span className="rounded-full px-2.5 py-0.5 text-xs font-bold"
+                      style={{ background: item.news_categories.color + '22', color: item.news_categories.color, border: `1px solid ${item.news_categories.color}44` }}>
+                      {item.news_categories.name}
+                    </span>
+                  ) : (
+                    <span className="rounded-full px-2.5 py-0.5 text-xs font-bold text-purple-700"
+                      style={{ background: 'rgba(124,58,237,.08)' }}>
+                      📢 עדכון קהילה
+                    </span>
+                  )}
                   <span className="flex items-center gap-1 text-xs text-slate-500">
                     <Clock size={10} />
                     {new Date(item.created_at).toLocaleDateString('he-IL', { day: 'numeric', month: 'long', year: 'numeric' })}

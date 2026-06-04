@@ -13,7 +13,7 @@ export default async function DashboardPage() {
     supabase.from('profiles').select('*').eq('id', user!.id).single(),
     supabase.from('portfolio_items').select('id').eq('user_id', user!.id),
     supabase.from('jobs').select('id').eq('status', 'open'),
-    supabase.from('news').select('*, profiles(*)').order('created_at', { ascending: false }).limit(10),
+    supabase.from('news').select('*, profiles(*), news_categories(*)').order('created_at', { ascending: false }).limit(10),
   ])
 
   const profile = profileRes.data as Profile | null

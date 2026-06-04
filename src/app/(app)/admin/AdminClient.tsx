@@ -5,7 +5,7 @@ import {
   ShieldCheck, Users, Clock, CheckCircle2, XCircle, Newspaper,
   Hash, Plus, Trash2, ExternalLink, Phone, MapPin, Briefcase, Star, X, Palette, FolderOpen, ImageIcon, MessagesSquare, ScanText
 } from 'lucide-react'
-import type { Profile, NewsItem, ChatCategory, Specialization, InspirationCategory, JobCategory, AssetCategory, ForumCategory, Font, FontWeight } from '@/types'
+import type { Profile, NewsItem, NewsCategory, ChatCategory, Specialization, InspirationCategory, JobCategory, AssetCategory, ForumCategory, Font, FontWeight } from '@/types'
 import FontsTab from './FontsTab'
 
 type Tab = 'pending' | 'users' | 'news' | 'categories' | 'specializations' | 'insp_cats' | 'job_cats' | 'asset_cats' | 'branding' | 'forum_cats' | 'fonts'
@@ -13,7 +13,11 @@ type Tab = 'pending' | 'users' | 'news' | 'categories' | 'specializations' | 'in
 type Props = {
   pendingUsers:    Profile[]
   activeUsers:     Profile[]
-  newsItems:       NewsItem[]
+  newsItems:            NewsItem[]
+  newsCategories:       NewsCategory[]
+  addNewsCategory:      (prev: { error?: string } | null, fd: FormData) => Promise<{ error?: string } | null>
+  deleteNewsCategory:   (id: string) => Promise<void>
+  getNewsImageUploadUrl: () => Promise<{ signedUrl?: string; publicUrl?: string; error?: string }>
   categories:      ChatCategory[]
   specializations: Specialization[]
   inspirationCategories:       InspirationCategory[]
@@ -76,11 +80,12 @@ const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
 ]
 
 export default function AdminClient({
-  pendingUsers, activeUsers, newsItems, categories, specializations,
+  pendingUsers, activeUsers, newsItems, newsCategories, categories, specializations,
   inspirationCategories, jobCategories, assetCategories, forumCategories,
   logoUrl: initialLogoUrl,
   approveUser, rejectUser, makeAdmin, removeAdmin,
-  publishNews, deleteNews, addCategory, deleteCategory,
+  publishNews, deleteNews, addNewsCategory, deleteNewsCategory, getNewsImageUploadUrl,
+  addCategory, deleteCategory,
   addSpecialization, deleteSpecialization, deleteUser,
   addInspirationCategory, deleteInspirationCategory,
   addJobCategory, deleteJobCategory,
@@ -100,6 +105,7 @@ export default function AdminClient({
   const logoInputRef = useRef<HTMLInputElement>(null)
 
   const [newsState,      newsAction,      newsPending]     = useActionState(publishNews, null)
+  const [newsCatState,   newsCatAction,   newsCatPending]  = useActionState(addNewsCategory, null)
   const [catState,       catAction,       catPending]      = useActionState(addCategory, null)
   const [specState,      specAction,      specPending]     = useActionState(addSpecialization, null)
   const [inspCatState,   inspCatAction,   inspCatPending]  = useActionState(addInspirationCategory, null)
@@ -107,6 +113,9 @@ export default function AdminClient({
   const [assetCatState,  assetCatAction,  assetCatPending] = useActionState(addAssetCategory, null)
   const [forumCatState,  forumCatAction,  forumCatPending] = useActionState(addForumCategory, null)
   const [showNewsForm, setShowNewsForm] = useState(false)
+  const [newsImgUrl,   setNewsImgUrl]   = useState<string | null>(null)
+  const [newsImgUploading, setNewsImgUploading] = useState(false)
+  const newsImgRef = useRef<HTMLInputElement>(null)
 
   return (
     <div className="min-h-full" style={{ background: 'var(--bg)' }}>
@@ -369,78 +378,164 @@ export default function AdminClient({
 
         {/* ── News ── */}
         {activeTab === 'news' && (
-          <div>
-            <div className="mb-5 flex items-center justify-between">
-              <p className="text-sm font-bold" style={{ color: 'var(--tx2)' }}>{newsItems.length} פריטי חדשות</p>
-              <button
-                onClick={() => setShowNewsForm((s) => !s)}
-                className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold text-white transition hover:opacity-90"
-                style={{ background: 'linear-gradient(135deg, #7c3aed, #6d28d9)' }}
-              >
-                {showNewsForm ? <X size={14} /> : <Plus size={14} />}
-                {showNewsForm ? 'ביטול' : 'פרסם חדשות'}
-              </button>
-            </div>
+          <div className="space-y-6">
 
-            {showNewsForm && (
-              <form
-                action={newsAction}
-                className="mb-6 animate-fade-up rounded-2xl p-5"
-                style={{ background: 'rgba(124,58,237,.06)', border: '1px solid rgba(124,58,237,.2)' }}
-              >
-                {newsState?.error && (
-                  <p className="mb-3 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">{newsState.error}</p>
+            {/* Category management */}
+            <div className="rounded-2xl p-4" style={{ background: 'var(--s2)', border: '1px solid var(--bd)' }}>
+              <p className="mb-3 text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--tx3)' }}>קטגוריות חדשות</p>
+              <form action={newsCatAction} className="mb-3 flex flex-wrap gap-2">
+                {newsCatState?.error && (
+                  <p className="w-full text-xs text-red-400">{newsCatState.error}</p>
                 )}
-                <div className="space-y-3">
-                  <div>
-                    <label className={labelCls}>כותרת</label>
-                    <input name="title" required className={inputCls} />
-                  </div>
-                  <div>
-                    <label className={labelCls}>תוכן</label>
-                    <textarea name="content" required rows={3} className={`${inputCls} resize-none`} style={{ borderColor: 'rgba(124,58,237,.3)' }} />
-                  </div>
-                  <div>
-                    <label className={labelCls}>קישור לתמונה (אופציונלי)</label>
-                    <input name="image_url" type="url" className={inputCls} dir="ltr" />
-                  </div>
+                <input name="name" required placeholder="שם קטגוריה" className={`${inputCls} flex-1 min-w-32`} />
+                <div className="flex items-center gap-2 rounded-xl border px-3" style={{ borderColor: 'rgba(124,58,237,.3)', background: 'var(--inp)' }}>
+                  <label className="text-xs font-semibold" style={{ color: 'var(--tx3)' }}>צבע</label>
+                  <input name="color" type="color" defaultValue="#6B21A8" className="h-7 w-10 cursor-pointer rounded border-0 bg-transparent" />
                 </div>
-                <button
-                  type="submit"
-                  disabled={newsPending}
-                  className="mt-4 rounded-xl px-5 py-2 text-sm font-bold text-white transition hover:opacity-90 disabled:opacity-50"
-                  style={{ background: 'linear-gradient(135deg, #7c3aed, #6d28d9)' }}
-                >
-                  {newsPending ? 'מפרסם...' : 'פרסם'}
+                <button type="submit" disabled={newsCatPending}
+                  className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-bold text-white transition hover:opacity-90 disabled:opacity-50"
+                  style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)' }}>
+                  <Plus size={13} /> הוסף
                 </button>
               </form>
-            )}
+              <div className="flex flex-wrap gap-2">
+                {newsCategories.map(cat => (
+                  <div key={cat.id} className="flex items-center gap-1.5 rounded-full px-3 py-1"
+                    style={{ background: cat.color + '22', border: `1px solid ${cat.color}44` }}>
+                    <span className="text-xs font-semibold" style={{ color: cat.color }}>{cat.name}</span>
+                    <button onClick={() => startTransition(async () => { await deleteNewsCategory(cat.id) })}
+                      className="transition hover:opacity-60" style={{ color: cat.color }}>
+                      <X size={11} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
 
+            {/* Publish form */}
+            <div>
+              <div className="mb-4 flex items-center justify-between">
+                <p className="text-sm font-bold" style={{ color: 'var(--tx2)' }}>{newsItems.length} פריטי חדשות</p>
+                <button onClick={() => { setShowNewsForm(s => !s); setNewsImgUrl(null) }}
+                  className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold text-white transition hover:opacity-90"
+                  style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)' }}>
+                  {showNewsForm ? <X size={14} /> : <Plus size={14} />}
+                  {showNewsForm ? 'ביטול' : 'פרסם חדשות'}
+                </button>
+              </div>
+
+              {showNewsForm && (
+                <form action={async (fd: FormData) => {
+                  if (newsImgUrl) fd.set('image_url', newsImgUrl)
+                  await newsAction(fd)
+                  setNewsImgUrl(null)
+                  setShowNewsForm(false)
+                }}
+                  className="mb-5 rounded-2xl p-5"
+                  style={{ background: 'rgba(124,58,237,.06)', border: '1px solid rgba(124,58,237,.2)' }}
+                >
+                  {newsState?.error && (
+                    <p className="mb-3 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">{newsState.error}</p>
+                  )}
+                  <div className="space-y-3">
+                    <div>
+                      <label className={labelCls}>כותרת</label>
+                      <input name="title" required className={inputCls} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>תוכן</label>
+                      <textarea name="content" required rows={4} className={`${inputCls} resize-none`} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>קטגוריה</label>
+                      <select name="category_id" className={inputCls}>
+                        <option value="">ללא קטגוריה</option>
+                        {newsCategories.map(cat => (
+                          <option key={cat.id} value={cat.id}>{cat.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className={labelCls}>תמונה</label>
+                      <div className="flex items-center gap-3">
+                        <button type="button"
+                          onClick={() => newsImgRef.current?.click()}
+                          disabled={newsImgUploading}
+                          className="flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold transition hover:opacity-80 disabled:opacity-50"
+                          style={{ borderColor: 'rgba(124,58,237,.3)', color: 'var(--tx2)', background: 'var(--inp)' }}>
+                          <ImageIcon size={14} />
+                          {newsImgUploading ? 'מעלה...' : newsImgUrl ? 'החלף תמונה' : 'העלה תמונה'}
+                        </button>
+                        {newsImgUrl && (
+                          <div className="flex items-center gap-2">
+                            <img src={newsImgUrl} alt="" className="h-10 w-16 rounded-lg object-cover" style={{ border: '1px solid var(--bd)' }} />
+                            <button type="button" onClick={() => setNewsImgUrl(null)}
+                              className="text-xs transition hover:opacity-60" style={{ color: 'var(--tx3)' }}>הסר</button>
+                          </div>
+                        )}
+                      </div>
+                      <input ref={newsImgRef} type="file" accept="image/*" className="hidden"
+                        onChange={async e => {
+                          const file = e.target.files?.[0]
+                          if (!file) return
+                          setNewsImgUploading(true)
+                          const { signedUrl, publicUrl, error } = await getNewsImageUploadUrl()
+                          if (!error && signedUrl && publicUrl) {
+                            await fetch(signedUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } })
+                            setNewsImgUrl(publicUrl)
+                          }
+                          setNewsImgUploading(false)
+                          if (newsImgRef.current) newsImgRef.current.value = ''
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <button type="submit" disabled={newsPending}
+                    className="mt-4 rounded-xl px-5 py-2 text-sm font-bold text-white transition hover:opacity-90 disabled:opacity-50"
+                    style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)' }}>
+                    {newsPending ? 'מפרסם...' : 'פרסם'}
+                  </button>
+                </form>
+              )}
+            </div>
+
+            {/* News list */}
             <div className="space-y-3">
               {newsItems.length === 0 ? (
-                <div className="flex flex-col items-center gap-3 rounded-2xl py-16 text-center" style={{ border: '2px dashed var(--bd)', background: 'var(--inp)' }}>
-                  <Newspaper size={28} className="text-slate-600" />
-                  <p className="text-sm text-slate-500">אין חדשות עדיין</p>
+                <div className="flex flex-col items-center gap-3 rounded-2xl py-16 text-center"
+                  style={{ border: '2px dashed var(--bd)', background: 'var(--inp)' }}>
+                  <Newspaper size={28} style={{ color: 'var(--tx3)' }} />
+                  <p className="text-sm" style={{ color: 'var(--tx3)' }}>אין חדשות עדיין</p>
                 </div>
               ) : (
-                newsItems.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex items-start justify-between gap-4 rounded-2xl p-4"
-                    style={{ background: 'var(--s2)', border: '1px solid var(--bd)' }}
-                  >
+                newsItems.map(item => (
+                  <div key={item.id} className="flex items-start gap-3 rounded-2xl p-3"
+                    style={{ background: 'var(--s2)', border: '1px solid var(--bd)' }}>
+                    {item.image_url
+                      ? <img src={item.image_url} alt="" className="h-14 w-20 shrink-0 rounded-xl object-cover" style={{ border: '1px solid var(--bd)' }} />
+                      : <div className="flex h-14 w-20 shrink-0 items-center justify-center rounded-xl" style={{ background: 'var(--inp)' }}>
+                          <Newspaper size={18} style={{ color: 'var(--tx3)' }} />
+                        </div>
+                    }
                     <div className="min-w-0 flex-1">
-                      <p className="font-semibold line-clamp-1" style={{ color: 'var(--tx)' }}>{item.title}</p>
-                      <p className="mt-0.5 text-xs line-clamp-2" style={{ color: 'var(--tx2)' }}>{item.content}</p>
-                      <p className="mt-1 text-[11px]" style={{ color: 'var(--tx3)' }}>
-                        {new Date(item.created_at).toLocaleDateString('he-IL')}
-                      </p>
+                      <div className="mb-0.5 flex items-center gap-2">
+                        {item.news_categories && (
+                          <span className="rounded-full px-2 py-0.5 text-[10px] font-bold"
+                            style={{ background: item.news_categories.color + '22', color: item.news_categories.color }}>
+                            {item.news_categories.name}
+                          </span>
+                        )}
+                        <span className="text-[11px]" style={{ color: 'var(--tx3)' }}>
+                          {new Date(item.created_at).toLocaleDateString('he-IL')}
+                        </span>
+                      </div>
+                      <p className="font-semibold line-clamp-1 text-sm" style={{ color: 'var(--tx)' }}>{item.title}</p>
+                      <p className="text-xs line-clamp-1" style={{ color: 'var(--tx2)' }}>{item.content}</p>
                     </div>
-                    <button
-                      disabled={isPending}
+                    <button disabled={isPending}
                       onClick={() => startTransition(async () => { await deleteNews(item.id) })}
-                      className="shrink-0 rounded-lg p-1.5 text-slate-600 transition hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50"
-                    >
+                      className="shrink-0 rounded-lg p-1.5 transition hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50"
+                      style={{ color: 'var(--tx3)' }}>
                       <Trash2 size={14} />
                     </button>
                   </div>

@@ -92,14 +92,23 @@ export type Notification = {
   created_at: string
 }
 
+export type NewsCategory = {
+  id: string
+  name: string
+  color: string
+  created_at: string
+}
+
 export type NewsItem = {
   id: string
   title: string
   content: string
   image_url: string | null
+  category_id: string | null
   created_by: string
   created_at: string
   profiles?: Profile
+  news_categories?: NewsCategory | null
 }
 
 export type Asset = {
