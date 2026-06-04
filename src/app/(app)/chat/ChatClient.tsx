@@ -304,36 +304,21 @@ function InputBar({ value, onChange, onKeyDown, onSend, isSending, textRef, onAt
   )
 }
 
-// Singleton AudioContext — browsers suspend a new context until a user gesture.
-// We create it once (lazily on first interaction) and reuse it across all pings.
-let _audioCtx: AudioContext | null = null
-
-function getAudioCtx(): AudioContext {
-  if (!_audioCtx) {
-    _audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)()
-  }
-  return _audioCtx
-}
-
-async function playPing() {
+function playPing() {
   try {
-    console.log('🔔 playing ping')
-    const ctx = getAudioCtx()
-    // Resume in case the browser suspended the context (e.g. tab was inactive)
-    if (ctx.state === 'suspended') await ctx.resume()
+    const ctx = new AudioContext()
     const osc = ctx.createOscillator()
     const gain = ctx.createGain()
     osc.connect(gain)
     gain.connect(ctx.destination)
-    osc.frequency.setValueAtTime(880, ctx.currentTime)
-    osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.3)
-    gain.gain.setValueAtTime(0.25, ctx.currentTime)
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4)
+    osc.frequency.setValueAtTime(800, ctx.currentTime)
+    osc.frequency.exponentialRampToValueAtTime(400, ctx.currentTime + 0.1)
+    gain.gain.setValueAtTime(0.3, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3)
     osc.start(ctx.currentTime)
-    osc.stop(ctx.currentTime + 0.4)
-  } catch (e) {
-    console.warn('playPing error:', e)
-  }
+    osc.stop(ctx.currentTime + 0.3)
+    osc.onended = () => ctx.close()
+  } catch (e) { console.error('ping failed:', e) }
 }
 
 // ─────────────────────────────────────────────────────────
@@ -405,16 +390,7 @@ export default function ChatClient({
   }
 
   useEffect(() => {
-    // Restore mute preference after hydration
     try { if (localStorage.getItem('chatMuted') === '1') setIsMuted(true) } catch {}
-    // Warm up AudioContext on first user gesture so browsers allow playback later
-    const warm = () => { try { getAudioCtx() } catch {} }
-    window.addEventListener('click', warm, { once: true })
-    window.addEventListener('keydown', warm, { once: true })
-    return () => {
-      window.removeEventListener('click', warm)
-      window.removeEventListener('keydown', warm)
-    }
   }, [])
 
   // ── Refs ──
@@ -594,7 +570,10 @@ export default function ChatClient({
         const old = payload.old as { id: string }
         setCommunityMsgs(prev => prev.filter(m => m.id !== old.id))
       })
-      .subscribe()
+      .subscribe((status, err) => {
+        if (err) console.error('[rt-community] error:', err)
+        else console.log('[rt-community] status:', status)
+      })
     return () => { supabase.removeChannel(ch) }
   }, [generalTopicId, supabase])
 
@@ -621,7 +600,8 @@ export default function ChatClient({
   // ── Realtime: private messages ──
   useEffect(() => {
     let active = true
-    const ch = supabase.channel('rt-private')
+    // Use user-scoped channel name to avoid collisions when multiple tabs open
+    const ch = supabase.channel(`rt-private-${currentUserId}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'private_messages' }, (payload) => {
         if (!active) return
         const u = payload.new as PrivateMessage
@@ -655,7 +635,10 @@ export default function ChatClient({
           if (document.hidden || !atBottom) playPing()
         }
       })
-      .subscribe()
+      .subscribe((status, err) => {
+        if (err) console.error('[rt-private] error:', err)
+        else console.log('[rt-private] status:', status)
+      })
     return () => { active = false; supabase.removeChannel(ch) }
   }, [supabase, currentUserId])
 
