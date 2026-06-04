@@ -40,7 +40,7 @@ export default function FloatingNotifications({ currentUserId }: { currentUserId
       if (prev.some(n => n.id === item.id)) return prev
       return [item, ...prev].slice(0, 3)
     })
-    timersRef.current[item.id] = setTimeout(() => dismiss(item.id), 5000)
+    timersRef.current[item.id] = setTimeout(() => dismiss(item.id), 10000)
   }
 
   const dismiss = (id: string) => {

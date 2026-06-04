@@ -305,9 +305,6 @@ function InputBar({ value, onChange, onKeyDown, onSend, isSending, textRef, onAt
 }
 
 // ── Audio system ──────────────────────────────────────────
-// Singleton AudioContext reused across all sounds.
-// Incognito / strict browsers suspend new contexts until a
-// user gesture — we call unlockAudio() on first click/keydown.
 
 type SoundType = 'ping' | 'chime' | 'pop' | 'bell' | 'none'
 
@@ -321,54 +318,22 @@ const SOUND_OPTIONS: { value: SoundType; label: string; icon: string }[] = [
 
 const SOUND_PREF_PREFIX = 'sndPref_'
 
-let _ctx: AudioContext | null = null
-function getCtx() {
-  if (!_ctx || _ctx.state === 'closed') _ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
-  return _ctx
-}
-function unlockAudio() {
-  try { const c = getCtx(); if (c.state !== 'running') c.resume() } catch {}
-}
-
-async function playSound(type: SoundType) {
+function playSound(type: SoundType) {
   if (type === 'none') return
   try {
-    const ctx = getCtx()
-    if (ctx.state !== 'running') await ctx.resume()
-    const t = ctx.currentTime
-    if (type === 'ping') {
-      const osc = ctx.createOscillator(); const g = ctx.createGain()
-      osc.connect(g); g.connect(ctx.destination)
-      osc.frequency.setValueAtTime(800, t); osc.frequency.exponentialRampToValueAtTime(400, t + 0.1)
-      g.gain.setValueAtTime(0.3, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.3)
-      osc.start(t); osc.stop(t + 0.3)
-    } else if (type === 'chime') {
-      ;[523, 659, 784].forEach((freq, i) => {
-        const osc = ctx.createOscillator(); const g = ctx.createGain()
-        osc.type = 'sine'; osc.connect(g); g.connect(ctx.destination)
-        osc.frequency.value = freq
-        const s = t + i * 0.13
-        g.gain.setValueAtTime(0.18, s); g.gain.exponentialRampToValueAtTime(0.001, s + 0.28)
-        osc.start(s); osc.stop(s + 0.28)
-      })
-    } else if (type === 'pop') {
-      const osc = ctx.createOscillator(); const g = ctx.createGain()
-      osc.type = 'sine'; osc.connect(g); g.connect(ctx.destination)
-      osc.frequency.setValueAtTime(150, t); osc.frequency.exponentialRampToValueAtTime(600, t + 0.015)
-      g.gain.setValueAtTime(0.5, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.08)
-      osc.start(t); osc.stop(t + 0.08)
-    } else {
-      // bell — fundamental + 3rd harmonic
-      ;[440, 1320].forEach((freq, i) => {
-        const osc = ctx.createOscillator(); const g = ctx.createGain()
-        osc.type = 'sine'; osc.connect(g); g.connect(ctx.destination)
-        osc.frequency.value = freq
-        g.gain.setValueAtTime(i === 0 ? 0.18 : 0.06, t)
-        g.gain.exponentialRampToValueAtTime(0.001, t + (i === 0 ? 0.9 : 0.4))
-        osc.start(t); osc.stop(t + 0.9)
-      })
-    }
-  } catch (e) { console.error('sound error:', e) }
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    osc.frequency.setValueAtTime(800, ctx.currentTime)
+    osc.frequency.exponentialRampToValueAtTime(400, ctx.currentTime + 0.1)
+    gain.gain.setValueAtTime(0.3, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3)
+    osc.start(ctx.currentTime)
+    osc.stop(ctx.currentTime + 0.3)
+    osc.onended = () => ctx.close()
+  } catch {}
 }
 
 // ── SoundPicker mini-menu ─────────────────────────────────
@@ -490,13 +455,6 @@ export default function ChatClient({
       }
       if (Object.keys(prefs).length) setSoundPrefs(prefs)
     } catch {}
-    // Unlock AudioContext on first user gesture (critical for incognito)
-    window.addEventListener('click', unlockAudio, { once: true })
-    window.addEventListener('keydown', unlockAudio, { once: true })
-    return () => {
-      window.removeEventListener('click', unlockAudio)
-      window.removeEventListener('keydown', unlockAudio)
-    }
   }, [])
 
   // ── Refs ──

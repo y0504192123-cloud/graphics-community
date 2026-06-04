@@ -22,8 +22,8 @@ export default async function ThreadPage({ params }: Props) {
 
   const [catRes, threadRes, repliesRes, profileRes] = await Promise.all([
     admin.from('forum_categories').select('*').eq('id', categoryId).single(),
-    admin.from('forum_threads').select('*, profiles(id, full_name, username, avatar_url, role)').eq('id', threadId).single(),
-    admin.from('forum_replies').select('*, profiles(id, full_name, username, avatar_url, role)').eq('thread_id', threadId).order('created_at', { ascending: true }),
+    admin.from('forum_threads').select('*').eq('id', threadId).single(),
+    admin.from('forum_replies').select('*').eq('thread_id', threadId).order('created_at', { ascending: true }),
     admin.from('profiles').select('role').eq('id', user.id).single(),
   ])
 
@@ -31,10 +31,16 @@ export default async function ThreadPage({ params }: Props) {
   if (!threadRes.data) { console.error('[ThreadPage] threadRes error:', threadRes.error, 'threadId:', threadId); notFound() }
 
   const category = catRes.data as ForumCategory
-  const thread = threadRes.data as ForumThread & { profiles?: Profile }
-  const repliesRaw = (repliesRes.data ?? []) as (ForumReply & { profiles?: Profile })[]
   const currentProfile = profileRes.data as { role: string } | null
   const isAdmin = currentProfile?.role === 'admin'
+
+  // Fetch all author profiles in one query
+  const repliesRaw = (repliesRes.data ?? []) as ForumReply[]
+  const userIds = Array.from(new Set([threadRes.data!.user_id, ...repliesRaw.map(r => r.user_id)]))
+  const { data: profilesData } = await admin.from('profiles').select('id, full_name, username, avatar_url, role').in('id', userIds)
+  const profilesMap = Object.fromEntries((profilesData ?? []).map((p) => [p.id, p as unknown as Profile]))
+
+  const thread = { ...threadRes.data, profiles: profilesMap[threadRes.data!.user_id] ?? null } as ForumThread & { profiles?: Profile }
 
   // Fetch likes for current user
   const replyIds = repliesRaw.map(r => r.id)
@@ -54,9 +60,10 @@ export default async function ThreadPage({ params }: Props) {
 
   const replies = repliesRaw.map(r => ({
     ...r,
+    profiles: profilesMap[r.user_id] ?? null,
     user_liked: userLikedSet.has(r.id),
     like_count: likeCountMap[r.id] ?? 0,
-  }))
+  })) as (ForumReply & { profiles?: Profile; user_liked: boolean; like_count: number })[]
 
   // Increment views (fire and forget)
   incrementViews(threadId).catch(() => {})
