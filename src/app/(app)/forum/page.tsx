@@ -12,13 +12,19 @@ export default async function ForumPage() {
 
   const admin = createAdminClient()
 
-  const [catsRes, threadsRes, recentRes] = await Promise.all([
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+
+  const [catsRes, threadsRes, recentRes, weekRes] = await Promise.all([
     admin.from('forum_categories').select('*').order('sort_order', { ascending: true }),
     admin.from('forum_threads').select('id, category_id'),
     admin.from('forum_threads')
       .select('id, title, category_id, created_at, updated_at, profiles(full_name, username, avatar_url)')
       .order('updated_at', { ascending: false })
       .limit(6),
+    admin.from('forum_threads')
+      .select('id, title, category_id')
+      .gte('updated_at', weekAgo)
+      .limit(60),
   ])
 
   const categories = (catsRes.data ?? []) as ForumCategory[]
@@ -46,6 +52,19 @@ export default async function ForumPage() {
   }
 
   const recentThreads = (recentRes.data ?? []) as unknown as (ForumThread & { profiles?: Profile })[]
+
+  // Popular this week
+  const weekThreads = (weekRes.data ?? []) as { id: string; title: string; category_id: string }[]
+  const weekIds = weekThreads.map(t => t.id)
+  const weekReplyMap: Record<string, number> = {}
+  if (weekIds.length) {
+    const { data: weekReplies } = await admin.from('forum_replies').select('thread_id').in('thread_id', weekIds)
+    for (const r of weekReplies ?? []) weekReplyMap[r.thread_id] = (weekReplyMap[r.thread_id] ?? 0) + 1
+  }
+  const popularThisWeek = [...weekThreads]
+    .filter(t => (weekReplyMap[t.id] ?? 0) > 0)
+    .sort((a, b) => (weekReplyMap[b.id] ?? 0) - (weekReplyMap[a.id] ?? 0))
+    .slice(0, 5)
 
   const totalThreads = allThreads.length
   const totalReplies = Object.values(replyCounts).reduce((a, b) => a + b, 0)
@@ -153,6 +172,45 @@ export default async function ForumPage() {
                       </div>
                     </div>
                   </Link>
+                )
+              })}
+            </div>
+          </section>
+        )}
+
+        {/* Popular this week */}
+        {popularThisWeek.length > 0 && (
+          <section>
+            <h2 className="mb-4 flex items-center gap-2 text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--tx3)' }}>
+              <TrendingUp size={12} />
+              פופולרי השבוע
+            </h2>
+            <div className="overflow-hidden rounded-2xl" style={{ background: 'var(--s1)', border: '1px solid var(--bd)' }}>
+              {popularThisWeek.map((thread, i) => {
+                const cat = categories.find(c => c.id === thread.category_id)
+                const MEDALS = ['🥇', '🥈', '🥉', '4', '5']
+                return (
+                  <a
+                    key={thread.id}
+                    href={`/forum/${thread.category_id}/${thread.id}`}
+                    className="group flex items-center gap-3.5 px-5 py-3.5 transition hover:bg-purple-50/40"
+                    style={{ borderTop: i > 0 ? '1px solid var(--bd)' : undefined, display: 'flex' }}
+                  >
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl text-sm font-bold"
+                      style={{ background: i < 3 ? 'rgba(124,58,237,.08)' : 'var(--inp)', color: i < 3 ? '#7c3aed' : 'var(--tx3)', border: '1px solid var(--bd)' }}>
+                      {i < 3 ? MEDALS[i] : i + 1}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold transition-colors group-hover:text-purple-600" style={{ color: 'var(--tx)' }}>
+                        {thread.title}
+                      </p>
+                      {cat && <p className="mt-0.5 text-[11px]" style={{ color: 'var(--tx3)' }}>{cat.icon} {cat.name}</p>}
+                    </div>
+                    <span className="flex items-center gap-1 text-xs font-bold text-purple-600 shrink-0">
+                      <MessageSquare size={12} />
+                      {weekReplyMap[thread.id] ?? 0}
+                    </span>
+                  </a>
                 )
               })}
             </div>

@@ -5,13 +5,14 @@ import { useRouter } from 'next/navigation'
 import {
   Heart, Trash2, Edit2, CornerUpLeft, CheckCircle2, ChevronLeft,
   ImageIcon, X, Bold, Italic, List, Quote, ZoomIn, ChevronRight,
-  AlertCircle,
+  AlertCircle, Bell, BellOff, Link2, Check, Tag,
 } from 'lucide-react'
 import type { ForumThread, ForumReply, Profile } from '@/types'
 import ReportButton from '@/components/ReportButton'
 import {
   createReply, editReply, deleteReply, deleteThread,
   toggleLike, markBestAnswer, getForumImageUploadUrl,
+  editThread, toggleFollowThread,
 } from '../../actions'
 
 // ── Helpers ───────────────────────────────────────────────
@@ -38,7 +39,6 @@ function grad(uid: string) {
   return GRADS[Math.abs(h) % GRADS.length]
 }
 
-// Read images from new `images` array column, fallback to legacy `image_url`
 function getPostImages(obj: { images?: string[] | null; image_url?: string | null }): string[] {
   if (Array.isArray(obj.images) && obj.images.length > 0) return obj.images
   if (!obj.image_url) return []
@@ -48,19 +48,14 @@ function getPostImages(obj: { images?: string[] | null; image_url?: string | nul
   } catch { return [obj.image_url] }
 }
 
-// ── Rich text (dangerouslySetInnerHTML) ───────────────────
+// ── Rich text ─────────────────────────────────────────────
 
 function esc(s: string) {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
 function inline(text: string): string {
-  const escaped = esc(text)
-  return escaped
+  return esc(text)
     .replace(/\*\*(.+?)\*\*/g, '<strong style="font-weight:700">$1</strong>')
     .replace(/\*([^*\n]+)\*/g, '<em>$1</em>')
     .replace(/`([^`\n]+)`/g, '<code style="background:rgba(124,58,237,.12);color:#7c3aed;padding:1px 6px;border-radius:4px;font-size:11.5px;font-family:monospace">$1</code>')
@@ -70,27 +65,19 @@ function buildHtml(content: string): string {
   const lines = content.split('\n')
   const parts: string[] = []
   let listItems: string[] = []
-
   const flushList = () => {
     if (!listItems.length) return
-    const lis = listItems.map(li => `<li style="margin:3px 0;color:var(--tx)">${li}</li>`).join('')
-    parts.push(`<ul style="margin:6px 0;padding-inline-start:20px;list-style-type:disc">${lis}</ul>`)
+    parts.push(`<ul style="margin:6px 0;padding-inline-start:20px;list-style-type:disc">${listItems.map(li => `<li style="margin:3px 0;color:var(--tx)">${li}</li>`).join('')}</ul>`)
     listItems = []
   }
-
   for (const line of lines) {
     if (line.startsWith('> ')) {
       flushList()
-      parts.push(
-        `<div style="border-inline-start:3px solid #a78bfa;margin:6px 0;padding:6px 12px;` +
-        `background:rgba(124,58,237,.05);border-radius:0 8px 8px 0;font-style:italic;color:var(--tx2);font-size:13px">` +
-        `${inline(line.slice(2))}</div>`
-      )
+      parts.push(`<div style="border-inline-start:3px solid #a78bfa;margin:6px 0;padding:6px 12px;background:rgba(124,58,237,.05);border-radius:0 8px 8px 0;font-style:italic;color:var(--tx2);font-size:13px">${inline(line.slice(2))}</div>`)
     } else if (line.startsWith('- ') || line.startsWith('• ')) {
       listItems.push(inline(line.slice(2)))
     } else if (line === '') {
-      flushList()
-      parts.push('<div style="height:6px"></div>')
+      flushList(); parts.push('<div style="height:6px"></div>')
     } else {
       flushList()
       parts.push(`<p style="margin:3px 0;line-height:1.75;color:var(--tx);white-space:pre-wrap">${inline(line)}</p>`)
@@ -101,12 +88,7 @@ function buildHtml(content: string): string {
 }
 
 function RichContent({ content }: { content: string }) {
-  return (
-    <div
-      className="text-sm"
-      dangerouslySetInnerHTML={{ __html: buildHtml(content) }}
-    />
-  )
+  return <div className="text-sm" dangerouslySetInnerHTML={{ __html: buildHtml(content) }} />
 }
 
 // ── Lightbox ──────────────────────────────────────────────
@@ -124,45 +106,26 @@ function Lightbox({ images, startIdx, onClose }: { images: string[]; startIdx: n
   }, [images.length, onClose])
 
   return (
-    <div
-      className="fixed inset-0 z-[400] flex items-center justify-center"
+    <div className="fixed inset-0 z-[400] flex items-center justify-center"
       style={{ background: 'rgba(0,0,0,.93)', backdropFilter: 'blur(12px)' }}
-      onClick={onClose}
-    >
-      <button
-        onClick={onClose}
+      onClick={onClose}>
+      <button onClick={onClose}
         className="absolute end-5 top-5 z-10 flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-white/15"
-        style={{ color: 'rgba(255,255,255,.8)' }}
-      >
+        style={{ color: 'rgba(255,255,255,.8)' }}>
         <X size={18} />
       </button>
       <div onClick={e => e.stopPropagation()} className="flex flex-col items-center gap-5 px-6">
-        <img
-          src={images[idx]}
-          alt=""
-          style={{
-            maxWidth: '90vw',
-            maxHeight: '78vh',
-            objectFit: 'contain',
-            borderRadius: '14px',
-            boxShadow: '0 32px 100px rgba(0,0,0,.7)',
-          }}
-        />
+        <img src={images[idx]} alt=""
+          style={{ maxWidth: '90vw', maxHeight: '78vh', objectFit: 'contain', borderRadius: '14px', boxShadow: '0 32px 100px rgba(0,0,0,.7)' }} />
         {images.length > 1 && (
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => setIdx(i => (i - 1 + images.length) % images.length)}
-              className="flex h-8 w-8 items-center justify-center rounded-full text-white/70 transition hover:bg-white/15 hover:text-white"
-            >
+            <button onClick={() => setIdx(i => (i - 1 + images.length) % images.length)}
+              className="flex h-8 w-8 items-center justify-center rounded-full text-white/70 transition hover:bg-white/15 hover:text-white">
               <ChevronRight size={16} />
             </button>
-            <span className="min-w-[44px] text-center text-xs" style={{ color: 'rgba(255,255,255,.5)' }}>
-              {idx + 1} / {images.length}
-            </span>
-            <button
-              onClick={() => setIdx(i => (i + 1) % images.length)}
-              className="flex h-8 w-8 items-center justify-center rounded-full text-white/70 transition hover:bg-white/15 hover:text-white"
-            >
+            <span className="min-w-[44px] text-center text-xs" style={{ color: 'rgba(255,255,255,.5)' }}>{idx + 1} / {images.length}</span>
+            <button onClick={() => setIdx(i => (i + 1) % images.length)}
+              className="flex h-8 w-8 items-center justify-center rounded-full text-white/70 transition hover:bg-white/15 hover:text-white">
               <ChevronLeft size={16} />
             </button>
           </div>
@@ -172,53 +135,26 @@ function Lightbox({ images, startIdx, onClose }: { images: string[]; startIdx: n
   )
 }
 
-// ── Image Grid (with built-in lightbox) ───────────────────
+// ── Image Grid ────────────────────────────────────────────
 
 function ImageGrid({ images }: { images: string[] }) {
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null)
   if (!images.length) return null
-
-  const count = images.length
-  const cols = count === 1 ? 1 : count === 2 ? 2 : count === 3 ? 3 : 2
-
+  const cols = images.length === 1 ? 1 : images.length === 2 ? 2 : 3
   return (
     <>
-      <div
-        className="mt-3 grid gap-1.5"
-        style={{
-          gridTemplateColumns: `repeat(${cols}, 1fr)`,
-          maxWidth: count === 1 ? '100%' : '440px',
-        }}
-      >
+      <div className="mt-3 grid gap-1.5" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)`, maxWidth: images.length === 1 ? '100%' : '440px' }}>
         {images.map((url, i) => (
-          <div
-            key={i}
-            className="group/img relative cursor-zoom-in overflow-hidden rounded-xl"
-            onClick={() => setLightboxIdx(i)}
-          >
-            <img
-              src={url}
-              alt=""
-              style={{
-                width: '100%',
-                aspectRatio: count === 1 ? 'auto' : '1',
-                maxHeight: count === 1 ? '380px' : undefined,
-                objectFit: count === 1 ? 'contain' : 'cover',
-                display: 'block',
-              }}
-            />
-            <div
-              className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover/img:opacity-100"
-              style={{ background: 'rgba(0,0,0,.28)' }}
-            >
+          <div key={i} className="group/img relative cursor-zoom-in overflow-hidden rounded-xl" onClick={() => setLightboxIdx(i)}>
+            <img src={url} alt=""
+              style={{ width: '100%', aspectRatio: images.length === 1 ? 'auto' : '1', maxHeight: images.length === 1 ? '380px' : undefined, objectFit: images.length === 1 ? 'contain' : 'cover', display: 'block' }} />
+            <div className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover/img:opacity-100" style={{ background: 'rgba(0,0,0,.28)' }}>
               <ZoomIn size={20} className="text-white drop-shadow-md" />
             </div>
           </div>
         ))}
       </div>
-      {lightboxIdx !== null && (
-        <Lightbox images={images} startIdx={lightboxIdx} onClose={() => setLightboxIdx(null)} />
-      )}
+      {lightboxIdx !== null && <Lightbox images={images} startIdx={lightboxIdx} onClose={() => setLightboxIdx(null)} />}
     </>
   )
 }
@@ -238,28 +174,88 @@ function Avatar({ profile, uid, size = 10 }: { profile?: Profile | null; uid: st
   )
 }
 
+// ── Tags chips ────────────────────────────────────────────
+
+function TagsInput({ tags, onChange }: { tags: string[]; onChange: (t: string[]) => void }) {
+  const [input, setInput] = useState('')
+  const addTag = () => {
+    const t = input.trim().replace(/^#/, '').slice(0, 30)
+    if (t && !tags.includes(t) && tags.length < 8) onChange([...tags, t])
+    setInput('')
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 rounded-xl px-3 py-2 min-h-[40px]"
+      style={{ background: 'var(--inp)', border: '1px solid var(--bd)' }}>
+      <Tag size={12} style={{ color: 'var(--tx3)' }} className="shrink-0" />
+      {tags.map(t => (
+        <span key={t} className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold"
+          style={{ background: 'rgba(124,58,237,.1)', color: '#7c3aed', border: '1px solid rgba(124,58,237,.2)' }}>
+          #{t}
+          <button type="button" onClick={() => onChange(tags.filter(x => x !== t))} className="hover:text-red-500 transition"><X size={9} /></button>
+        </span>
+      ))}
+      <input value={input} onChange={e => setInput(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addTag() }
+          if (e.key === 'Backspace' && !input && tags.length) onChange(tags.slice(0, -1))
+        }}
+        onBlur={addTag}
+        placeholder={tags.length === 0 ? 'הוסף תגיות...' : ''}
+        className="flex-1 min-w-[80px] bg-transparent text-xs outline-none placeholder:text-slate-400"
+        style={{ color: 'var(--tx)' }} />
+    </div>
+  )
+}
+
+// ── Mini profile popup ────────────────────────────────────
+
+function MiniProfilePopup({ profile, uid, onClose }: { profile: Profile; uid: string; onClose: () => void }) {
+  return (
+    <>
+      <div className="fixed inset-0 z-30" onClick={onClose} />
+      <div className="absolute start-0 top-full z-40 mt-1 w-60 rounded-2xl p-4 shadow-xl"
+        style={{ background: 'var(--s1)', border: '1px solid var(--bd)' }}>
+        <div className="flex items-center gap-3 mb-3">
+          <Avatar profile={profile} uid={uid} size={11} />
+          <div className="min-w-0 flex-1">
+            <p className="font-bold text-sm truncate" style={{ color: 'var(--tx)' }}>{dName(profile)}</p>
+            {profile.role === 'admin' && (
+              <span className="text-[10px] font-bold" style={{ color: '#db2777' }}>מנהל</span>
+            )}
+          </div>
+        </div>
+        {profile.specialization && <p className="text-xs mb-2" style={{ color: 'var(--tx3)' }}>{profile.specialization}</p>}
+        {profile.bio && <p className="text-xs mb-3 line-clamp-2" style={{ color: 'var(--tx2)' }}>{profile.bio}</p>}
+        <div className="flex gap-2">
+          <a href={`/profile/${uid}`}
+            className="flex-1 text-center rounded-lg py-1.5 text-xs font-semibold transition hover:opacity-80"
+            style={{ background: 'var(--inp)', border: '1px solid var(--bd)', color: 'var(--tx2)' }}>
+            פרופיל
+          </a>
+          <a href={`/chat?dm=${uid}`}
+            className="flex-1 text-center rounded-lg py-1.5 text-xs font-bold text-white transition hover:opacity-90"
+            style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)' }}>
+            הודעה
+          </a>
+        </div>
+      </div>
+    </>
+  )
+}
+
 // ── Reply Editor ──────────────────────────────────────────
 
 type EditorProps = {
-  value: string
-  onChange: (v: string) => void
-  quotedText: string
-  onClearQuote: () => void
-  imageFiles: File[]
-  imagePreviews: string[]
-  onAddImage: (f: File) => void
-  onRemoveImage: (i: number) => void
-  onSubmit: () => void
-  isSubmitting: boolean
+  value: string; onChange: (v: string) => void
+  quotedText: string; onClearQuote: () => void
+  imageFiles: File[]; imagePreviews: string[]
+  onAddImage: (f: File) => void; onRemoveImage: (i: number) => void
+  onSubmit: () => void; isSubmitting: boolean
   uploadError: string | null
   fileRef: React.RefObject<HTMLInputElement | null>
 }
 
-function ReplyEditor({
-  value, onChange, quotedText, onClearQuote,
-  imageFiles, imagePreviews, onAddImage, onRemoveImage,
-  onSubmit, isSubmitting, uploadError, fileRef,
-}: EditorProps) {
+function ReplyEditor({ value, onChange, quotedText, onClearQuote, imageFiles, imagePreviews, onAddImage, onRemoveImage, onSubmit, isSubmitting, uploadError, fileRef }: EditorProps) {
   const taRef = useRef<HTMLTextAreaElement>(null)
 
   const insertFormat = (prefix: string, suffix = prefix, placeholder = 'טקסט') => {
@@ -270,10 +266,7 @@ function ReplyEditor({
     onChange(value.slice(0, s) + ins + value.slice(e2))
     requestAnimationFrame(() => {
       el.focus()
-      el.setSelectionRange(
-        sel ? s + ins.length : s + prefix.length,
-        sel ? s + ins.length : s + prefix.length + placeholder.length
-      )
+      el.setSelectionRange(sel ? s + ins.length : s + prefix.length, sel ? s + ins.length : s + prefix.length + placeholder.length)
     })
   }
 
@@ -286,24 +279,17 @@ function ReplyEditor({
   }
 
   const handlePaste = (e: React.ClipboardEvent) => {
-    Array.from(e.clipboardData.items)
-      .filter(i => i.type.startsWith('image/'))
-      .forEach(i => { const f = i.getAsFile(); if (f) onAddImage(f) })
+    Array.from(e.clipboardData.items).filter(i => i.type.startsWith('image/')).forEach(i => { const f = i.getAsFile(); if (f) onAddImage(f) })
   }
 
   const canSend = (value.trim() || quotedText || imageFiles.length > 0) && !isSubmitting
 
   return (
     <div className="overflow-hidden rounded-2xl" style={{ background: 'var(--s1)', border: '1px solid var(--bd)', boxShadow: '0 2px 12px rgba(0,0,0,.04)' }}>
-      {/* Header */}
-      <div className="flex items-center gap-2 border-b px-4 py-2.5"
-        style={{ borderColor: 'var(--bd)', background: 'var(--inp)' }}>
+      <div className="flex items-center gap-2 border-b px-4 py-2.5" style={{ borderColor: 'var(--bd)', background: 'var(--inp)' }}>
         <span className="text-xs font-bold" style={{ color: 'var(--tx)' }}>הוסף תגובה</span>
       </div>
-
-      {/* Toolbar */}
-      <div className="flex items-center gap-0.5 border-b px-3 py-1.5"
-        style={{ borderColor: 'var(--bd)', background: 'var(--inp)' }}>
+      <div className="flex items-center gap-0.5 border-b px-3 py-1.5" style={{ borderColor: 'var(--bd)', background: 'var(--inp)' }}>
         {([
           { icon: <Bold size={12} strokeWidth={2.5} />, fn: () => insertFormat('**', '**', 'מודגש'), title: 'מודגש' },
           { icon: <Italic size={12} />, fn: () => insertFormat('*', '*', 'נטוי'), title: 'נטוי' },
@@ -312,9 +298,7 @@ function ReplyEditor({
         ] as const).map((btn, i) => (
           <button key={i} type="button" onClick={btn.fn} title={btn.title}
             className="flex h-7 w-7 items-center justify-center rounded-lg transition hover:bg-purple-100 hover:text-purple-600"
-            style={{ color: 'var(--tx3)' }}>
-            {btn.icon}
-          </button>
+            style={{ color: 'var(--tx3)' }}>{btn.icon}</button>
         ))}
         <div className="mx-1.5 h-3.5 w-px" style={{ background: 'var(--bd)' }} />
         <button type="button" onClick={() => fileRef.current?.click()}
@@ -328,42 +312,29 @@ function ReplyEditor({
       </div>
 
       <div className="p-4 space-y-3" onPaste={handlePaste}>
-        {/* Quote preview */}
         {quotedText && (
-          <div className="flex items-start gap-2 rounded-xl border-s-[3px] border-purple-400 px-3 py-2"
-            style={{ background: 'rgba(124,58,237,.05)' }}>
+          <div className="flex items-start gap-2 rounded-xl border-s-[3px] border-purple-400 px-3 py-2" style={{ background: 'rgba(124,58,237,.05)' }}>
             <CornerUpLeft size={12} className="mt-0.5 shrink-0 text-purple-500" />
             <p className="flex-1 truncate text-xs italic" style={{ color: 'var(--tx3)' }}>
               {quotedText.split('\n').find(l => l.startsWith('> **'))?.replace(/^> \*\*(.+?)\*\*:.*/, '$1') ?? 'ציטוט'}
             </p>
-            <button onClick={onClearQuote} className="shrink-0 rounded p-0.5 hover:bg-red-100" style={{ color: 'var(--tx3)' }}>
-              <X size={11} />
-            </button>
+            <button onClick={onClearQuote} className="shrink-0 rounded p-0.5 hover:bg-red-100" style={{ color: 'var(--tx3)' }}><X size={11} /></button>
           </div>
         )}
-
-        <textarea
-          ref={taRef}
-          value={value}
-          onChange={e => onChange(e.target.value)}
+        <textarea ref={taRef} value={value} onChange={e => onChange(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && e.ctrlKey && canSend) { e.preventDefault(); onSubmit() } }}
-          rows={5}
-          placeholder={'כתוב תגובה...\n\n**מודגש** · *נטוי* · - רשימה · > ציטוט'}
+          rows={5} placeholder={'כתוב תגובה...\n\n**מודגש** · *נטוי* · - רשימה · > ציטוט'}
           className="w-full resize-none rounded-xl px-4 py-3 text-sm outline-none transition placeholder:text-slate-400"
-          style={{ background: 'var(--inp)', border: '1px solid var(--bd)', color: 'var(--tx)', lineHeight: '1.75' }}
-        />
+          style={{ background: 'var(--inp)', border: '1px solid var(--bd)', color: 'var(--tx)', lineHeight: '1.75' }} />
 
         {imagePreviews.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {imagePreviews.map((src, idx) => (
               <div key={idx} className="group/th relative">
-                <img src={src} alt=""
-                  style={{ width: '72px', height: '72px', objectFit: 'cover', borderRadius: '10px', display: 'block' }} />
+                <img src={src} alt="" style={{ width: '72px', height: '72px', objectFit: 'cover', borderRadius: '10px', display: 'block' }} />
                 <button onClick={() => onRemoveImage(idx)}
                   className="absolute -end-1.5 -top-1.5 rounded-full p-0.5 opacity-0 transition group-hover/th:opacity-100"
-                  style={{ background: 'rgba(0,0,0,.75)', color: 'white' }}>
-                  <X size={10} />
-                </button>
+                  style={{ background: 'rgba(0,0,0,.75)', color: 'white' }}><X size={10} /></button>
               </div>
             ))}
             <button type="button" onClick={() => fileRef.current?.click()}
@@ -388,7 +359,7 @@ function ReplyEditor({
             {isSubmitting ? 'שולח...' : 'שלח תגובה'}
           </button>
           <span className="text-[11px]" style={{ color: 'var(--tx3)' }}>
-            {imagePreviews.length > 0 ? `${imagePreviews.length} תמונות מצורפות` : 'Ctrl+V להדבקת תמונה'}
+            {imagePreviews.length > 0 ? `${imagePreviews.length} תמונות` : 'Ctrl+V להדבקת תמונה'}
           </span>
         </div>
       </div>
@@ -408,6 +379,9 @@ type Props = {
   isThreadAuthor: boolean
 }
 
+const REPLIES_PER_PAGE = 20
+const REPLY_DRAFT_KEY_PREFIX = 'replyDraft_'
+
 // ── Main ──────────────────────────────────────────────────
 
 export default function ThreadClient({
@@ -426,10 +400,82 @@ export default function ThreadClient({
   const [replyPreviews, setReplyPreviews] = useState<string[]>([])
   const replyFileRef = useRef<HTMLInputElement>(null)
 
-  // Sync replies when server data refreshes (replaces optimistic entries)
-  useEffect(() => { setReplies(initialReplies) }, [initialReplies])
+  // Thread edit state
+  const [editingThread, setEditingThread] = useState(false)
+  const [editTitle, setEditTitle] = useState(thread.title)
+  const [editContent, setEditContent] = useState(thread.content)
+  const [editTags, setEditTags] = useState<string[]>((thread.tags ?? []) as string[])
+  const [isSavingThread, setIsSavingThread] = useState(false)
+
+  // Follow state
+  const [isFollowing, setIsFollowing] = useState(((thread.followers ?? []) as string[]).includes(currentUserId))
+
+  // Pagination
+  const [page, setPage] = useState(0)
+
+  // Copy link
+  const [copiedId, setCopiedId] = useState<string | null>(null)
+
+  // Profile popup
+  const [profilePopup, setProfilePopup] = useState<{ profile: Profile; uid: string } | null>(null)
+
+  // Last read banner
+  const [lastReadReplyId, setLastReadReplyId] = useState<string | null>(null)
+  const [showLastReadBanner, setShowLastReadBanner] = useState(false)
 
   const refresh = () => { startTransition(() => { router.refresh() }) }
+
+  // Sync replies from server + reset pagination
+  useEffect(() => {
+    setReplies(initialReplies)
+  }, [initialReplies])
+
+  // Reply draft — restore on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(REPLY_DRAFT_KEY_PREFIX + thread.id)
+      if (saved) setReplyText(saved)
+    } catch {}
+  }, [thread.id])
+
+  // Reply draft — save on change
+  useEffect(() => {
+    try {
+      if (replyText) localStorage.setItem(REPLY_DRAFT_KEY_PREFIX + thread.id, replyText)
+      else localStorage.removeItem(REPLY_DRAFT_KEY_PREFIX + thread.id)
+    } catch {}
+  }, [replyText, thread.id])
+
+  // Scroll to hash on mount
+  useEffect(() => {
+    const hash = window.location.hash
+    if (hash) {
+      setTimeout(() => {
+        const el = document.getElementById(hash.slice(1))
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }, 200)
+    }
+  }, [])
+
+  // Last read tracking — check on mount
+  useEffect(() => {
+    try {
+      const savedId = localStorage.getItem(`lastRead_${thread.id}`)
+      if (!savedId || initialReplies.length === 0) return
+      const savedIdx = initialReplies.findIndex(r => r.id === savedId)
+      if (savedIdx >= 0 && savedIdx < initialReplies.length - 1) {
+        setLastReadReplyId(savedId)
+        setShowLastReadBanner(true)
+      }
+    } catch {}
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Mark as read when all replies are visible
+  const markRead = () => {
+    if (replies.length === 0) return
+    try { localStorage.setItem(`lastRead_${thread.id}`, replies[replies.length - 1].id) } catch {}
+    setShowLastReadBanner(false)
+  }
 
   const addReplyImage = (f: File) => {
     if (!f.type.startsWith('image/')) return
@@ -447,7 +493,6 @@ export default function ThreadClient({
     setIsSubmitting(true)
     setUploadError(null)
     try {
-      // Upload images first
       const urls: string[] = []
       for (const file of replyFiles) {
         const { signedUrl, publicUrl, error } = await getForumImageUploadUrl()
@@ -460,32 +505,50 @@ export default function ThreadClient({
         urls.push(publicUrl)
       }
 
-      // Optimistic update — show reply immediately before server round-trip
+      // Optimistic reply
       const optimistic: ForumReply = {
-        id: `opt-${Date.now()}`,
-        thread_id: thread.id,
-        user_id: currentUserId,
-        content: full || ' ',
-        images: urls.length > 0 ? urls : [],
-        image_url: null,
-        is_best_answer: false,
-        edited_at: null,
-        created_at: new Date().toISOString(),
-        profiles: currentProfile ?? undefined,
-        like_count: 0,
-        user_liked: false,
+        id: `opt-${Date.now()}`, thread_id: thread.id, user_id: currentUserId,
+        content: full || ' ', images: urls.length > 0 ? urls : [], image_url: null,
+        is_best_answer: false, edited_at: null, created_at: new Date().toISOString(),
+        profiles: currentProfile ?? undefined, like_count: 0, user_liked: false,
       }
-      setReplies(prev => [...prev, optimistic])
+      setReplies(prev => {
+        const next = [...prev, optimistic]
+        const neededPage = Math.ceil(next.length / REPLIES_PER_PAGE) - 1
+        setPage(p => Math.max(p, neededPage))
+        return next
+      })
       setReplyText(''); setQuotedText('')
       setReplyFiles([]); setReplyPreviews([])
       if (replyFileRef.current) replyFileRef.current.value = ''
+      try { localStorage.removeItem(REPLY_DRAFT_KEY_PREFIX + thread.id) } catch {}
 
-      // Save to DB; router.refresh() triggers useEffect to replace optimistic with real
       await createReply(thread.id, categoryId, full || ' ', urls.length > 0 ? urls : undefined)
+      markRead()
       refresh()
-    } finally {
-      setIsSubmitting(false)
-    }
+    } finally { setIsSubmitting(false) }
+  }
+
+  const handleEditThread = async () => {
+    if (!editTitle.trim() || !editContent.trim() || isSavingThread) return
+    setIsSavingThread(true)
+    await editThread(thread.id, categoryId, editTitle, editContent, editTags)
+    setEditingThread(false)
+    setIsSavingThread(false)
+    refresh()
+  }
+
+  const handleFollowThread = async () => {
+    const next = !isFollowing
+    setIsFollowing(next)
+    await toggleFollowThread(thread.id)
+  }
+
+  const copyReplyLink = async (replyId: string) => {
+    const url = window.location.href.split('#')[0] + '#reply-' + replyId
+    await navigator.clipboard.writeText(url)
+    setCopiedId(replyId)
+    setTimeout(() => setCopiedId(null), 2000)
   }
 
   const handleQuote = (reply: ForumReply) => {
@@ -526,39 +589,144 @@ export default function ThreadClient({
 
   const bestAnswer = replies.find(r => r.is_best_answer)
   const threadImages = getPostImages(thread)
+  const threadTags = (thread.tags ?? []) as string[]
+  const visibleReplies = replies.slice(0, (page + 1) * REPLIES_PER_PAGE)
+  const hasMore = replies.length > visibleReplies.length
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-6 space-y-4">
+
+      {/* Last read banner */}
+      {showLastReadBanner && lastReadReplyId && (
+        <div className="flex items-center gap-3 rounded-2xl px-5 py-3 shadow-lg"
+          style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)', color: 'white' }}>
+          <span className="flex-1 text-sm font-medium">יש תגובות חדשות מאז ביקורך האחרון</span>
+          <button
+            onClick={() => {
+              const nextIdx = replies.findIndex(r => r.id === lastReadReplyId) + 1
+              if (nextIdx > 0 && nextIdx < replies.length) {
+                const neededPage = Math.ceil((nextIdx + 1) / REPLIES_PER_PAGE) - 1
+                setPage(p => Math.max(p, neededPage))
+                setTimeout(() => {
+                  document.getElementById(`reply-${replies[nextIdx].id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                }, 100)
+              }
+              setShowLastReadBanner(false)
+            }}
+            className="rounded-lg px-3 py-1.5 text-xs font-bold transition hover:opacity-90"
+            style={{ background: 'rgba(255,255,255,.2)', border: '1px solid rgba(255,255,255,.3)' }}>
+            קפוץ לאחרון
+          </button>
+          <button onClick={() => setShowLastReadBanner(false)} className="p-1 hover:opacity-70"><X size={14} /></button>
+        </div>
+      )}
 
       {/* Original post */}
       <div className="overflow-hidden rounded-2xl" style={{ background: 'var(--s1)', border: '1px solid var(--bd)', boxShadow: '0 2px 12px rgba(0,0,0,.04)' }}>
         <div className="p-5">
           <div className="flex items-start gap-4">
-            <Avatar profile={thread.profiles} uid={thread.user_id} size={11} />
+            <div className="relative shrink-0">
+              <Avatar profile={thread.profiles} uid={thread.user_id} size={11} />
+            </div>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2 mb-1">
-                <span className="font-bold text-sm" style={{ color: 'var(--tx)' }}>{dName(thread.profiles)}</span>
+                <button
+                  className="relative font-bold text-sm hover:text-purple-600 transition"
+                  style={{ color: 'var(--tx)' }}
+                  onClick={() => thread.profiles && setProfilePopup(
+                    profilePopup?.uid === thread.user_id ? null : { profile: thread.profiles, uid: thread.user_id }
+                  )}>
+                  {dName(thread.profiles)}
+                  {profilePopup?.uid === thread.user_id && thread.profiles && (
+                    <MiniProfilePopup profile={profilePopup.profile} uid={profilePopup.uid} onClose={() => setProfilePopup(null)} />
+                  )}
+                </button>
                 {(thread.profiles as any)?.role === 'admin' && (
                   <span className="rounded-md px-1.5 py-0.5 text-[10px] font-bold" style={{ background: 'rgba(236,72,153,.12)', color: '#db2777' }}>מנהל</span>
                 )}
                 <span className="text-xs" style={{ color: 'var(--tx3)' }}>{fmtDate(thread.created_at)}</span>
               </div>
-              <RichContent content={thread.content} />
-              {threadImages.length > 0 && <ImageGrid images={threadImages} />}
-              <div className="mt-4 flex flex-wrap items-center gap-2">
-                {(thread.user_id === currentUserId || isAdmin) && (
-                  <button onClick={handleDeleteThread}
-                    className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs transition hover:bg-red-50 hover:text-red-500"
-                    style={{ color: 'var(--tx3)', border: '1px solid var(--bd)' }}>
-                    <Trash2 size={11} /> מחק נושא
+
+              {editingThread ? (
+                <div className="space-y-3 mt-2">
+                  <input
+                    value={editTitle}
+                    onChange={e => setEditTitle(e.target.value)}
+                    className="w-full rounded-xl px-4 py-2.5 text-sm font-semibold outline-none"
+                    style={{ background: 'var(--inp)', border: '2px solid #7c3aed', color: 'var(--tx)' }}
+                    placeholder="כותרת"
+                  />
+                  <textarea
+                    autoFocus
+                    value={editContent}
+                    onChange={e => setEditContent(e.target.value)}
+                    rows={6}
+                    className="w-full resize-none rounded-xl px-4 py-3 text-sm outline-none"
+                    style={{ background: 'var(--inp)', border: '2px solid #7c3aed', color: 'var(--tx)', lineHeight: '1.7' }}
+                  />
+                  <TagsInput tags={editTags} onChange={setEditTags} />
+                  <div className="flex gap-2">
+                    <button onClick={handleEditThread} disabled={isSavingThread}
+                      className="rounded-xl px-5 py-2 text-sm font-bold text-white disabled:opacity-40"
+                      style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)' }}>
+                      {isSavingThread ? 'שומר...' : 'שמור'}
+                    </button>
+                    <button onClick={() => setEditingThread(false)}
+                      className="rounded-xl px-4 py-2 text-sm" style={{ color: 'var(--tx3)', border: '1px solid var(--bd)' }}>
+                      ביטול
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <RichContent content={thread.content} />
+                  {threadImages.length > 0 && <ImageGrid images={threadImages} />}
+                  {threadTags.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      {threadTags.map(t => (
+                        <span key={t} className="rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                          style={{ background: 'rgba(124,58,237,.1)', color: '#7c3aed', border: '1px solid rgba(124,58,237,.2)' }}>
+                          #{t}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+
+              {!editingThread && (
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  {(isThreadAuthor || isAdmin) && (
+                    <button
+                      onClick={() => { setEditTitle(thread.title); setEditContent(thread.content); setEditTags((thread.tags ?? []) as string[]); setEditingThread(true) }}
+                      className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs transition hover:bg-amber-50 hover:text-amber-600"
+                      style={{ color: 'var(--tx3)', border: '1px solid var(--bd)' }}>
+                      <Edit2 size={11} /> ערוך נושא
+                    </button>
+                  )}
+                  {(thread.user_id === currentUserId || isAdmin) && (
+                    <button onClick={handleDeleteThread}
+                      className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs transition hover:bg-red-50 hover:text-red-500"
+                      style={{ color: 'var(--tx3)', border: '1px solid var(--bd)' }}>
+                      <Trash2 size={11} /> מחק נושא
+                    </button>
+                  )}
+                  {thread.user_id !== currentUserId && (
+                    <ReportButton contentType="forum_thread" contentId={thread.id}
+                      buttonClassName="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs transition hover:bg-red-50 hover:text-red-400"
+                      buttonStyle={{ color: 'var(--tx3)', border: '1px solid var(--bd)' }} />
+                  )}
+                  <button onClick={handleFollowThread}
+                    className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs transition ms-auto"
+                    style={{
+                      background: isFollowing ? 'rgba(124,58,237,.1)' : undefined,
+                      color: isFollowing ? '#7c3aed' : 'var(--tx3)',
+                      border: isFollowing ? '1px solid rgba(124,58,237,.3)' : '1px solid var(--bd)',
+                    }}>
+                    {isFollowing ? <><BellOff size={11} /> עוקב</> : <><Bell size={11} /> עקוב</>}
                   </button>
-                )}
-                {thread.user_id !== currentUserId && (
-                  <ReportButton contentType="forum_thread" contentId={thread.id}
-                    buttonClassName="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs transition hover:bg-red-50 hover:text-red-400"
-                    buttonStyle={{ color: 'var(--tx3)', border: '1px solid var(--bd)' }} />
-                )}
-              </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -599,10 +767,11 @@ export default function ThreadClient({
             {replies.length} תגובות
           </p>
           <div className="space-y-3">
-            {replies.map((reply, idx) => {
+            {visibleReplies.map((reply, idx) => {
               const isOwn = reply.user_id === currentUserId
               const isEditing = editingId === reply.id
-              const imgs = getPostImages(reply) // ← renamed to avoid shadowing
+              const imgs = getPostImages(reply)
+              const isCopied = copiedId === reply.id
 
               return (
                 <div key={reply.id} id={`reply-${reply.id}`}
@@ -619,7 +788,21 @@ export default function ThreadClient({
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2 mb-2.5">
-                        <span className="font-bold text-sm" style={{ color: 'var(--tx)' }}>{dName(reply.profiles)}</span>
+                        <div className="relative">
+                          <button
+                            className="font-bold text-sm hover:text-purple-600 transition"
+                            style={{ color: 'var(--tx)' }}
+                            onClick={() => reply.profiles && setProfilePopup(
+                              profilePopup?.uid === reply.user_id && profilePopup.profile === reply.profiles
+                                ? null
+                                : { profile: reply.profiles, uid: reply.user_id }
+                            )}>
+                            {dName(reply.profiles)}
+                          </button>
+                          {profilePopup?.uid === reply.user_id && reply.profiles && profilePopup.profile === reply.profiles && (
+                            <MiniProfilePopup profile={profilePopup.profile} uid={profilePopup.uid} onClose={() => setProfilePopup(null)} />
+                          )}
+                        </div>
                         {(reply.profiles as any)?.role === 'admin' && (
                           <span className="rounded-md px-1.5 py-0.5 text-[10px] font-bold" style={{ background: 'rgba(236,72,153,.12)', color: '#db2777' }}>מנהל</span>
                         )}
@@ -676,6 +859,17 @@ export default function ThreadClient({
                         <CornerUpLeft size={11} /> ציטוט
                       </button>
 
+                      <button onClick={() => copyReplyLink(reply.id)}
+                        className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs transition"
+                        style={{
+                          background: isCopied ? 'rgba(16,185,129,.1)' : undefined,
+                          color: isCopied ? '#059669' : 'var(--tx3)',
+                          border: isCopied ? '1px solid rgba(16,185,129,.3)' : '1px solid var(--bd)',
+                        }}
+                        title="העתק קישור לתגובה">
+                        {isCopied ? <><Check size={11} /> הועתק!</> : <Link2 size={11} />}
+                      </button>
+
                       {(isThreadAuthor || isAdmin) && (
                         <button onClick={() => handleBestAnswer(reply.id)}
                           className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs transition"
@@ -715,6 +909,22 @@ export default function ThreadClient({
               )
             })}
           </div>
+
+          {/* Load more */}
+          {hasMore && (
+            <button
+              onClick={() => { setPage(p => p + 1); setTimeout(markRead, 300) }}
+              className="mt-4 w-full rounded-2xl py-3 text-sm font-semibold transition hover:opacity-80"
+              style={{ background: 'var(--inp)', border: '1px solid var(--bd)', color: 'var(--tx2)' }}>
+              טען עוד {Math.min(REPLIES_PER_PAGE, replies.length - visibleReplies.length)} תגובות
+            </button>
+          )}
+
+          {!hasMore && replies.length > 0 && (
+            <p className="mt-3 text-center text-xs" style={{ color: 'var(--tx3)' }}>
+              {replies.length === 1 ? 'תגובה אחת' : `כל ${replies.length} התגובות`}
+            </p>
+          )}
         </div>
       )}
 
@@ -727,18 +937,12 @@ export default function ThreadClient({
       ) : (
         <div id="reply-form">
           <ReplyEditor
-            value={replyText}
-            onChange={setReplyText}
-            quotedText={quotedText}
-            onClearQuote={() => setQuotedText('')}
-            imageFiles={replyFiles}
-            imagePreviews={replyPreviews}
-            onAddImage={addReplyImage}
-            onRemoveImage={removeReplyImage}
-            onSubmit={handleReply}
-            isSubmitting={isSubmitting}
-            uploadError={uploadError}
-            fileRef={replyFileRef}
+            value={replyText} onChange={setReplyText}
+            quotedText={quotedText} onClearQuote={() => setQuotedText('')}
+            imageFiles={replyFiles} imagePreviews={replyPreviews}
+            onAddImage={addReplyImage} onRemoveImage={removeReplyImage}
+            onSubmit={handleReply} isSubmitting={isSubmitting}
+            uploadError={uploadError} fileRef={replyFileRef}
           />
         </div>
       )}

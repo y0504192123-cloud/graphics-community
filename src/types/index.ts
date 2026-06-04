@@ -225,6 +225,8 @@ export type ForumThread = {
   content: string
   images?: string[] | null
   image_url?: string | null
+  tags?: string[] | null
+  followers?: string[] | null
   views: number
   is_pinned: boolean
   is_locked: boolean

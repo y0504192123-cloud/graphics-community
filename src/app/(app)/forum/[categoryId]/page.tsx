@@ -230,6 +230,16 @@ export default async function CategoryPage({ params, searchParams }: Props) {
                     <p className="mt-1 font-bold leading-snug transition-colors group-hover:text-purple-600 line-clamp-2" style={{ color: 'var(--tx)' }}>
                       {thread.title}
                     </p>
+                    {((thread.tags ?? []) as string[]).length > 0 && (
+                      <div className="mt-1.5 flex flex-wrap gap-1">
+                        {((thread.tags ?? []) as string[]).slice(0, 4).map(t => (
+                          <span key={t} className="rounded-full px-1.5 py-0.5 text-[10px] font-medium"
+                            style={{ background: 'rgba(124,58,237,.08)', color: '#7c3aed' }}>
+                            #{t}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                     <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px]" style={{ color: 'var(--tx3)' }}>
                       <span className="font-medium" style={{ color: 'var(--tx2)' }}>{authorName}</span>
                       <span>·</span>

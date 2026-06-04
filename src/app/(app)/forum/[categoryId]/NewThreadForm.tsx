@@ -1,18 +1,76 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
-import { ImageIcon, X, Bold, Italic, List, Quote } from 'lucide-react'
+import { ImageIcon, X, Bold, Italic, List, Quote, Tag } from 'lucide-react'
 import { createThread, getForumImageUploadUrl } from '../actions'
+
+function TagsInput({ tags, onChange }: { tags: string[]; onChange: (t: string[]) => void }) {
+  const [input, setInput] = useState('')
+  const addTag = () => {
+    const t = input.trim().replace(/^#/, '').slice(0, 30)
+    if (t && !tags.includes(t) && tags.length < 8) onChange([...tags, t])
+    setInput('')
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 rounded-xl px-3 py-2 min-h-[40px]"
+      style={{ background: 'var(--inp)', border: '1px solid var(--bd)' }}>
+      <Tag size={12} style={{ color: 'var(--tx3)' }} className="shrink-0" />
+      {tags.map(t => (
+        <span key={t} className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold"
+          style={{ background: 'rgba(124,58,237,.1)', color: '#7c3aed', border: '1px solid rgba(124,58,237,.2)' }}>
+          #{t}
+          <button type="button" onClick={() => onChange(tags.filter(x => x !== t))} className="hover:text-red-500 transition">
+            <X size={9} />
+          </button>
+        </span>
+      ))}
+      <input
+        value={input}
+        onChange={e => setInput(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addTag() }
+          if (e.key === 'Backspace' && !input && tags.length) onChange(tags.slice(0, -1))
+        }}
+        onBlur={addTag}
+        placeholder={tags.length === 0 ? 'תגיות... (Enter לאישור, עד 8)' : ''}
+        className="flex-1 min-w-[80px] bg-transparent text-xs outline-none placeholder:text-slate-400"
+        style={{ color: 'var(--tx)' }}
+      />
+    </div>
+  )
+}
+
+const DRAFT_PREFIX = 'forumNewThreadDraft_'
 
 export default function NewThreadForm({ categoryId }: { categoryId: string }) {
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
+  const [tags, setTags] = useState<string[]>([])
   const [imageFiles, setImageFiles] = useState<File[]>([])
   const [imagePreviews, setImagePreviews] = useState<string[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // Restore draft on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(DRAFT_PREFIX + categoryId)
+      if (saved) {
+        const d = JSON.parse(saved)
+        if (d.title) setTitle(d.title)
+        if (d.content) setContent(d.content)
+        if (Array.isArray(d.tags)) setTags(d.tags)
+      }
+    } catch {}
+  }, [categoryId])
+
+  // Save draft on change
+  useEffect(() => {
+    if (!title && !content) return
+    try { localStorage.setItem(DRAFT_PREFIX + categoryId, JSON.stringify({ title, content, tags })) } catch {}
+  }, [title, content, tags, categoryId])
 
   const addImageFile = (file: File) => {
     if (!file.type.startsWith('image/')) return
@@ -39,17 +97,13 @@ export default function NewThreadForm({ categoryId }: { categoryId: string }) {
   const insertFormat = (prefix: string, suffix = prefix, placeholder = 'טקסט') => {
     const el = textareaRef.current
     if (!el) return
-    const start = el.selectionStart
-    const end = el.selectionEnd
-    const selected = content.slice(start, end)
-    const ins = selected ? `${prefix}${selected}${suffix}` : `${prefix}${placeholder}${suffix}`
-    const next = content.slice(0, start) + ins + content.slice(end)
-    setContent(next)
+    const s = el.selectionStart, e2 = el.selectionEnd
+    const sel = content.slice(s, e2)
+    const ins = sel ? `${prefix}${sel}${suffix}` : `${prefix}${placeholder}${suffix}`
+    setContent(content.slice(0, s) + ins + content.slice(e2))
     requestAnimationFrame(() => {
       el.focus()
-      const newStart = selected ? start + ins.length : start + prefix.length
-      const newEnd = selected ? start + ins.length : start + prefix.length + placeholder.length
-      el.setSelectionRange(newStart, newEnd)
+      el.setSelectionRange(sel ? s + ins.length : s + prefix.length, sel ? s + ins.length : s + prefix.length + placeholder.length)
     })
   }
 
@@ -58,12 +112,8 @@ export default function NewThreadForm({ categoryId }: { categoryId: string }) {
     if (!el) return
     const pos = el.selectionStart
     const lineStart = content.lastIndexOf('\n', pos - 1) + 1
-    const next = content.slice(0, lineStart) + prefix + content.slice(lineStart)
-    setContent(next)
-    requestAnimationFrame(() => {
-      el.focus()
-      el.setSelectionRange(pos + prefix.length, pos + prefix.length)
-    })
+    setContent(content.slice(0, lineStart) + prefix + content.slice(lineStart))
+    requestAnimationFrame(() => { el.focus(); el.setSelectionRange(pos + prefix.length, pos + prefix.length) })
   }
 
   const handleSubmit = async () => {
@@ -78,10 +128,13 @@ export default function NewThreadForm({ categoryId }: { categoryId: string }) {
           urls.push(publicUrl)
         }
       }
-      await createThread(categoryId, title, content, urls.length > 0 ? urls : undefined)
-    } catch {
-      setIsSubmitting(false)
-    }
+      try { localStorage.removeItem(DRAFT_PREFIX + categoryId) } catch {}
+      await createThread(
+        categoryId, title, content,
+        urls.length > 0 ? urls : undefined,
+        tags.length > 0 ? tags : undefined,
+      )
+    } catch { setIsSubmitting(false) }
   }
 
   return (
@@ -104,33 +157,24 @@ export default function NewThreadForm({ categoryId }: { categoryId: string }) {
 
         {/* Toolbar */}
         <div className="flex items-center gap-1 rounded-xl px-2 py-1.5" style={{ background: 'var(--inp)', border: '1px solid var(--bd)' }}>
-          <button type="button" onClick={() => insertFormat('**', '**', 'טקסט מודגש')}
-            className="flex h-7 w-7 items-center justify-center rounded-lg transition hover:bg-purple-100 hover:text-purple-600" title="מודגש"
-            style={{ color: 'var(--tx3)' }}>
-            <Bold size={13} strokeWidth={2.5} />
-          </button>
-          <button type="button" onClick={() => insertFormat('*', '*', 'טקסט נטוי')}
-            className="flex h-7 w-7 items-center justify-center rounded-lg transition hover:bg-purple-100 hover:text-purple-600" title="נטוי"
-            style={{ color: 'var(--tx3)' }}>
-            <Italic size={13} />
-          </button>
+          <button type="button" onClick={() => insertFormat('**', '**', 'מודגש')}
+            className="flex h-7 w-7 items-center justify-center rounded-lg transition hover:bg-purple-100 hover:text-purple-600"
+            style={{ color: 'var(--tx3)' }}><Bold size={13} strokeWidth={2.5} /></button>
+          <button type="button" onClick={() => insertFormat('*', '*', 'נטוי')}
+            className="flex h-7 w-7 items-center justify-center rounded-lg transition hover:bg-purple-100 hover:text-purple-600"
+            style={{ color: 'var(--tx3)' }}><Italic size={13} /></button>
           <div className="mx-1 h-4 w-px" style={{ background: 'var(--bd)' }} />
           <button type="button" onClick={() => insertLinePrefix('- ')}
-            className="flex h-7 w-7 items-center justify-center rounded-lg transition hover:bg-purple-100 hover:text-purple-600" title="רשימה"
-            style={{ color: 'var(--tx3)' }}>
-            <List size={13} />
-          </button>
+            className="flex h-7 w-7 items-center justify-center rounded-lg transition hover:bg-purple-100 hover:text-purple-600"
+            style={{ color: 'var(--tx3)' }}><List size={13} /></button>
           <button type="button" onClick={() => insertLinePrefix('> ')}
-            className="flex h-7 w-7 items-center justify-center rounded-lg transition hover:bg-purple-100 hover:text-purple-600" title="ציטוט"
-            style={{ color: 'var(--tx3)' }}>
-            <Quote size={13} />
-          </button>
+            className="flex h-7 w-7 items-center justify-center rounded-lg transition hover:bg-purple-100 hover:text-purple-600"
+            style={{ color: 'var(--tx3)' }}><Quote size={13} /></button>
           <div className="mx-1 h-4 w-px" style={{ background: 'var(--bd)' }} />
           <button type="button" onClick={() => fileRef.current?.click()}
-            className="flex h-7 items-center gap-1.5 rounded-lg px-2 text-xs transition hover:bg-purple-100 hover:text-purple-600" title="הוסף תמונות"
+            className="flex h-7 items-center gap-1.5 rounded-lg px-2 text-xs transition hover:bg-purple-100 hover:text-purple-600"
             style={{ color: 'var(--tx3)' }}>
-            <ImageIcon size={12} />
-            <span>תמונות</span>
+            <ImageIcon size={12} /><span>תמונות</span>
           </button>
           <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFileChange} />
           <span className="ms-auto text-[10px]" style={{ color: 'var(--tx3)' }}>Ctrl+Enter לשליחה</span>
@@ -142,31 +186,28 @@ export default function NewThreadForm({ categoryId }: { categoryId: string }) {
           onChange={e => setContent(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && e.ctrlKey) { e.preventDefault(); handleSubmit() } }}
           rows={6}
-          placeholder="תוכן הנושא... שאל שאלה, שתף ידע, פתח דיון&#10;&#10;**מודגש** · *נטוי* · - רשימה · > ציטוט"
+          placeholder={'תוכן הנושא...\n\n**מודגש** · *נטוי* · - רשימה · > ציטוט'}
           className="w-full resize-none rounded-xl px-4 py-3 text-sm outline-none transition placeholder:text-slate-400"
           style={{ background: 'var(--inp)', border: '1px solid var(--bd)', color: 'var(--tx)', lineHeight: '1.7' }}
         />
+
+        <TagsInput tags={tags} onChange={setTags} />
 
         {imagePreviews.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {imagePreviews.map((src, idx) => (
               <div key={idx} className="relative group/img">
                 <img src={src} alt="" style={{ width: '84px', height: '84px', objectFit: 'cover', borderRadius: '10px', display: 'block' }} />
-                <button
-                  onClick={() => removeImage(idx)}
+                <button onClick={() => removeImage(idx)}
                   className="absolute -end-1.5 -top-1.5 rounded-full p-0.5 opacity-0 group-hover/img:opacity-100 transition"
-                  style={{ background: 'rgba(0,0,0,.75)', color: 'white' }}
-                >
+                  style={{ background: 'rgba(0,0,0,.75)', color: 'white' }}>
                   <X size={11} />
                 </button>
               </div>
             ))}
-            <button
-              type="button"
-              onClick={() => fileRef.current?.click()}
-              className="flex h-[84px] w-[84px] items-center justify-center rounded-[10px] transition hover:bg-purple-50 hover:border-purple-300"
-              style={{ border: '2px dashed var(--bd)' }}
-            >
+            <button type="button" onClick={() => fileRef.current?.click()}
+              className="flex h-[84px] w-[84px] items-center justify-center rounded-[10px] transition hover:border-purple-300"
+              style={{ border: '2px dashed var(--bd)' }}>
               <ImageIcon size={18} style={{ color: 'var(--tx3)' }} />
             </button>
           </div>
@@ -181,11 +222,9 @@ export default function NewThreadForm({ categoryId }: { categoryId: string }) {
           >
             {isSubmitting ? 'מפרסם...' : 'פרסם נושא'}
           </button>
-          <Link
-            href={`/forum/${categoryId}`}
+          <Link href={`/forum/${categoryId}`}
             className="rounded-xl px-4 py-2.5 text-sm font-medium transition hover:opacity-80"
-            style={{ color: 'var(--tx3)', border: '1px solid var(--bd)' }}
-          >
+            style={{ color: 'var(--tx3)', border: '1px solid var(--bd)' }}>
             ביטול
           </Link>
           <span className="ms-auto text-xs" style={{ color: 'var(--tx3)' }}>

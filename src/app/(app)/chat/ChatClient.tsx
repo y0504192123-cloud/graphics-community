@@ -5,6 +5,7 @@ import {
   Send, ArrowRight, X, Lock, Trash2,
   Search, UserPlus, Pin, Paperclip, Check, CheckCheck,
   MessageSquare, File as FileIcon, Edit2, CornerUpLeft, Smile, Users,
+  Bell, BellOff,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { Message, Profile, PrivateMessage } from '@/types'
@@ -298,6 +299,23 @@ function InputBar({ value, onChange, onKeyDown, onSend, isSending, textRef, onAt
   )
 }
 
+function playPing() {
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    osc.frequency.setValueAtTime(880, ctx.currentTime)
+    osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.3)
+    gain.gain.setValueAtTime(0.25, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4)
+    osc.start(ctx.currentTime)
+    osc.stop(ctx.currentTime + 0.4)
+    osc.onended = () => ctx.close()
+  } catch {}
+}
+
 // ─────────────────────────────────────────────────────────
 // Main component
 // ─────────────────────────────────────────────────────────
@@ -354,9 +372,21 @@ export default function ChatClient({
   const [reactionsMap, setReactionsMap] = useState<ReactionsMap>({})
   const [emojiPickerFor, setEmojiPickerFor] = useState<string | null>(null)
 
+  // ── Sound ──
+  const [isMuted, setIsMuted] = useState(() => typeof window !== 'undefined' && localStorage.getItem('chatMuted') === '1')
+  const isMutedRef = useRef(isMuted)
+  isMutedRef.current = isMuted
+  const toggleMute = () => {
+    const next = !isMuted
+    setIsMuted(next)
+    try { localStorage.setItem('chatMuted', next ? '1' : '0') } catch {}
+  }
+
   // ── Refs ──
   const communityBottomRef = useRef<HTMLDivElement>(null)
   const privateBottomRef   = useRef<HTMLDivElement>(null)
+  const communityScrollRef = useRef<HTMLDivElement>(null)
+  const privateScrollRef   = useRef<HTMLDivElement>(null)
   const communityTextRef   = useRef<HTMLTextAreaElement>(null)
   const privateTextRef     = useRef<HTMLTextAreaElement>(null)
   const fileInputRef       = useRef<HTMLInputElement>(null)
@@ -519,6 +549,11 @@ export default function ChatClient({
           if (deduped.some(x => String(x.id) === String(m.id))) return deduped
           return [...deduped, { ...m, profiles: prof as Profile | undefined ?? undefined }]
         })
+        if (m.user_id !== currentUserId && !isMutedRef.current) {
+          const el = communityScrollRef.current
+          const atBottom = !el || el.scrollHeight - el.scrollTop - el.clientHeight < 80
+          if (document.hidden || !atBottom) playPing()
+        }
       })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages', filter: `channel_id=eq.${generalTopicId}` }, (payload) => {
         const old = payload.old as { id: string }
@@ -578,6 +613,11 @@ export default function ChatClient({
         if (m.receiver_id === currentUserId && selectedPartnerRef.current === m.sender_id) {
           markReadRef.current(m.sender_id)
           setPrivateMsgs(prev => prev.map(x => x.sender_id === m.sender_id && x.receiver_id === currentUserId && !x.is_read ? { ...x, is_read: true } : x))
+        }
+        if (m.sender_id !== currentUserId && m.receiver_id === currentUserId && !isMutedRef.current) {
+          const el = privateScrollRef.current
+          const atBottom = !el || el.scrollHeight - el.scrollTop - el.clientHeight < 80
+          if (document.hidden || !atBottom) playPing()
         }
       })
       .subscribe()
@@ -1100,9 +1140,12 @@ export default function ChatClient({
           <h2 className="truncate text-sm font-bold" style={{ color: 'var(--tx)' }}>צ׳אט מרכזי</h2>
           <p className="text-[11px]" style={{ color: 'var(--tx3)' }}>צ׳אט כללי לכל חברי הקהילה</p>
         </div>
+        <button onClick={toggleMute} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition hover:bg-slate-100" style={{ color: isMuted ? '#ef4444' : 'var(--tx3)' }} title={isMuted ? 'בטל השתקה' : 'השתק צלילים'}>
+          {isMuted ? <BellOff size={15} /> : <Bell size={15} />}
+        </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-0.5" onClick={() => setCommunityEmojiPickerFor(null)}>
+      <div ref={communityScrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-0.5" onClick={() => setCommunityEmojiPickerFor(null)}>
         {communityMsgs.length === 0 && (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
             <MessageSquare size={28} className="text-slate-300" />
@@ -1312,6 +1355,9 @@ export default function ChatClient({
         <button onClick={() => setShowPrivateSearch(s => !s)} className="flex h-8 w-8 items-center justify-center rounded-xl transition hover:bg-slate-100" style={{ color: showPrivateSearch ? '#7c3aed' : 'var(--tx3)' }}>
           <Search size={15} />
         </button>
+        <button onClick={toggleMute} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition hover:bg-slate-100" style={{ color: isMuted ? '#ef4444' : 'var(--tx3)' }} title={isMuted ? 'בטל השתקה' : 'השתק צלילים'}>
+          {isMuted ? <BellOff size={15} /> : <Bell size={15} />}
+        </button>
         <Lock size={14} style={{ color: 'var(--tx3)' }} className="shrink-0" />
       </div>
 
@@ -1338,6 +1384,7 @@ export default function ChatClient({
 
       {/* Messages */}
       <div
+        ref={privateScrollRef}
         className="flex-1 overflow-y-auto px-4 py-3"
         onClick={() => setEmojiPickerFor(null)}
       >

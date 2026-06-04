@@ -5,13 +5,13 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
-export async function createThread(categoryId: string, title: string, content: string, imageUrls?: string[]) {
+export async function createThread(categoryId: string, title: string, content: string, imageUrls?: string[], tags?: string[]) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
   const { data, error } = await supabase
     .from('forum_threads')
-    .insert({ category_id: categoryId, user_id: user.id, title: title.trim(), content: content.trim(), images: imageUrls ?? [] })
+    .insert({ category_id: categoryId, user_id: user.id, title: title.trim(), content: content.trim(), images: imageUrls ?? [], tags: tags ?? [] })
     .select('id')
     .single()
   if (error || !data) return { error: error?.message ?? 'שגיאה' }
@@ -23,11 +23,23 @@ export async function createReply(threadId: string, categoryId: string, content:
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
+  const admin = createAdminClient()
   await supabase.from('forum_replies').insert({ thread_id: threadId, user_id: user.id, content: content.trim(), images: imageUrls ?? [] })
-  await createAdminClient()
-    .from('forum_threads')
-    .update({ updated_at: new Date().toISOString() })
-    .eq('id', threadId)
+  const { data: thread } = await admin.from('forum_threads').select('title, followers').eq('id', threadId).single()
+  await admin.from('forum_threads').update({ updated_at: new Date().toISOString() }).eq('id', threadId)
+  // Notify followers
+  try {
+    const followerIds: string[] = ((thread?.followers ?? []) as string[]).filter((id: string) => id !== user.id)
+    if (followerIds.length) {
+      await admin.from('notifications').insert(
+        followerIds.map((uid: string) => ({
+          user_id: uid, type: 'forum_reply',
+          content: `תגובה חדשה בנושא "${thread?.title}"`,
+          link: `/forum/${categoryId}/${threadId}`,
+        }))
+      )
+    }
+  } catch {}
   revalidatePath(`/forum/${categoryId}/${threadId}`)
 }
 
@@ -110,6 +122,34 @@ export async function markBestAnswer(replyId: string, threadId: string, category
     await admin.from('forum_replies').update({ is_best_answer: true }).eq('id', replyId)
   }
   revalidatePath(`/forum/${categoryId}/${threadId}`)
+}
+
+export async function editThread(threadId: string, categoryId: string, title: string, content: string, tags?: string[]) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'לא מחובר' }
+  const admin = createAdminClient()
+  const { data: thread } = await admin.from('forum_threads').select('user_id').eq('id', threadId).single()
+  if (!thread) return { error: 'לא נמצא' }
+  const { data: profile } = await admin.from('profiles').select('role').eq('id', user.id).single()
+  if (thread.user_id !== user.id && profile?.role !== 'admin') return { error: 'אין הרשאה' }
+  await admin.from('forum_threads').update({ title: title.trim(), content: content.trim(), tags: tags ?? [] }).eq('id', threadId)
+  revalidatePath(`/forum/${categoryId}/${threadId}`)
+  return {}
+}
+
+export async function toggleFollowThread(threadId: string): Promise<{ following: boolean }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { following: false }
+  const admin = createAdminClient()
+  const { data: thread } = await admin.from('forum_threads').select('followers').eq('id', threadId).single()
+  const followers: string[] = (thread?.followers ?? []) as string[]
+  const isFollowing = followers.includes(user.id)
+  await admin.from('forum_threads')
+    .update({ followers: isFollowing ? followers.filter(id => id !== user.id) : [...followers, user.id] })
+    .eq('id', threadId)
+  return { following: !isFollowing }
 }
 
 export async function incrementViews(threadId: string) {
