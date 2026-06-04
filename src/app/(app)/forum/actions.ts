@@ -5,13 +5,13 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
-export async function createThread(categoryId: string, title: string, content: string, imageUrl?: string) {
+export async function createThread(categoryId: string, title: string, content: string, imageUrls?: string[]) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
   const { data, error } = await supabase
     .from('forum_threads')
-    .insert({ category_id: categoryId, user_id: user.id, title: title.trim(), content: content.trim(), image_url: imageUrl ?? null })
+    .insert({ category_id: categoryId, user_id: user.id, title: title.trim(), content: content.trim(), images: imageUrls ?? [] })
     .select('id')
     .single()
   if (error || !data) return { error: error?.message ?? 'שגיאה' }
@@ -19,11 +19,11 @@ export async function createThread(categoryId: string, title: string, content: s
   redirect(`/forum/${categoryId}/${data.id}`)
 }
 
-export async function createReply(threadId: string, categoryId: string, content: string, imageUrl?: string) {
+export async function createReply(threadId: string, categoryId: string, content: string, imageUrls?: string[]) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
-  await supabase.from('forum_replies').insert({ thread_id: threadId, user_id: user.id, content: content.trim(), image_url: imageUrl ?? null })
+  await supabase.from('forum_replies').insert({ thread_id: threadId, user_id: user.id, content: content.trim(), images: imageUrls ?? [] })
   await createAdminClient()
     .from('forum_threads')
     .update({ updated_at: new Date().toISOString() })

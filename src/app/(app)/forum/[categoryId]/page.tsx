@@ -2,13 +2,39 @@ import Link from 'next/link'
 import { redirect, notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { MessageSquare, Pin, Lock, Eye, ChevronRight, Plus, Search } from 'lucide-react'
+import { MessageSquare, Pin, Lock, Eye, ChevronRight, Plus, Search, CheckCircle2, Sparkles } from 'lucide-react'
 import type { ForumCategory, ForumThread, Profile } from '@/types'
 import NewThreadForm from './NewThreadForm'
 
 interface Props {
   params: Promise<{ categoryId: string }>
   searchParams: Promise<{ sort?: string; q?: string; new?: string }>
+}
+
+function fmtDate(iso: string) {
+  const diffMs = Date.now() - new Date(iso).getTime()
+  const mins = Math.floor(diffMs / 60000)
+  if (mins < 1) return 'עכשיו'
+  if (mins < 60) return `לפני ${mins} דק׳`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `לפני ${hrs} שע׳`
+  const days = Math.floor(hrs / 24)
+  if (days < 30) return `לפני ${days} ימים`
+  return new Date(iso).toLocaleDateString('he-IL')
+}
+
+function isNew(iso: string) {
+  return Date.now() - new Date(iso).getTime() < 24 * 60 * 60 * 1000
+}
+
+function initials(name: string) {
+  return name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
+}
+
+const GRADS = ['from-violet-500 to-purple-700', 'from-pink-500 to-rose-700', 'from-blue-500 to-indigo-700', 'from-emerald-500 to-teal-700']
+function grad(uid: string) {
+  let h = 0; for (let i = 0; i < uid.length; i++) h = (Math.imul(31, h) + uid.charCodeAt(i)) | 0
+  return GRADS[Math.abs(h) % GRADS.length]
 }
 
 export default async function CategoryPage({ params, searchParams }: Props) {
@@ -35,18 +61,26 @@ export default async function CategoryPage({ params, searchParams }: Props) {
 
   if (q) query = query.ilike('title', `%${q}%`)
 
-  const { data: threadsRaw } = await query.order('is_pinned', { ascending: false }).order('created_at', { ascending: false }).limit(50)
+  const { data: threadsRaw } = await query
+    .order('is_pinned', { ascending: false })
+    .order('updated_at', { ascending: false })
+    .limit(60)
 
-  // Count replies and determine "unanswered"
   let threads = (threadsRaw ?? []) as (ForumThread & { profiles?: Profile })[]
 
-  // Fetch reply counts
+  // Fetch reply counts and best-answer status in one query
+  const threadIds = threads.map(t => t.id)
   const replyCountMap: Record<string, number> = {}
-  if (threads.length) {
-    const ids = threads.map(t => t.id)
-    for (const id of ids) {
-      const { count } = await admin.from('forum_replies').select('*', { count: 'exact', head: true }).eq('thread_id', id)
-      replyCountMap[id] = count ?? 0
+  const bestAnswerSet = new Set<string>()
+
+  if (threadIds.length) {
+    const { data: repliesData } = await admin
+      .from('forum_replies')
+      .select('thread_id, is_best_answer')
+      .in('thread_id', threadIds)
+    for (const r of repliesData ?? []) {
+      replyCountMap[r.thread_id] = (replyCountMap[r.thread_id] ?? 0) + 1
+      if (r.is_best_answer) bestAnswerSet.add(r.thread_id)
     }
   }
 
@@ -57,22 +91,12 @@ export default async function CategoryPage({ params, searchParams }: Props) {
     threads = threads.filter(t => (replyCountMap[t.id] ?? 0) === 0)
   }
 
-  function fmtDate(iso: string) {
-    const d = new Date(iso)
-    const now = new Date()
-    const diff = Math.floor((now.getTime() - d.getTime()) / 86400000)
-    if (diff === 0) return 'היום'
-    if (diff === 1) return 'אתמול'
-    if (diff < 30) return `לפני ${diff} ימים`
-    return d.toLocaleDateString('he-IL')
-  }
-
   return (
     <div className="min-h-full" style={{ background: 'var(--bg)' }}>
 
       {/* Header */}
       <div className="relative overflow-hidden px-6 pb-6 pt-6" style={{ background: 'var(--hero)' }}>
-        <div className="grid-pattern absolute inset-0" />
+        <div className="grid-pattern absolute inset-0 opacity-40" />
         <div className="relative mx-auto max-w-4xl">
           <nav className="mb-2 flex items-center gap-1.5 text-xs" style={{ color: 'var(--tx3)' }}>
             <Link href="/forum" className="hover:text-purple-600 transition">פורום</Link>
@@ -80,8 +104,11 @@ export default async function CategoryPage({ params, searchParams }: Props) {
             <span style={{ color: 'var(--tx2)' }}>{category.name}</span>
           </nav>
           <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <span className="text-3xl">{category.icon ?? '💬'}</span>
+            <div className="flex items-center gap-3.5">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-2xl"
+                style={{ background: 'linear-gradient(135deg,rgba(124,58,237,.15),rgba(79,70,229,.1))', border: '1px solid rgba(124,58,237,.2)' }}>
+                {category.icon ?? '💬'}
+              </div>
               <div>
                 <h1 className="text-xl font-bold" style={{ color: 'var(--tx)' }}>{category.name}</h1>
                 {category.description && <p className="text-sm" style={{ color: 'var(--tx3)' }}>{category.description}</p>}
@@ -89,8 +116,8 @@ export default async function CategoryPage({ params, searchParams }: Props) {
             </div>
             <Link
               href={`/forum/${categoryId}?new=1`}
-              className="flex shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-white transition hover:opacity-90"
-              style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)' }}
+              className="flex shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-white transition hover:opacity-90 hover:scale-[1.02]"
+              style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)', boxShadow: '0 4px 14px rgba(124,58,237,.35)' }}
             >
               <Plus size={15} />
               נושא חדש
@@ -99,14 +126,13 @@ export default async function CategoryPage({ params, searchParams }: Props) {
         </div>
       </div>
 
-      <div className="mx-auto max-w-4xl px-4 py-6 space-y-4">
+      <div className="mx-auto max-w-4xl px-4 py-5 space-y-4">
 
-        {/* New thread form */}
         {showNewForm && <NewThreadForm categoryId={categoryId} />}
 
         {/* Sort + Search */}
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex gap-1 rounded-xl p-1" style={{ background: 'var(--inp)', border: '1px solid var(--bd)' }}>
+          <div className="flex gap-0.5 rounded-xl p-1" style={{ background: 'var(--inp)', border: '1px solid var(--bd)' }}>
             {[
               { id: 'new', label: 'חדש' },
               { id: 'popular', label: 'פופולרי' },
@@ -115,9 +141,9 @@ export default async function CategoryPage({ params, searchParams }: Props) {
               <Link
                 key={s.id}
                 href={`/forum/${categoryId}?sort=${s.id}${q ? `&q=${encodeURIComponent(q)}` : ''}`}
-                className="rounded-lg px-3 py-1.5 text-xs font-semibold transition"
+                className="rounded-lg px-3.5 py-1.5 text-xs font-semibold transition"
                 style={sort === s.id
-                  ? { background: 'linear-gradient(135deg,#7c3aed,#6d28d9)', color: 'white' }
+                  ? { background: 'linear-gradient(135deg,#7c3aed,#6d28d9)', color: 'white', boxShadow: '0 2px 8px rgba(124,58,237,.3)' }
                   : { color: 'var(--tx2)' }
                 }
               >
@@ -125,7 +151,9 @@ export default async function CategoryPage({ params, searchParams }: Props) {
               </Link>
             ))}
           </div>
-          <form action={`/forum/${categoryId}`} method="get" className="flex flex-1 items-center gap-2 rounded-xl px-3 py-2 min-w-[160px]" style={{ background: 'var(--inp)', border: '1px solid var(--bd)' }}>
+          <form action={`/forum/${categoryId}`} method="get"
+            className="flex flex-1 items-center gap-2 rounded-xl px-3 py-2 min-w-[160px]"
+            style={{ background: 'var(--inp)', border: '1px solid var(--bd)' }}>
             <input type="hidden" name="sort" value={sort} />
             <Search size={13} style={{ color: 'var(--tx3)' }} />
             <input
@@ -143,44 +171,89 @@ export default async function CategoryPage({ params, searchParams }: Props) {
           <div className="flex flex-col items-center gap-3 rounded-2xl py-16 text-center" style={{ background: 'var(--s1)', border: '2px dashed var(--bd)' }}>
             <MessageSquare size={32} className="text-slate-300" />
             <p className="text-sm font-semibold" style={{ color: 'var(--tx2)' }}>
-              {q ? 'לא נמצאו נושאים תואמים' : 'אין נושאים עדיין'}
+              {q ? 'לא נמצאו נושאים תואמים' : sort === 'unanswered' ? 'כל הנושאים קיבלו מענה 🎉' : 'אין נושאים עדיין'}
             </p>
-            {!q && (
+            {!q && sort === 'new' && (
               <Link href={`/forum/${categoryId}?new=1`} className="mt-1 text-xs font-bold text-purple-600 hover:text-purple-700 transition">
                 פתח את הנושא הראשון ←
               </Link>
             )}
           </div>
         ) : (
-          <div className="rounded-2xl overflow-hidden" style={{ background: 'var(--s1)', border: '1px solid var(--bd)' }}>
-            {threads.map((thread, i) => (
-              <Link
-                key={thread.id}
-                href={`/forum/${categoryId}/${thread.id}`}
-                className="group flex items-start gap-4 px-5 py-4 transition hover:bg-purple-50/30"
-                style={{ borderTop: i > 0 ? '1px solid var(--bd)' : undefined }}
-              >
-                {/* Icon */}
-                <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl" style={{ background: thread.is_pinned ? 'rgba(234,179,8,.1)' : 'rgba(124,58,237,.07)' }}>
-                  {thread.is_pinned ? <Pin size={15} className="text-amber-500" /> : thread.is_locked ? <Lock size={15} className="text-slate-400" /> : <MessageSquare size={15} className="text-purple-500" />}
-                </div>
+          <div className="overflow-hidden rounded-2xl" style={{ background: 'var(--s1)', border: '1px solid var(--bd)' }}>
+            {threads.map((thread, i) => {
+              const replies = replyCountMap[thread.id] ?? 0
+              const hasBest = bestAnswerSet.has(thread.id)
+              const threadIsNew = isNew(thread.created_at)
+              const authorName = thread.profiles?.full_name ?? thread.profiles?.username ?? 'משתמש'
+              const authorId = thread.user_id
 
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="font-bold leading-snug transition-colors group-hover:text-purple-600" style={{ color: 'var(--tx)' }}>
-                      {thread.is_pinned && <span className="me-1.5 rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-600">מוצמד</span>}
+              return (
+                <Link
+                  key={thread.id}
+                  href={`/forum/${categoryId}/${thread.id}`}
+                  className="group flex items-start gap-4 px-5 py-4 transition hover:bg-purple-50/30"
+                  style={{ borderTop: i > 0 ? '1px solid var(--bd)' : undefined }}
+                >
+                  {/* Author avatar */}
+                  <div className={`mt-0.5 h-9 w-9 shrink-0 overflow-hidden rounded-xl bg-gradient-to-br ${grad(authorId)} flex items-center justify-center text-xs font-bold text-white`}>
+                    {thread.profiles?.avatar_url
+                      ? <img src={thread.profiles.avatar_url} alt="" className="h-full w-full object-cover" />
+                      : <span>{initials(authorName)}</span>
+                    }
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    {/* Title row */}
+                    <div className="flex flex-wrap items-start gap-1.5">
+                      {thread.is_pinned && (
+                        <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold" style={{ background: 'rgba(234,179,8,.12)', color: '#b45309' }}>
+                          <Pin size={9} /> מוצמד
+                        </span>
+                      )}
+                      {thread.is_locked && (
+                        <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold" style={{ background: 'rgba(100,116,139,.1)', color: 'var(--tx3)' }}>
+                          <Lock size={9} /> נעול
+                        </span>
+                      )}
+                      {hasBest && (
+                        <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold" style={{ background: 'rgba(16,185,129,.1)', color: '#059669' }}>
+                          <CheckCircle2 size={9} /> נפתר
+                        </span>
+                      )}
+                      {threadIsNew && !thread.is_pinned && (
+                        <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold" style={{ background: 'rgba(124,58,237,.1)', color: '#7c3aed' }}>
+                          <Sparkles size={9} /> חדש
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-1 font-bold leading-snug transition-colors group-hover:text-purple-600 line-clamp-2" style={{ color: 'var(--tx)' }}>
                       {thread.title}
                     </p>
-                    <span className="shrink-0 text-[11px]" style={{ color: 'var(--tx3)' }}>{fmtDate(thread.updated_at)}</span>
+                    <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px]" style={{ color: 'var(--tx3)' }}>
+                      <span className="font-medium" style={{ color: 'var(--tx2)' }}>{authorName}</span>
+                      <span>·</span>
+                      <span>{fmtDate(thread.updated_at)}</span>
+                      <span className="flex items-center gap-1">
+                        <MessageSquare size={11} />
+                        {replies} תגובות
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Eye size={11} />
+                        {thread.views ?? 0}
+                      </span>
+                      {replies === 0 && (
+                        <span className="rounded-md px-1.5 py-0.5 text-[10px] font-semibold" style={{ background: 'rgba(239,68,68,.08)', color: '#ef4444' }}>
+                          ללא מענה
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <div className="mt-1.5 flex items-center gap-3 text-[11px]" style={{ color: 'var(--tx3)' }}>
-                    <span>{thread.profiles?.full_name ?? thread.profiles?.username ?? 'משתמש'}</span>
-                    <span className="flex items-center gap-1"><MessageSquare size={11} />{replyCountMap[thread.id] ?? 0}</span>
-                    <span className="flex items-center gap-1"><Eye size={11} />{thread.views}</span>
-                  </div>
-                </div>
-              </Link>
-            ))}
+
+                  <ChevronRight size={14} className="mt-3 shrink-0 rotate-180 text-slate-300 transition-colors group-hover:text-purple-400" />
+                </Link>
+              )
+            })}
           </div>
         )}
       </div>
