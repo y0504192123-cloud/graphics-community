@@ -192,10 +192,8 @@ export default async function CategoryPage({ params, searchParams }: Props) {
                 <Link
                   key={thread.id}
                   href={`/forum/${categoryId}/${thread.id}`}
-                  className="group flex items-start gap-4 px-5 py-4 rounded-2xl transition-all duration-150 hover:-translate-y-0.5"
+                  className="group flex items-start gap-4 px-5 py-4 rounded-2xl transition-all duration-150 hover:-translate-y-0.5 hover:shadow-[0_4px_16px_rgba(124,58,237,.12)] hover:border-purple-300/40"
                   style={{ background: 'var(--s1)', border: '1px solid var(--bd)', boxShadow: '0 1px 4px rgba(0,0,0,.04)' }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.boxShadow = '0 4px 16px rgba(124,58,237,.12)'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(124,58,237,.25)' }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.boxShadow = '0 1px 4px rgba(0,0,0,.04)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--bd)' }}
                 >
                   {/* Author avatar */}
                   <div className={`mt-0.5 h-9 w-9 shrink-0 overflow-hidden rounded-xl bg-gradient-to-br ${grad(authorId)} flex items-center justify-center text-xs font-bold text-white`}>
