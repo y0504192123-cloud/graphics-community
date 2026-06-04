@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import {
   Heart, Trash2, Edit2, CornerUpLeft, CheckCircle2, ChevronLeft,
   ImageIcon, X, Bold, Italic, List, Quote, ZoomIn, ChevronRight,
-  AlertCircle, Bell, BellOff, Link2, Check, Tag, Volume2,
+  AlertCircle, Bell, BellRing, Link2, Check, Tag, Volume2,
 } from 'lucide-react'
 import type { ForumThread, ForumReply, Profile } from '@/types'
 import ReportButton from '@/components/ReportButton'
@@ -863,13 +863,13 @@ export default function ThreadClient({
                   )}
                   <div className="relative ms-auto flex items-center gap-1">
                     <button onClick={handleFollowThread}
-                      className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs transition"
-                      style={{
-                        background: isFollowing ? 'rgba(124,58,237,.1)' : undefined,
-                        color: isFollowing ? '#7c3aed' : 'var(--tx3)',
-                        border: isFollowing ? '1px solid rgba(124,58,237,.3)' : '1px solid var(--bd)',
+                      className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition"
+                      style={isFollowing ? {
+                        background: '#7c3aed', color: 'white', border: '1px solid #7c3aed',
+                      } : {
+                        background: 'var(--s1)', color: 'var(--tx2)', border: '1px solid var(--bd)',
                       }}>
-                      {isFollowing ? <><BellOff size={11} /> עוקב</> : <><Bell size={11} /> עקוב</>}
+                      {isFollowing ? <><BellRing size={11} /> עוקב ✓</> : <><Bell size={11} /> עקוב</>}
                     </button>
                     <button
                       onClick={(e) => { setSoundPickerRect(e.currentTarget.getBoundingClientRect()); setSoundPickerOpen(o => !o) }}

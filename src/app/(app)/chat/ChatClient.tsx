@@ -905,16 +905,22 @@ export default function ChatClient({
       return
     }
 
+    const tempId = `temp-${Date.now()}`
     setCommunityText('')
     if (communityTextRef.current) communityTextRef.current.style.height = 'auto'
     setCommunityMsgs(prev => [...prev, {
-      id: `temp-${Date.now()}`, channel_id: generalTopicId, user_id: currentUserId,
+      id: tempId, channel_id: generalTopicId, user_id: currentUserId,
       content, created_at: new Date().toISOString(),
       reply_to_id: currentReplyTo?.id ?? null, reply_to: currentReplyTo ? { id: currentReplyTo.id, content: currentReplyTo.content, user_id: currentReplyTo.user_id } : null,
       profiles: currentProfile ?? undefined,
     }])
     setIsSendingC(true)
-    try { await sendMessage(generalTopicId, content, undefined, undefined, undefined, currentReplyTo?.id) } finally { setIsSendingC(false) }
+    try {
+      await sendMessage(generalTopicId, content, undefined, undefined, undefined, currentReplyTo?.id)
+    } catch {
+      setCommunityMsgs(prev => prev.filter(m => m.id !== tempId))
+      setCommunityText(content)
+    } finally { setIsSendingC(false) }
   }
 
   const handlePrivateSend = async () => {
@@ -956,17 +962,23 @@ export default function ChatClient({
       return
     }
 
+    const tempPId = `temp-${Date.now()}`
     setPrivateText('')
     if (privateTextRef.current) privateTextRef.current.style.height = 'auto'
     setPrivateMsgs(prev => [...prev, {
-      id: `temp-${Date.now()}`, sender_id: currentUserId, receiver_id: selectedPartner,
+      id: tempPId, sender_id: currentUserId, receiver_id: selectedPartner,
       content, job_id: null, is_read: false, created_at: new Date().toISOString(),
       reply_to_id: currentReplyTo?.id ?? null,
       reply_to: currentReplyTo ? { id: currentReplyTo.id, content: currentReplyTo.content, sender_id: currentReplyTo.sender_id } : null,
       sender: currentProfile ?? undefined,
     }])
     setIsSendingP(true)
-    try { await sendPrivateMessage(selectedPartner, content, undefined, undefined, undefined, currentReplyTo?.id) } finally { setIsSendingP(false) }
+    try {
+      await sendPrivateMessage(selectedPartner, content, undefined, undefined, undefined, currentReplyTo?.id)
+    } catch {
+      setPrivateMsgs(prev => prev.filter(m => m.id !== tempPId))
+      setPrivateText(content)
+    } finally { setIsSendingP(false) }
   }
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {

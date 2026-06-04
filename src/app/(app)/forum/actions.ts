@@ -26,22 +26,24 @@ export async function createReply(threadId: string, categoryId: string, content:
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
   const admin = createAdminClient()
-  await supabase.from('forum_replies').insert({ thread_id: threadId, user_id: user.id, content: content.trim(), images: imageUrls ?? [] })
+  const { error: replyError } = await admin.from('forum_replies').insert({ thread_id: threadId, user_id: user.id, content: content.trim(), images: imageUrls ?? [] })
+  if (replyError) console.error('[createReply] reply insert error:', replyError)
   const { data: thread } = await admin.from('forum_threads').select('title, followers').eq('id', threadId).single()
   await admin.from('forum_threads').update({ updated_at: new Date().toISOString() }).eq('id', threadId)
   // Notify followers
   try {
     const followerIds: string[] = ((thread?.followers ?? []) as string[]).filter((id: string) => id !== user.id)
     if (followerIds.length) {
-      await admin.from('notifications').insert(
+      const { error: notifError } = await admin.from('notifications').insert(
         followerIds.map((uid: string) => ({
           user_id: uid, type: 'forum_reply',
           content: `תגובה חדשה בנושא "${thread?.title}"`,
           link: `/forum/${categoryId}/${threadId}`,
         }))
       )
+      if (notifError) console.error('[createReply] notification insert error:', notifError)
     }
-  } catch {}
+  } catch (e) { console.error('[createReply] notification error:', e) }
   revalidatePath(`/forum/${categoryId}/${threadId}`)
 }
 
