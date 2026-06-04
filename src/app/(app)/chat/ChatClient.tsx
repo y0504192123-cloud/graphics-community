@@ -145,7 +145,7 @@ function DateSepLine({ iso }: { iso: string }) {
   return (
     <div className="my-4 flex items-center gap-3">
       <div className="flex-1 h-px" style={{ background: 'var(--bd)' }} />
-      <span className="rounded-full px-3 py-0.5 text-[11px] font-medium" style={{ background: 'var(--inp)', color: 'var(--tx3)', border: '1px solid var(--bd)' }}>
+      <span className="rounded-full px-3 py-0.5 text-[11px] font-medium" style={{ background: 'var(--inp)', color: 'var(--tx3)', border: '1px solid var(--bd)' }} suppressHydrationWarning>
         {fmtDateSep(iso)}
       </span>
       <div className="flex-1 h-px" style={{ background: 'var(--bd)' }} />
@@ -1113,7 +1113,7 @@ export default function ChatClient({
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-1">
                   <span className="truncate text-sm font-semibold" style={{ color: hasUnread ? '#6b21a8' : 'var(--tx)' }}>{name}</span>
-                  <span className="shrink-0 text-[10px]" style={{ color: 'var(--tx3)' }}>{fmtTime(convo.lastMsg.created_at)}</span>
+                  <span className="shrink-0 text-[10px]" style={{ color: 'var(--tx3)' }} suppressHydrationWarning>{fmtTime(convo.lastMsg.created_at)}</span>
                 </div>
                 <div className="mt-0.5 flex items-center justify-between gap-1">
                   <p className="truncate text-xs" style={{ color: hasUnread ? 'var(--tx2)' : 'var(--tx3)', fontStyle: convo.lastMsg.deleted_for_all ? 'italic' : undefined }}>
@@ -1208,7 +1208,7 @@ export default function ChatClient({
                   {!sameUser && (
                     <div className={`flex items-center gap-2 px-1 ${isOwn ? 'flex-row-reverse' : ''}`}>
                       <span className="text-xs font-semibold" style={{ color: 'var(--tx2)' }}>{isOwn ? 'אתה' : name}</span>
-                      <span className="text-[10px]" style={{ color: 'var(--tx3)' }}>{fmtTime(msg.created_at)}</span>
+                      <span className="text-[10px]" style={{ color: 'var(--tx3)' }} suppressHydrationWarning>{fmtTime(msg.created_at)}</span>
                     </div>
                   )}
 
@@ -1300,7 +1300,7 @@ export default function ChatClient({
                   {/* Time + hover actions */}
                   {!isEditing && (
                     <div className={`relative flex items-center gap-1 px-1 ${isOwn ? 'flex-row-reverse' : ''}`}>
-                      {sameUser && <span className="text-[10px]" style={{ color: 'var(--tx3)' }}>{fmtTime(msg.created_at)}</span>}
+                      {sameUser && <span className="text-[10px]" style={{ color: 'var(--tx3)' }} suppressHydrationWarning>{fmtTime(msg.created_at)}</span>}
                       {isOwn && isTemp && <span className="text-[10px]" style={{ color: 'var(--tx3)' }}>שולח...</span>}
                       {!isTemp && (
                         <div className={`flex items-center gap-0.5 opacity-0 transition group-hover:opacity-100 ${isOwn ? 'flex-row-reverse' : ''}`}>
@@ -1454,7 +1454,7 @@ export default function ChatClient({
                   {!sameUser && (
                     <div className={`flex items-center gap-2 px-1 ${isOwn ? 'flex-row-reverse' : ''}`}>
                       <span className="text-xs font-semibold" style={{ color: 'var(--tx2)' }}>{isOwn ? 'אתה' : dName(partnerProfile)}</span>
-                      <span className="text-[10px]" style={{ color: 'var(--tx3)' }}>{fmtTime(msg.created_at)}</span>
+                      <span className="text-[10px]" style={{ color: 'var(--tx3)' }} suppressHydrationWarning>{fmtTime(msg.created_at)}</span>
                     </div>
                   )}
 
@@ -1573,7 +1573,7 @@ export default function ChatClient({
                   {!isEditing && (
                     <div className={`relative flex items-center gap-1 px-1 ${isOwn ? 'flex-row-reverse' : ''}`}>
                       {sameUser && (
-                        <span className="text-[10px]" style={{ color: 'var(--tx3)' }}>{fmtTime(msg.created_at)}</span>
+                        <span className="text-[10px]" style={{ color: 'var(--tx3)' }} suppressHydrationWarning>{fmtTime(msg.created_at)}</span>
                       )}
                       {isOwn && !isTemp && !isDeleted && (
                         msg.is_read
