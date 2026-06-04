@@ -299,9 +299,23 @@ function InputBar({ value, onChange, onKeyDown, onSend, isSending, textRef, onAt
   )
 }
 
-function playPing() {
+// Singleton AudioContext — browsers suspend a new context until a user gesture.
+// We create it once (lazily on first interaction) and reuse it across all pings.
+let _audioCtx: AudioContext | null = null
+
+function getAudioCtx(): AudioContext {
+  if (!_audioCtx) {
+    _audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)()
+  }
+  return _audioCtx
+}
+
+async function playPing() {
   try {
-    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+    console.log('🔔 playing ping')
+    const ctx = getAudioCtx()
+    // Resume in case the browser suspended the context (e.g. tab was inactive)
+    if (ctx.state === 'suspended') await ctx.resume()
     const osc = ctx.createOscillator()
     const gain = ctx.createGain()
     osc.connect(gain)
@@ -312,8 +326,9 @@ function playPing() {
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4)
     osc.start(ctx.currentTime)
     osc.stop(ctx.currentTime + 0.4)
-    osc.onended = () => ctx.close()
-  } catch {}
+  } catch (e) {
+    console.warn('playPing error:', e)
+  }
 }
 
 // ─────────────────────────────────────────────────────────
@@ -381,6 +396,17 @@ export default function ChatClient({
     setIsMuted(next)
     try { localStorage.setItem('chatMuted', next ? '1' : '0') } catch {}
   }
+
+  // Warm up AudioContext on first user gesture so browsers allow playback later
+  useEffect(() => {
+    const warm = () => { try { getAudioCtx() } catch {} }
+    window.addEventListener('click', warm, { once: true })
+    window.addEventListener('keydown', warm, { once: true })
+    return () => {
+      window.removeEventListener('click', warm)
+      window.removeEventListener('keydown', warm)
+    }
+  }, [])
 
   // ── Refs ──
   const communityBottomRef = useRef<HTMLDivElement>(null)
