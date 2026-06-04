@@ -79,8 +79,13 @@ function dName(p: Profile | null | undefined) { return p?.full_name ?? p?.userna
 function initials(name: string) { return name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase() }
 
 function fmtTime(iso: string) {
-  return new Date(iso).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
+  const d = new Date(iso)
+  // Zero-pad manually — avoids locale differences between Node (server) and browser
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
+
+const HE_DAYS = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת']
+const HE_MONTHS = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר']
 
 function fmtDateSep(iso: string): string {
   const d = new Date(iso)
@@ -89,7 +94,7 @@ function fmtDateSep(iso: string): string {
   yesterday.setDate(today.getDate() - 1)
   if (d.toDateString() === today.toDateString()) return 'היום'
   if (d.toDateString() === yesterday.toDateString()) return 'אתמול'
-  return d.toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' })
+  return `יום ${HE_DAYS[d.getDay()]}, ${d.getDate()} ב${HE_MONTHS[d.getMonth()]}`
 }
 
 function needsDateSep(curr: string, prev?: string): boolean {
@@ -388,8 +393,10 @@ export default function ChatClient({
   const [emojiPickerFor, setEmojiPickerFor] = useState<string | null>(null)
 
   // ── Sound ──
-  const [isMuted, setIsMuted] = useState(() => typeof window !== 'undefined' && localStorage.getItem('chatMuted') === '1')
-  const isMutedRef = useRef(isMuted)
+  // Start as false on both server and client to avoid hydration mismatch.
+  // Read localStorage only after mount in useEffect.
+  const [isMuted, setIsMuted] = useState(false)
+  const isMutedRef = useRef(false)
   isMutedRef.current = isMuted
   const toggleMute = () => {
     const next = !isMuted
@@ -397,8 +404,10 @@ export default function ChatClient({
     try { localStorage.setItem('chatMuted', next ? '1' : '0') } catch {}
   }
 
-  // Warm up AudioContext on first user gesture so browsers allow playback later
   useEffect(() => {
+    // Restore mute preference after hydration
+    try { if (localStorage.getItem('chatMuted') === '1') setIsMuted(true) } catch {}
+    // Warm up AudioContext on first user gesture so browsers allow playback later
     const warm = () => { try { getAudioCtx() } catch {} }
     window.addEventListener('click', warm, { once: true })
     window.addEventListener('keydown', warm, { once: true })
