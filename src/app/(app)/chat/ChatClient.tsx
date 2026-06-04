@@ -5,7 +5,7 @@ import {
   Send, ArrowRight, X, Lock, Trash2,
   Search, UserPlus, Pin, Paperclip, Check, CheckCheck,
   MessageSquare, File as FileIcon, Edit2, CornerUpLeft, Smile, Users,
-  Bell, BellOff,
+  Bell, BellOff, Volume2,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { Message, Profile, PrivateMessage } from '@/types'
@@ -378,8 +378,6 @@ export default function ChatClient({
   const [emojiPickerFor, setEmojiPickerFor] = useState<string | null>(null)
 
   // ── Sound ──
-  // Start as false on both server and client to avoid hydration mismatch.
-  // Read localStorage only after mount in useEffect.
   const [isMuted, setIsMuted] = useState(false)
   const isMutedRef = useRef(false)
   isMutedRef.current = isMuted
@@ -388,6 +386,9 @@ export default function ChatClient({
     setIsMuted(next)
     try { localStorage.setItem('chatMuted', next ? '1' : '0') } catch {}
   }
+
+  // ── Realtime connection status ──
+  const [rtStatus, setRtStatus] = useState<'connecting' | 'ok' | 'error'>('connecting')
 
   useEffect(() => {
     try { if (localStorage.getItem('chatMuted') === '1') setIsMuted(true) } catch {}
@@ -571,8 +572,9 @@ export default function ChatClient({
         setCommunityMsgs(prev => prev.filter(m => m.id !== old.id))
       })
       .subscribe((status, err) => {
-        if (err) console.error('[rt-community] error:', err)
-        else console.log('[rt-community] status:', status)
+        console.log('[rt-community] status:', status, err ?? '')
+        if (status === 'SUBSCRIBED') setRtStatus('ok')
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') setRtStatus('error')
       })
     return () => { supabase.removeChannel(ch) }
   }, [generalTopicId, supabase])
@@ -1158,9 +1160,15 @@ export default function ChatClient({
           <h2 className="truncate text-sm font-bold" style={{ color: 'var(--tx)' }}>צ׳אט מרכזי</h2>
           <p className="text-[11px]" style={{ color: 'var(--tx3)' }}>צ׳אט כללי לכל חברי הקהילה</p>
         </div>
+        <button onClick={playPing} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition hover:bg-slate-100" style={{ color: 'var(--tx3)' }} title="בדוק צליל">
+          <Volume2 size={15} />
+        </button>
         <button onClick={toggleMute} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition hover:bg-slate-100" style={{ color: isMuted ? '#ef4444' : 'var(--tx3)' }} title={isMuted ? 'בטל השתקה' : 'השתק צלילים'}>
           {isMuted ? <BellOff size={15} /> : <Bell size={15} />}
         </button>
+        <div title={rtStatus === 'ok' ? 'realtime פעיל' : rtStatus === 'error' ? 'שגיאת realtime' : 'מתחבר...'}
+          className="h-2 w-2 shrink-0 rounded-full"
+          style={{ background: rtStatus === 'ok' ? '#22c55e' : rtStatus === 'error' ? '#ef4444' : '#f59e0b' }} />
       </div>
 
       <div ref={communityScrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-0.5" onClick={() => setCommunityEmojiPickerFor(null)}>
@@ -1372,6 +1380,9 @@ export default function ChatClient({
         </div>
         <button onClick={() => setShowPrivateSearch(s => !s)} className="flex h-8 w-8 items-center justify-center rounded-xl transition hover:bg-slate-100" style={{ color: showPrivateSearch ? '#7c3aed' : 'var(--tx3)' }}>
           <Search size={15} />
+        </button>
+        <button onClick={playPing} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition hover:bg-slate-100" style={{ color: 'var(--tx3)' }} title="בדוק צליל">
+          <Volume2 size={15} />
         </button>
         <button onClick={toggleMute} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition hover:bg-slate-100" style={{ color: isMuted ? '#ef4444' : 'var(--tx3)' }} title={isMuted ? 'בטל השתקה' : 'השתק צלילים'}>
           {isMuted ? <BellOff size={15} /> : <Bell size={15} />}
