@@ -9,7 +9,9 @@ export async function createThread(categoryId: string, title: string, content: s
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'לא מחובר' }
-  const { data, error } = await supabase
+  // Use admin client so the returning select is never blocked by RLS
+  const admin = createAdminClient()
+  const { data, error } = await admin
     .from('forum_threads')
     .insert({ category_id: categoryId, user_id: user.id, title: title.trim(), content: content.trim(), images: imageUrls ?? [], tags: tags ?? [] })
     .select('id')
@@ -150,6 +152,20 @@ export async function toggleFollowThread(threadId: string): Promise<{ following:
     .update({ followers: isFollowing ? followers.filter(id => id !== user.id) : [...followers, user.id] })
     .eq('id', threadId)
   return { following: !isFollowing }
+}
+
+export async function markThreadNotificationsRead(threadId: string, categoryId: string) {
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    await supabase
+      .from('notifications')
+      .update({ is_read: true })
+      .eq('user_id', user.id)
+      .eq('link', `/forum/${categoryId}/${threadId}`)
+      .eq('is_read', false)
+  } catch {}
 }
 
 export async function incrementViews(threadId: string) {

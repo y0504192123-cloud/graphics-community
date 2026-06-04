@@ -31,6 +31,7 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
   const { lang, toggleLang } = useLanguage()
   const t = labels[lang]
   const [unreadCount, setUnreadCount] = useState(0)
+  const [forumUnreadCount, setForumUnreadCount] = useState(0)
   const [totalMembers, setTotalMembers] = useState(0)
   const [onlineCount, setOnlineCount] = useState(0)
   const supabase = useMemo(() => createClient(), [])
@@ -49,6 +50,25 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
     const ch = supabase
       .channel('sidebar-pm-count')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'private_messages' }, () => fetchCount())
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  }, [currentUserId, supabase])
+
+  useEffect(() => {
+    if (!currentUserId) return
+    const fetchForumCount = async () => {
+      const { count } = await supabase
+        .from('notifications')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', currentUserId)
+        .eq('type', 'forum_reply')
+        .eq('is_read', false)
+      setForumUnreadCount(count ?? 0)
+    }
+    fetchForumCount()
+    const ch = supabase
+      .channel(`sidebar-forum-${currentUserId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${currentUserId}` }, fetchForumCount)
       .subscribe()
     return () => { supabase.removeChannel(ch) }
   }, [currentUserId, supabase])
@@ -122,6 +142,8 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
         {navItems.map((item) => {
           const active = pathname === item.href || pathname.startsWith(item.href + '/')
           const isChat = item.href === '/chat'
+          const isForum = item.href === '/forum'
+          const badge = isChat ? unreadCount : isForum ? forumUnreadCount : 0
           return (
             <Link
               key={item.href}
@@ -147,9 +169,9 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
                 {item.icon}
               </span>
               <span className="relative" style={{ color: active ? '#6b21a8' : 'var(--tx2)' }}>{item.label}</span>
-              {isChat && unreadCount > 0 && (
-                <span className="relative ms-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white" style={{ color: 'white !important' }}>
-                  {unreadCount > 9 ? '9+' : unreadCount}
+              {badge > 0 && (
+                <span className="relative ms-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">
+                  {badge > 9 ? '9+' : badge}
                 </span>
               )}
             </Link>
@@ -265,9 +287,9 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
             style={{ color: 'var(--tx2)' }}
           >
             {open ? <X size={20} /> : <Menu size={20} />}
-            {!open && unreadCount > 0 && (
+            {!open && (unreadCount + forumUnreadCount) > 0 && (
               <span className="absolute -end-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[8px] font-bold" style={{ color: 'white' }}>
-                {unreadCount > 9 ? '9+' : unreadCount}
+                {(unreadCount + forumUnreadCount) > 9 ? '9+' : unreadCount + forumUnreadCount}
               </span>
             )}
           </button>

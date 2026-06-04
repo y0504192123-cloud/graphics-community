@@ -137,6 +137,7 @@ export default function NewThreadForm({ categoryId }: { categoryId: string }) {
         urls.length > 0 ? urls : undefined,
         tags.length > 0 ? tags : undefined,
       )
+      console.log('[createThread] result:', result, 'categoryId:', categoryId)
       if (result.error) {
         setSubmitError(result.error)
         setIsSubmitting(false)

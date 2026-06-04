@@ -12,7 +12,7 @@ import ReportButton from '@/components/ReportButton'
 import {
   createReply, editReply, deleteReply, deleteThread,
   toggleLike, markBestAnswer, getForumImageUploadUrl,
-  editThread, toggleFollowThread,
+  editThread, toggleFollowThread, markThreadNotificationsRead,
 } from '../../actions'
 
 // ── Helpers ───────────────────────────────────────────────
@@ -545,6 +545,11 @@ export default function ThreadClient({
       window.removeEventListener('keydown', unlock)
     }
   }, [thread.id])
+
+  // Mark forum notifications for this thread as read on mount
+  useEffect(() => {
+    markThreadNotificationsRead(thread.id, categoryId).catch(() => {})
+  }, [thread.id, categoryId])
 
   // Reply draft — restore on mount
   useEffect(() => {
