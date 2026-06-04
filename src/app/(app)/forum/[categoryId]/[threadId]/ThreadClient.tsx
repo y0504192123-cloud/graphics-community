@@ -1,13 +1,13 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { Heart, Trash2, Edit2, CornerUpLeft, CheckCircle2, ChevronLeft } from 'lucide-react'
+import { Heart, Trash2, Edit2, CornerUpLeft, CheckCircle2, ChevronLeft, ImageIcon, X } from 'lucide-react'
 import type { ForumThread, ForumReply, Profile } from '@/types'
 import ReportButton from '@/components/ReportButton'
 import {
   createReply, editReply, deleteReply, deleteThread,
-  toggleLike, markBestAnswer,
+  toggleLike, markBestAnswer, getForumImageUploadUrl,
 } from '../../actions'
 
 // ── helpers ──────────────────────────────────────────────
@@ -89,17 +89,49 @@ export default function ThreadClient({ thread, replies: initialReplies, currentU
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editText, setEditText] = useState('')
+  const [replyImage, setReplyImage] = useState<File | null>(null)
+  const [replyImagePreview, setReplyImagePreview] = useState<string | null>(null)
+  const replyFileRef = useRef<HTMLInputElement>(null)
 
   const refresh = () => { startTransition(() => { router.refresh() }) }
 
+  const handleReplyImageFile = (file: File) => {
+    if (!file.type.startsWith('image/')) return
+    setReplyImage(file)
+    setReplyImagePreview(URL.createObjectURL(file))
+  }
+
+  const handleReplyPaste = (e: React.ClipboardEvent) => {
+    const item = Array.from(e.clipboardData.items).find(i => i.type.startsWith('image/'))
+    const file = item?.getAsFile()
+    if (file) handleReplyImageFile(file)
+  }
+
+  const removeReplyImage = () => {
+    setReplyImage(null)
+    setReplyImagePreview(null)
+    if (replyFileRef.current) replyFileRef.current.value = ''
+  }
+
   const handleReply = async () => {
     const full = quotedText ? `${quotedText}${replyText.trim()}` : replyText.trim()
-    if (!full) return
+    if (!full && !replyImage) return
     setIsSubmitting(true)
     try {
-      await createReply(thread.id, categoryId, full)
+      let imageUrl: string | undefined
+      if (replyImage) {
+        const { signedUrl, publicUrl, error } = await getForumImageUploadUrl()
+        if (!error && signedUrl && publicUrl) {
+          await fetch(signedUrl, { method: 'PUT', body: replyImage, headers: { 'Content-Type': replyImage.type } })
+          imageUrl = publicUrl
+        }
+      }
+      await createReply(thread.id, categoryId, full || ' ', imageUrl)
       setReplyText('')
       setQuotedText('')
+      setReplyImage(null)
+      setReplyImagePreview(null)
+      if (replyFileRef.current) replyFileRef.current.value = ''
       refresh()
     } finally {
       setIsSubmitting(false)
@@ -165,6 +197,13 @@ export default function ThreadClient({ thread, replies: initialReplies, currentU
             </div>
             <div className="mt-3">
               <ContentBlock content={thread.content} />
+              {thread.image_url && (
+                <div className="mt-3">
+                  <a href={thread.image_url} target="_blank" rel="noopener noreferrer">
+                    <img src={thread.image_url} alt="" style={{ maxWidth: '100%', height: 'auto', borderRadius: '12px', display: 'block', cursor: 'zoom-in' }} />
+                  </a>
+                </div>
+              )}
             </div>
             <div className="mt-3 flex items-center gap-2">
               {(thread.user_id === currentUserId || isAdmin) && (
@@ -260,7 +299,16 @@ export default function ThreadClient({ thread, replies: initialReplies, currentU
                           </div>
                         </div>
                       ) : (
-                        <ContentBlock content={reply.content} />
+                        <>
+                          <ContentBlock content={reply.content} />
+                          {reply.image_url && (
+                            <div className="mt-3">
+                              <a href={reply.image_url} target="_blank" rel="noopener noreferrer">
+                                <img src={reply.image_url} alt="" style={{ maxWidth: '100%', height: 'auto', borderRadius: '12px', display: 'block', cursor: 'zoom-in' }} />
+                              </a>
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
@@ -354,19 +402,59 @@ export default function ThreadClient({ thread, replies: initialReplies, currentU
               <button onClick={() => setQuotedText('')} className="shrink-0" style={{ color: 'var(--tx3)' }}>✕</button>
             </div>
           )}
-          <textarea
-            value={replyText}
-            onChange={e => setReplyText(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && e.ctrlKey) { e.preventDefault(); handleReply() } }}
-            rows={4}
-            placeholder="כתוב תגובה... (Ctrl+Enter לשליחה)"
-            className="w-full resize-none rounded-xl px-4 py-2.5 text-sm outline-none transition placeholder:text-slate-400"
-            style={{ background: 'var(--inp)', border: '1px solid var(--bd)', color: 'var(--tx)' }}
-          />
+          <div onPaste={handleReplyPaste}>
+            <textarea
+              value={replyText}
+              onChange={e => setReplyText(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && e.ctrlKey) { e.preventDefault(); handleReply() } }}
+              rows={4}
+              placeholder="כתוב תגובה... (Ctrl+Enter לשליחה)"
+              className="w-full resize-none rounded-xl px-4 py-2.5 text-sm outline-none transition placeholder:text-slate-400"
+              style={{ background: 'var(--inp)', border: '1px solid var(--bd)', color: 'var(--tx)' }}
+            />
+          </div>
+
+          <div className="mt-2 flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => replyFileRef.current?.click()}
+              className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-medium transition hover:opacity-80"
+              style={{ background: 'var(--inp)', border: '1px solid var(--bd)', color: 'var(--tx3)' }}
+            >
+              <ImageIcon size={13} />
+              הוסף תמונה
+            </button>
+            <span className="text-xs" style={{ color: 'var(--tx3)' }}>או הדבק תמונה (Ctrl+V)</span>
+            <input
+              ref={replyFileRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleReplyImageFile(f) }}
+            />
+          </div>
+
+          {replyImagePreview && (
+            <div className="relative mt-2 inline-block">
+              <img
+                src={replyImagePreview}
+                alt=""
+                style={{ maxWidth: '100%', maxHeight: '200px', height: 'auto', borderRadius: '12px', display: 'block' }}
+              />
+              <button
+                onClick={removeReplyImage}
+                className="absolute end-2 top-2 rounded-full p-1 transition hover:opacity-80"
+                style={{ background: 'rgba(0,0,0,.65)', color: 'white' }}
+              >
+                <X size={12} />
+              </button>
+            </div>
+          )}
+
           <div className="mt-3">
             <button
               onClick={handleReply}
-              disabled={!replyText.trim() && !quotedText || isSubmitting}
+              disabled={(!replyText.trim() && !quotedText && !replyImage) || isSubmitting}
               className="rounded-xl px-5 py-2.5 text-sm font-bold text-white transition hover:opacity-90 disabled:opacity-40"
               style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)' }}
             >

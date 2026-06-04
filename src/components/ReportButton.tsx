@@ -4,7 +4,15 @@ import { useState, useTransition } from 'react'
 import { Flag, X } from 'lucide-react'
 import { reportContent } from '@/app/actions/reports'
 
-const REASONS = ['תוכן פוגעני', 'ספאם', 'הטרדה', 'תוכן לא הולם', 'אחר']
+const REASONS = [
+  'תוכן לא הולם לקהל החרדי',
+  'ספאם או פרסומת',
+  'הטרדה או בריונות',
+  'תוכן פוגעני',
+  'זכויות יוצרים',
+  'מידע שגוי',
+  'אחר',
+]
 
 type ContentType = 'message' | 'private_message' | 'forum_reply' | 'forum_thread' | 'inspiration_post'
 

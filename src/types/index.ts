@@ -223,6 +223,7 @@ export type ForumThread = {
   user_id: string
   title: string
   content: string
+  image_url?: string | null
   views: number
   is_pinned: boolean
   is_locked: boolean
@@ -264,6 +265,7 @@ export type ForumReply = {
   thread_id: string
   user_id: string
   content: string
+  image_url?: string | null
   is_best_answer: boolean
   edited_at: string | null
   created_at: string

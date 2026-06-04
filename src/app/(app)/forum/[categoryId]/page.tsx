@@ -3,8 +3,8 @@ import { redirect, notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { MessageSquare, Pin, Lock, Eye, ChevronRight, Plus, Search } from 'lucide-react'
-import { createThread } from '../actions'
 import type { ForumCategory, ForumThread, Profile } from '@/types'
+import NewThreadForm from './NewThreadForm'
 
 interface Props {
   params: Promise<{ categoryId: string }>
@@ -67,8 +67,6 @@ export default async function CategoryPage({ params, searchParams }: Props) {
     return d.toLocaleDateString('he-IL')
   }
 
-  const createThreadWithCategory = createThread.bind(null, categoryId)
-
   return (
     <div className="min-h-full" style={{ background: 'var(--bg)' }}>
 
@@ -104,44 +102,7 @@ export default async function CategoryPage({ params, searchParams }: Props) {
       <div className="mx-auto max-w-4xl px-4 py-6 space-y-4">
 
         {/* New thread form */}
-        {showNewForm && (
-          <div className="rounded-2xl p-5" style={{ background: 'var(--s1)', border: '1px solid rgba(124,58,237,.2)', boxShadow: '0 4px 20px rgba(124,58,237,.08)' }}>
-            <h2 className="mb-4 text-base font-bold" style={{ color: 'var(--tx)' }}>פתח נושא חדש</h2>
-            <form action={async (fd: FormData) => {
-              'use server'
-              const title = fd.get('title') as string
-              const content = fd.get('content') as string
-              if (!title?.trim() || !content?.trim()) return
-              await createThreadWithCategory(title, content)
-            }}>
-              <div className="space-y-3">
-                <input
-                  name="title"
-                  required
-                  placeholder="כותרת הנושא"
-                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition placeholder:text-slate-400 focus:border-purple-400 focus:ring-2 focus:ring-purple-100"
-                  style={{ color: 'var(--tx)' }}
-                />
-                <textarea
-                  name="content"
-                  required
-                  rows={5}
-                  placeholder="תוכן הנושא... שאל שאלה, שתף ידע, פתח דיון"
-                  className="w-full resize-none rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition placeholder:text-slate-400 focus:border-purple-400 focus:ring-2 focus:ring-purple-100"
-                  style={{ color: 'var(--tx)' }}
-                />
-                <div className="flex gap-2">
-                  <button type="submit" className="rounded-xl px-5 py-2 text-sm font-bold text-white transition hover:opacity-90" style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)' }}>
-                    פרסם נושא
-                  </button>
-                  <Link href={`/forum/${categoryId}`} className="rounded-xl px-4 py-2 text-sm font-medium transition hover:bg-slate-100" style={{ color: 'var(--tx3)', border: '1px solid var(--bd)' }}>
-                    ביטול
-                  </Link>
-                </div>
-              </div>
-            </form>
-          </div>
-        )}
+        {showNewForm && <NewThreadForm categoryId={categoryId} />}
 
         {/* Sort + Search */}
         <div className="flex flex-wrap items-center gap-3">

@@ -5,13 +5,13 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
-export async function createThread(categoryId: string, title: string, content: string) {
+export async function createThread(categoryId: string, title: string, content: string, imageUrl?: string) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
   const { data, error } = await supabase
     .from('forum_threads')
-    .insert({ category_id: categoryId, user_id: user.id, title: title.trim(), content: content.trim() })
+    .insert({ category_id: categoryId, user_id: user.id, title: title.trim(), content: content.trim(), image_url: imageUrl ?? null })
     .select('id')
     .single()
   if (error || !data) return { error: error?.message ?? 'שגיאה' }
@@ -19,16 +19,28 @@ export async function createThread(categoryId: string, title: string, content: s
   redirect(`/forum/${categoryId}/${data.id}`)
 }
 
-export async function createReply(threadId: string, categoryId: string, content: string) {
+export async function createReply(threadId: string, categoryId: string, content: string, imageUrl?: string) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
-  await supabase.from('forum_replies').insert({ thread_id: threadId, user_id: user.id, content: content.trim() })
+  await supabase.from('forum_replies').insert({ thread_id: threadId, user_id: user.id, content: content.trim(), image_url: imageUrl ?? null })
   await createAdminClient()
     .from('forum_threads')
     .update({ updated_at: new Date().toISOString() })
     .eq('id', threadId)
   revalidatePath(`/forum/${categoryId}/${threadId}`)
+}
+
+export async function getForumImageUploadUrl(): Promise<{ signedUrl?: string; publicUrl?: string; error?: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'לא מחובר' }
+  const admin = createAdminClient()
+  const path = `${user.id}/${Date.now()}`
+  const { data, error } = await admin.storage.from('forum-images').createSignedUploadUrl(path)
+  if (error) return { error: error.message }
+  const { data: { publicUrl } } = admin.storage.from('forum-images').getPublicUrl(path)
+  return { signedUrl: data.signedUrl, publicUrl }
 }
 
 export async function editReply(replyId: string, threadId: string, categoryId: string, content: string) {
