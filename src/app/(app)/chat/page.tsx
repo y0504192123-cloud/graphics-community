@@ -69,7 +69,7 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
   const [privMsgsRes, usersRes] = await Promise.all([
     admin
       .from('private_messages')
-      .select('*, sender:profiles!sender_id(*), receiver:profiles!receiver_id(*), reply_to:private_messages!reply_to_id(id,content,sender_id)')
+      .select('*')
       .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
       .order('created_at', { ascending: true }),
     admin
@@ -80,7 +80,25 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
       .order('full_name', { ascending: true }),
   ])
 
-  const privateMessages = (privMsgsRes.data ?? []) as PrivateMessage[]
+  const msgsRaw = (privMsgsRes.data ?? []) as PrivateMessage[]
+
+  // Fetch profiles and reply_to messages explicitly (avoids FK join requirement)
+  const pmUserIds = Array.from(new Set(msgsRaw.flatMap(m => [m.sender_id, m.receiver_id])))
+  const replyToIds = msgsRaw.map(m => m.reply_to_id).filter(Boolean) as string[]
+
+  const [pmProfilesRes, replyMsgsRes] = await Promise.all([
+    pmUserIds.length ? admin.from('profiles').select('id, full_name, username, avatar_url, specialization, role, status, created_at').in('id', pmUserIds) : Promise.resolve({ data: [] }),
+    replyToIds.length ? admin.from('private_messages').select('id, content, sender_id').in('id', replyToIds) : Promise.resolve({ data: [] }),
+  ])
+  const pmProfilesMap = Object.fromEntries(((pmProfilesRes.data ?? []) as Profile[]).map(p => [p.id, p]))
+  const replyMap = Object.fromEntries(((replyMsgsRes.data ?? []) as { id: string; content: string | null; sender_id: string }[]).map(r => [r.id, r]))
+
+  const privateMessages = msgsRaw.map(m => ({
+    ...m,
+    sender: pmProfilesMap[m.sender_id],
+    receiver: pmProfilesMap[m.receiver_id],
+    reply_to: m.reply_to_id ? (replyMap[m.reply_to_id] ?? null) : null,
+  })) as PrivateMessage[]
   const activeUsers = (usersRes.data ?? []) as Profile[]
 
   let dmProfile: Profile | null = null

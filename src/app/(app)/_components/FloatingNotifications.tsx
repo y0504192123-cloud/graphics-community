@@ -75,6 +75,8 @@ export default function FloatingNotifications({ currentUserId }: { currentUserId
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'private_messages' }, async (payload) => {
         const m = payload.new as { id: string; sender_id: string; receiver_id: string; content: string }
         if (m.receiver_id !== currentUserId) return
+        const path = window.location.pathname + window.location.search
+        if (path.includes('/chat') && path.includes(m.sender_id)) return
         const { data: prof } = await supabase.from('profiles').select('id,full_name,username,avatar_url').eq('id', m.sender_id).single()
         const p = prof as Profile | null
         const name = p?.full_name ?? p?.username ?? 'משתמש'

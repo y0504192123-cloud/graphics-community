@@ -56,7 +56,7 @@ export default async function CategoryPage({ params, searchParams }: Props) {
 
   let query = admin
     .from('forum_threads')
-    .select('*, profiles(id, full_name, username, avatar_url, role)')
+    .select('*')
     .eq('category_id', categoryId)
 
   if (q) query = query.ilike('title', `%${q}%`)
@@ -66,7 +66,16 @@ export default async function CategoryPage({ params, searchParams }: Props) {
     .order('updated_at', { ascending: false })
     .limit(60)
 
-  let threads = (threadsRaw ?? []) as (ForumThread & { profiles?: Profile })[]
+  const rawList = (threadsRaw ?? []) as ForumThread[]
+
+  // Fetch author profiles in one batch
+  const authorIds = Array.from(new Set(rawList.map(t => t.user_id)))
+  const { data: authorsData } = authorIds.length
+    ? await admin.from('profiles').select('id, full_name, username, avatar_url, role').in('id', authorIds)
+    : { data: [] }
+  const authorsMap = Object.fromEntries((authorsData ?? []).map(p => [p.id, p as unknown as Profile]))
+
+  let threads = rawList.map(t => ({ ...t, profiles: authorsMap[t.user_id] ?? null })) as (ForumThread & { profiles?: Profile })[]
 
   // Fetch reply counts and best-answer status in one query
   const threadIds = threads.map(t => t.id)

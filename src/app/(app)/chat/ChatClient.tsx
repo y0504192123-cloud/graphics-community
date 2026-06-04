@@ -306,14 +306,18 @@ function InputBar({ value, onChange, onKeyDown, onSend, isSending, textRef, onAt
 
 // ── Audio system ──────────────────────────────────────────
 
-type SoundType = 'ping' | 'chime' | 'pop' | 'bell' | 'none'
+type SoundType = 'ping' | 'chime' | 'pop' | 'bell' | 'bubble' | 'ding' | 'whoosh' | 'alto' | 'none'
 
 const SOUND_OPTIONS: { value: SoundType; label: string; icon: string }[] = [
-  { value: 'ping',  label: 'Ping',  icon: '🔔' },
-  { value: 'chime', label: 'Chime', icon: '🎵' },
-  { value: 'pop',   label: 'Pop',   icon: '💬' },
-  { value: 'bell',  label: 'Bell',  icon: '🔕' },
-  { value: 'none',  label: 'השתק',  icon: '🔇' },
+  { value: 'ping',   label: 'Ping',      icon: '🔔' },
+  { value: 'chime',  label: 'Chime',     icon: '🎵' },
+  { value: 'pop',    label: 'Pop',       icon: '💬' },
+  { value: 'bell',   label: 'Soft Bell', icon: '🔕' },
+  { value: 'bubble', label: 'Bubble',    icon: '🫧' },
+  { value: 'ding',   label: 'Ding',      icon: '✨' },
+  { value: 'whoosh', label: 'Whoosh',    icon: '💨' },
+  { value: 'alto',   label: 'Alto',      icon: '🎶' },
+  { value: 'none',   label: 'השתק',      icon: '🔇' },
 ]
 
 const SOUND_PREF_PREFIX = 'sndPref_'
@@ -322,28 +326,57 @@ function playSound(type: SoundType) {
   if (type === 'none') return
   try {
     const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
-    const osc = ctx.createOscillator()
-    const gain = ctx.createGain()
-    osc.connect(gain); gain.connect(ctx.destination)
     const t = ctx.currentTime
-    if (type === 'ping') {
-      osc.frequency.setValueAtTime(800, t); osc.frequency.exponentialRampToValueAtTime(400, t + 0.1)
-      gain.gain.setValueAtTime(0.3, t); gain.gain.exponentialRampToValueAtTime(0.001, t + 0.3)
-      osc.start(t); osc.stop(t + 0.3)
-    } else if (type === 'chime') {
-      osc.frequency.setValueAtTime(400, t); osc.frequency.exponentialRampToValueAtTime(800, t + 0.15)
-      gain.gain.setValueAtTime(0.25, t); gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4)
-      osc.start(t); osc.stop(t + 0.4)
-    } else if (type === 'pop') {
-      osc.frequency.setValueAtTime(600, t)
-      gain.gain.setValueAtTime(0.4, t); gain.gain.exponentialRampToValueAtTime(0.001, t + 0.05)
-      osc.start(t); osc.stop(t + 0.05)
+    if (type === 'whoosh') {
+      const bufSize = Math.ceil(ctx.sampleRate * 0.18)
+      const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate)
+      const d = buf.getChannelData(0)
+      for (let i = 0; i < bufSize; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / bufSize)
+      const src = ctx.createBufferSource(); src.buffer = buf
+      const gain = ctx.createGain()
+      gain.gain.setValueAtTime(0.3, t); gain.gain.exponentialRampToValueAtTime(0.001, t + 0.18)
+      src.connect(gain); gain.connect(ctx.destination)
+      src.start(t); src.onended = () => ctx.close()
+    } else if (type === 'ding') {
+      ;[800, 1000].forEach((freq, i) => {
+        const osc = ctx.createOscillator(); const gain = ctx.createGain()
+        osc.connect(gain); gain.connect(ctx.destination)
+        osc.frequency.value = freq
+        const s = t + i * 0.1
+        gain.gain.setValueAtTime(0.25, s); gain.gain.exponentialRampToValueAtTime(0.001, s + 0.1)
+        osc.start(s); osc.stop(s + 0.1)
+        if (i === 1) osc.onended = () => ctx.close()
+      })
     } else {
-      osc.frequency.setValueAtTime(600, t); osc.frequency.exponentialRampToValueAtTime(300, t + 0.5)
-      gain.gain.setValueAtTime(0.25, t); gain.gain.exponentialRampToValueAtTime(0.001, t + 0.5)
-      osc.start(t); osc.stop(t + 0.5)
+      const osc = ctx.createOscillator(); const gain = ctx.createGain()
+      osc.connect(gain); gain.connect(ctx.destination)
+      if (type === 'ping') {
+        osc.frequency.setValueAtTime(800, t); osc.frequency.exponentialRampToValueAtTime(400, t + 0.1)
+        gain.gain.setValueAtTime(0.3, t); gain.gain.exponentialRampToValueAtTime(0.001, t + 0.3)
+        osc.start(t); osc.stop(t + 0.3)
+      } else if (type === 'chime') {
+        osc.frequency.setValueAtTime(400, t); osc.frequency.exponentialRampToValueAtTime(800, t + 0.15)
+        gain.gain.setValueAtTime(0.25, t); gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4)
+        osc.start(t); osc.stop(t + 0.4)
+      } else if (type === 'pop') {
+        osc.frequency.setValueAtTime(600, t)
+        gain.gain.setValueAtTime(0.4, t); gain.gain.exponentialRampToValueAtTime(0.001, t + 0.05)
+        osc.start(t); osc.stop(t + 0.05)
+      } else if (type === 'bell') {
+        osc.frequency.setValueAtTime(600, t); osc.frequency.exponentialRampToValueAtTime(300, t + 0.5)
+        gain.gain.setValueAtTime(0.25, t); gain.gain.exponentialRampToValueAtTime(0.001, t + 0.5)
+        osc.start(t); osc.stop(t + 0.5)
+      } else if (type === 'bubble') {
+        osc.frequency.setValueAtTime(300, t); osc.frequency.exponentialRampToValueAtTime(600, t + 0.08)
+        gain.gain.setValueAtTime(0.3, t); gain.gain.exponentialRampToValueAtTime(0.001, t + 0.15)
+        osc.start(t); osc.stop(t + 0.15)
+      } else if (type === 'alto') {
+        osc.frequency.setValueAtTime(400, t); osc.frequency.exponentialRampToValueAtTime(200, t + 0.5)
+        gain.gain.setValueAtTime(0.25, t); gain.gain.exponentialRampToValueAtTime(0.001, t + 0.5)
+        osc.start(t); osc.stop(t + 0.5)
+      }
+      osc.onended = () => ctx.close()
     }
-    osc.onended = () => ctx.close()
   } catch {}
 }
 
