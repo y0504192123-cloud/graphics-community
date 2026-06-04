@@ -16,7 +16,7 @@ export default async function AdminPage() {
   if (profileData?.role !== 'admin') redirect('/dashboard')
 
   const admin = createAdminClient()
-  const [pendingRes, activeRes, newsRes, newsCatRes, catRes, specsRes, inspCatsRes, jobCatsRes, assetCatsRes, logoRes, forumCatsRes, fontsRes, fontWeightsRes] = await Promise.all([
+  const [pendingRes, activeRes, newsRes, newsCatRes, catRes, specsRes, inspCatsRes, jobCatsRes, assetCatsRes, logoRes, forumCatsRes, fontsRes, fontWeightsRes, reportsRes] = await Promise.all([
     admin.from('profiles').select('*').eq('status', 'pending').order('created_at', { ascending: false }),
     admin.from('profiles').select('*').eq('status', 'active').order('created_at', { ascending: false }),
     admin.from('news').select('*, profiles(*), news_categories(*)').order('created_at', { ascending: false }),
@@ -30,6 +30,7 @@ export default async function AdminPage() {
     admin.from('forum_categories').select('*').order('sort_order', { ascending: true }),
     admin.from('fonts').select('*').order('name', { ascending: true }),
     admin.from('font_weights').select('*').order('created_at', { ascending: true }),
+    admin.from('content_reports').select('*, reporter:profiles!reporter_id(id, full_name, username)').order('created_at', { ascending: false }).limit(200),
   ])
 
   // Auto-archive expired news on every admin page load
@@ -46,8 +47,9 @@ export default async function AdminPage() {
   const assetCategories       = (assetCatsRes.data  ?? []) as AssetCategory[]
   const currentLogoUrl: string | null = logoRes.data?.value ?? null
   const forumCategories       = (forumCatsRes.data  ?? []) as ForumCategory[]
-  const fonts                 = (fontsRes.data      ?? []) as Font[]
+  const fonts                 = (fontsRes.data       ?? []) as Font[]
   const fontWeights           = (fontWeightsRes.data ?? []) as FontWeight[]
+  const reports               = (reportsRes.data     ?? []) as any[]
 
   /* ── Server Actions ── */
 
@@ -800,6 +802,28 @@ export default async function AdminPage() {
     return { done, errors, total, batchSize: fontsData.length }
   }
 
+  async function updateReportStatus(id: string, status: 'reviewed' | 'dismissed') {
+    'use server'
+    await createAdminClient().from('content_reports').update({ status }).eq('id', id)
+    revalidatePath('/admin')
+  }
+
+  async function deleteReportedContent(reportId: string, contentType: string, contentId: string) {
+    'use server'
+    const a = createAdminClient()
+    const tableMap: Record<string, string> = {
+      message: 'messages',
+      private_message: 'private_messages',
+      forum_reply: 'forum_replies',
+      forum_thread: 'forum_threads',
+      inspiration_post: 'inspiration_posts',
+    }
+    const table = tableMap[contentType]
+    if (table) await a.from(table).delete().eq('id', contentId)
+    await a.from('content_reports').update({ status: 'reviewed' }).eq('id', reportId)
+    revalidatePath('/admin')
+  }
+
   return (
     <AdminClient
       pendingUsers={pendingUsers}
@@ -851,6 +875,9 @@ export default async function AdminPage() {
       rebuildPreviewsBatch={rebuildPreviewsBatch}
       computeEmbeddingBatch={computeEmbeddingBatch}
       buildLetterEmbeddingsBatch={buildLetterEmbeddingsBatch}
+      reports={reports}
+      updateReportStatus={updateReportStatus}
+      deleteReportedContent={deleteReportedContent}
     />
   )
 }

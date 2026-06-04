@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Heart, Trash2, Edit2, CornerUpLeft, CheckCircle2, ChevronLeft } from 'lucide-react'
 import type { ForumThread, ForumReply, Profile } from '@/types'
+import ReportButton from '@/components/ReportButton'
 import {
   createReply, editReply, deleteReply, deleteThread,
   toggleLike, markBestAnswer,
@@ -165,13 +166,17 @@ export default function ThreadClient({ thread, replies: initialReplies, currentU
             <div className="mt-3">
               <ContentBlock content={thread.content} />
             </div>
-            {(thread.user_id === currentUserId || isAdmin) && (
-              <div className="mt-3 flex gap-2">
+            <div className="mt-3 flex items-center gap-2">
+              {(thread.user_id === currentUserId || isAdmin) && (
                 <button onClick={handleDeleteThread} className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs transition hover:bg-red-50 hover:text-red-500" style={{ color: 'var(--tx3)' }}>
                   <Trash2 size={11} /> מחק נושא
                 </button>
-              </div>
-            )}
+              )}
+              {thread.user_id !== currentUserId && (
+                <ReportButton contentType="forum_thread" contentId={thread.id}
+                  buttonClassName="flex items-center gap-1 rounded-lg px-2 py-1 text-xs transition hover:bg-red-50 hover:text-red-400" />
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -321,6 +326,12 @@ export default function ThreadClient({ thread, replies: initialReplies, currentU
                           >
                             <Trash2 size={11} />
                           </button>
+                        )}
+                        {/* Report (other users only) */}
+                        {!isOwn && (
+                          <ReportButton contentType="forum_reply" contentId={reply.id}
+                            buttonClassName="flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs transition hover:bg-red-50 hover:text-red-400"
+                            buttonStyle={{ color: 'var(--tx3)', border: '1px solid var(--bd)' }} />
                         )}
                       </div>
                     </div>

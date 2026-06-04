@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { Message, Profile, PrivateMessage } from '@/types'
+import ReportButton from '@/components/ReportButton'
 
 // ─────────────────────────────────────────────────────────
 // Types
@@ -1199,6 +1200,9 @@ export default function ChatClient({
                               <Trash2 size={11} />
                             </button>
                           )}
+                          {!isOwn && (
+                            <ReportButton contentType="message" contentId={msg.id} />
+                          )}
                         </div>
                       )}
                     </div>
@@ -1493,6 +1497,9 @@ export default function ChatClient({
                             >
                               <Trash2 size={11} />
                             </button>
+                          )}
+                          {!isOwn && (
+                            <ReportButton contentType="private_message" contentId={msg.id} />
                           )}
                         </div>
                       )}

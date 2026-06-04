@@ -190,6 +190,17 @@ export type InspirationComment = {
   profiles?: Profile
 }
 
+export type ContentReport = {
+  id: string
+  reporter_id: string
+  content_type: 'message' | 'private_message' | 'forum_reply' | 'forum_thread' | 'inspiration_post'
+  content_id: string
+  reason: string
+  status: 'pending' | 'reviewed' | 'dismissed'
+  created_at: string
+  reporter?: { id: string; full_name: string | null; username: string | null } | null
+}
+
 export type AssetCategory = {
   id: string
   name: string

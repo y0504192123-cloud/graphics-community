@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Upload, MessageSquare, X, ImageIcon, Plus, Trash2 } from 'lucide-react'
 import type { InspirationPost } from '@/types'
+import ReportButton from '@/components/ReportButton'
 
 async function compressImage(file: File, maxMB = 3.5): Promise<File> {
   return new Promise((resolve, reject) => {
@@ -391,6 +392,17 @@ function PostCard({ post, currentUserId, onDelete, isPending }: {
           >
             <Trash2 size={13} className="text-white" />
           </button>
+        )}
+        {post.user_id !== currentUserId && (
+          <div className="absolute end-2 top-2 opacity-0 transition-opacity group-hover:opacity-100">
+            <ReportButton
+              contentType="inspiration_post"
+              contentId={post.id}
+              buttonClassName="rounded-lg p-1.5 transition hover:opacity-80"
+              buttonStyle={{ background: 'rgba(0,0,0,.6)', color: '#fff' }}
+              iconSize={13}
+            />
+          </div>
         )}
       </div>
 

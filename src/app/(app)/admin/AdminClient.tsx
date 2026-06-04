@@ -3,12 +3,12 @@
 import { useState, useTransition, useActionState, useRef } from 'react'
 import {
   ShieldCheck, Users, Clock, CheckCircle2, XCircle, Newspaper,
-  Hash, Plus, Trash2, ExternalLink, Phone, MapPin, Briefcase, Star, X, Palette, FolderOpen, ImageIcon, MessagesSquare, ScanText
+  Hash, Plus, Trash2, ExternalLink, Phone, MapPin, Briefcase, Star, X, Palette, FolderOpen, ImageIcon, MessagesSquare, ScanText, Flag,
 } from 'lucide-react'
-import type { Profile, NewsItem, NewsCategory, ChatCategory, Specialization, InspirationCategory, JobCategory, AssetCategory, ForumCategory, Font, FontWeight } from '@/types'
+import type { Profile, NewsItem, NewsCategory, ChatCategory, Specialization, InspirationCategory, JobCategory, AssetCategory, ForumCategory, Font, FontWeight, ContentReport } from '@/types'
 import FontsTab from './FontsTab'
 
-type Tab = 'pending' | 'users' | 'news' | 'categories' | 'specializations' | 'insp_cats' | 'job_cats' | 'asset_cats' | 'branding' | 'forum_cats' | 'fonts'
+type Tab = 'pending' | 'users' | 'news' | 'categories' | 'specializations' | 'insp_cats' | 'job_cats' | 'asset_cats' | 'branding' | 'forum_cats' | 'fonts' | 'reports'
 
 type Props = {
   pendingUsers:    Profile[]
@@ -60,6 +60,9 @@ type Props = {
   rebuildPreviewsBatch:        (offset: number, limit: number) => Promise<{ done: number; errors: number; total: number; batchSize: number }>
   computeEmbeddingBatch:       (offset: number, limit: number) => Promise<{ done: number; errors: number; total: number; batchSize: number }>
   buildLetterEmbeddingsBatch:  (offset: number, limit: number, nameFilter?: string) => Promise<{ done: number; errors: number; total: number; batchSize: number }>
+  reports:                     ContentReport[]
+  updateReportStatus:          (id: string, status: 'reviewed' | 'dismissed') => Promise<void>
+  deleteReportedContent:       (reportId: string, contentType: string, contentId: string) => Promise<void>
 }
 
 const inputCls = 'w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition-all placeholder:text-slate-400 hover:border-slate-300 focus:border-purple-400 focus:ring-2 focus:ring-purple-100'
@@ -77,6 +80,7 @@ const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'forum_cats',      label: 'קטגוריות פורום',     icon: <MessagesSquare size={15} /> },
   { id: 'fonts',           label: 'מאגר פונטים',        icon: <ScanText size={15} /> },
   { id: 'branding',        label: 'מיתוג',              icon: <ImageIcon size={15} /> },
+  { id: 'reports',         label: 'דיווחים',             icon: <Flag size={15} /> },
 ]
 
 export default function AdminClient({
@@ -96,6 +100,7 @@ export default function AdminClient({
   getFontPreviewUploadUrl, getFontFileUploadUrl, generateFontPreview,
   createFontWithPreview, updateFontsCompany, quickUpdateFont,
   recomputeHashBatch, rebuildPreviewsBatch, computeEmbeddingBatch, buildLetterEmbeddingsBatch,
+  reports, updateReportStatus, deleteReportedContent,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('pending')
   const [isPending, startTransition] = useTransition()
@@ -116,6 +121,7 @@ export default function AdminClient({
   const [newsImgUrl,   setNewsImgUrl]   = useState<string | null>(null)
   const [newsImgUploading, setNewsImgUploading] = useState(false)
   const newsImgRef = useRef<HTMLInputElement>(null)
+  const [reportFilter, setReportFilter] = useState<'all' | 'pending' | 'reviewed' | 'dismissed'>('pending')
 
   return (
     <div className="min-h-full" style={{ background: 'var(--bg)' }}>
@@ -962,6 +968,103 @@ export default function AdminClient({
             </div>
           </div>
         )}
+
+        {/* ── Reports ── */}
+        {activeTab === 'reports' && (() => {
+          const filtered = reportFilter === 'all' ? reports : reports.filter(r => r.status === reportFilter)
+          const pendingCount = reports.filter(r => r.status === 'pending').length
+          const typeLabel: Record<string, string> = {
+            message: "הודעת צ׳אט",
+            private_message: 'הודעה פרטית',
+            forum_reply: 'תגובה בפורום',
+            forum_thread: 'נושא בפורום',
+            inspiration_post: 'פוסט השראה',
+          }
+          return (
+            <div>
+              {/* Filters */}
+              <div className="mb-4 flex flex-wrap gap-2">
+                {(['pending', 'all', 'reviewed', 'dismissed'] as const).map(f => (
+                  <button key={f} onClick={() => setReportFilter(f)}
+                    className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition"
+                    style={reportFilter === f
+                      ? { background: 'linear-gradient(135deg,#7c3aed,#6d28d9)', color: '#fff', boxShadow: '0 4px 12px rgba(124,58,237,.3)' }
+                      : { background: 'var(--inp)', border: '1px solid var(--bd)', color: 'var(--tx2)' }}>
+                    {f === 'all' ? 'הכל' : f === 'pending' ? 'ממתין' : f === 'reviewed' ? 'טופל' : 'נדחה'}
+                    {f === 'pending' && pendingCount > 0 && (
+                      <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">{pendingCount}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+
+              {filtered.length === 0 ? (
+                <div className="flex flex-col items-center gap-3 rounded-2xl py-16 text-center" style={{ border: '2px dashed var(--bd)', background: 'var(--inp)' }}>
+                  <Flag size={28} style={{ color: 'var(--tx3)' }} />
+                  <p className="text-sm" style={{ color: 'var(--tx3)' }}>אין דיווחים</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {filtered.map(report => (
+                    <div key={report.id} className="rounded-2xl p-4" style={{ background: 'var(--s2)', border: '1px solid var(--bd)' }}>
+                      <div className="mb-2 flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white" style={{ background: 'linear-gradient(135deg,#7c3aed,#ec4899)' }}>
+                            {(report.reporter?.full_name ?? report.reporter?.username ?? 'מ')[0].toUpperCase()}
+                          </div>
+                          <div>
+                            <span className="text-xs font-bold" style={{ color: 'var(--tx)' }}>{report.reporter?.full_name ?? report.reporter?.username ?? 'משתמש'}</span>
+                            <span className="mx-1.5 text-xs" style={{ color: 'var(--tx3)' }}>דיווח על</span>
+                            <span className="text-xs font-bold" style={{ color: '#7c3aed' }}>{typeLabel[report.content_type] ?? report.content_type}</span>
+                          </div>
+                        </div>
+                        <span className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold"
+                          style={{
+                            background: report.status === 'pending' ? 'rgba(245,158,11,.1)' : report.status === 'reviewed' ? 'rgba(16,185,129,.1)' : 'rgba(107,114,128,.1)',
+                            color: report.status === 'pending' ? '#f59e0b' : report.status === 'reviewed' ? '#059669' : '#6b7280',
+                          }}>
+                          {report.status === 'pending' ? 'ממתין' : report.status === 'reviewed' ? 'טופל' : 'נדחה'}
+                        </span>
+                      </div>
+
+                      <div className="mb-2 flex flex-wrap gap-3 text-xs" style={{ color: 'var(--tx3)' }}>
+                        <span>סיבה: <strong style={{ color: 'var(--tx2)' }}>{report.reason}</strong></span>
+                        <span>מזהה תוכן: <code className="rounded px-1 text-[10px]" style={{ background: 'var(--inp)', color: 'var(--tx2)' }}>{String(report.content_id).slice(0, 8)}…</code></span>
+                        <span>{new Date(report.created_at).toLocaleDateString('he-IL', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                      </div>
+
+                      {report.status === 'pending' && (
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            disabled={isPending}
+                            onClick={() => startTransition(async () => { await updateReportStatus(report.id, 'reviewed') })}
+                            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-50"
+                            style={{ background: 'linear-gradient(135deg,#059669,#047857)' }}>
+                            <CheckCircle2 size={12} /> סגור דיווח
+                          </button>
+                          <button
+                            disabled={isPending}
+                            onClick={() => startTransition(async () => { await deleteReportedContent(report.id, report.content_type, report.content_id) })}
+                            className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-bold transition hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50"
+                            style={{ borderColor: 'rgba(239,68,68,.3)', color: 'var(--tx3)' }}>
+                            <Trash2 size={12} /> מחק תוכן
+                          </button>
+                          <button
+                            disabled={isPending}
+                            onClick={() => startTransition(async () => { await updateReportStatus(report.id, 'dismissed') })}
+                            className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition hover:opacity-80 disabled:opacity-50"
+                            style={{ borderColor: 'var(--bd)', color: 'var(--tx3)' }}>
+                            <XCircle size={12} /> דחה
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )
+        })()}
 
       </div>
     </div>
