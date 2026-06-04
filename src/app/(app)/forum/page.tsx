@@ -110,40 +110,51 @@ export default async function ForumPage() {
           <section>
             <h2 className="mb-4 text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--tx3)' }}>קטגוריות</h2>
             <div className="grid gap-3 sm:grid-cols-2">
-              {categories.map(cat => (
-                <Link
-                  key={cat.id}
-                  href={`/forum/${cat.id}`}
-                  className="group relative rounded-2xl p-5 transition-all hover:scale-[1.01] hover:-translate-y-0.5"
-                  style={{ background: 'var(--s1)', border: '1px solid var(--bd)', boxShadow: '0 2px 8px rgba(0,0,0,.04)' }}
-                >
-                  <div className="flex items-start gap-4">
-                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl text-3xl transition-transform group-hover:scale-110"
-                      style={{ background: 'linear-gradient(135deg,rgba(124,58,237,.12),rgba(79,70,229,.08))', border: '1px solid rgba(124,58,237,.15)' }}>
-                      {cat.icon ?? '💬'}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="font-bold text-base leading-snug transition-colors group-hover:text-purple-600" style={{ color: 'var(--tx)' }}>{cat.name}</p>
-                        <ChevronLeft size={14} className="mt-0.5 shrink-0 text-slate-300 transition-colors group-hover:text-purple-400" />
+              {categories.map((cat, ci) => {
+                const cardGrads = [
+                  'linear-gradient(135deg,#6B21A8,#4F46E5)',
+                  'linear-gradient(135deg,#7c3aed,#2563eb)',
+                  'linear-gradient(135deg,#9333ea,#0891b2)',
+                  'linear-gradient(135deg,#7c3aed,#db2777)',
+                ]
+                const cardGrad = cardGrads[ci % cardGrads.length]
+                return (
+                  <Link
+                    key={cat.id}
+                    href={`/forum/${cat.id}`}
+                    className="group relative overflow-hidden rounded-2xl p-5 transition-all duration-200 hover:-translate-y-1"
+                    style={{ background: cardGrad, boxShadow: '0 4px 16px rgba(107,33,168,.25)', color: 'white' }}
+                  >
+                    <div className="pointer-events-none absolute -end-6 -top-6 h-28 w-28 rounded-full opacity-15" style={{ background: 'white' }} />
+                    <div className="pointer-events-none absolute -bottom-4 -start-4 h-20 w-20 rounded-full opacity-10" style={{ background: 'white' }} />
+                    <div className="relative flex items-start gap-4">
+                      <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl text-4xl transition-transform duration-200 group-hover:scale-110"
+                        style={{ background: 'rgba(255,255,255,.18)', backdropFilter: 'blur(4px)' }}>
+                        {cat.icon ?? '💬'}
                       </div>
-                      {cat.description && (
-                        <p className="mt-1 text-xs leading-relaxed line-clamp-2" style={{ color: 'var(--tx3)' }}>{cat.description}</p>
-                      )}
-                      <div className="mt-3 flex items-center gap-3">
-                        <span className="flex items-center gap-1 text-xs font-semibold text-purple-600">
-                          <MessageSquare size={11} />
-                          {threadCounts[cat.id] ?? 0} נושאים
-                        </span>
-                        <span className="text-xs" style={{ color: 'var(--tx3)' }}>·</span>
-                        <span className="text-xs" style={{ color: 'var(--tx3)' }}>
-                          {replyCounts[cat.id] ?? 0} תגובות
-                        </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="font-bold text-base leading-snug text-white">{cat.name}</p>
+                          <ChevronLeft size={14} className="mt-0.5 shrink-0 opacity-60 transition-opacity group-hover:opacity-100" style={{ color: 'white' }} />
+                        </div>
+                        {cat.description && (
+                          <p className="mt-1 text-xs leading-relaxed line-clamp-2 opacity-80" style={{ color: 'rgba(255,255,255,.85)' }}>{cat.description}</p>
+                        )}
+                        <div className="mt-3 flex items-center gap-3">
+                          <span className="flex items-center gap-1 text-xs font-semibold" style={{ color: 'rgba(255,255,255,.9)' }}>
+                            <MessageSquare size={11} />
+                            {threadCounts[cat.id] ?? 0} נושאים
+                          </span>
+                          <span className="text-xs opacity-60" style={{ color: 'white' }}>·</span>
+                          <span className="text-xs opacity-75" style={{ color: 'rgba(255,255,255,.85)' }}>
+                            {replyCounts[cat.id] ?? 0} תגובות
+                          </span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </Link>
-              ))}
+                  </Link>
+                )
+              })}
             </div>
           </section>
         )}
