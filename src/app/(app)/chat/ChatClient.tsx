@@ -304,21 +304,98 @@ function InputBar({ value, onChange, onKeyDown, onSend, isSending, textRef, onAt
   )
 }
 
-function playPing() {
+// ── Audio system ──────────────────────────────────────────
+// Singleton AudioContext reused across all sounds.
+// Incognito / strict browsers suspend new contexts until a
+// user gesture — we call unlockAudio() on first click/keydown.
+
+type SoundType = 'ping' | 'chime' | 'pop' | 'bell' | 'none'
+
+const SOUND_OPTIONS: { value: SoundType; label: string; icon: string }[] = [
+  { value: 'ping',  label: 'Ping',  icon: '🔔' },
+  { value: 'chime', label: 'Chime', icon: '🎵' },
+  { value: 'pop',   label: 'Pop',   icon: '💬' },
+  { value: 'bell',  label: 'Bell',  icon: '🔕' },
+  { value: 'none',  label: 'השתק',  icon: '🔇' },
+]
+
+const SOUND_PREF_PREFIX = 'sndPref_'
+
+let _ctx: AudioContext | null = null
+function getCtx() {
+  if (!_ctx) _ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+  return _ctx
+}
+function unlockAudio() {
+  try { const c = getCtx(); if (c.state === 'suspended') c.resume() } catch {}
+}
+
+async function playSound(type: SoundType) {
+  if (type === 'none') return
   try {
-    const ctx = new AudioContext()
-    const osc = ctx.createOscillator()
-    const gain = ctx.createGain()
-    osc.connect(gain)
-    gain.connect(ctx.destination)
-    osc.frequency.setValueAtTime(800, ctx.currentTime)
-    osc.frequency.exponentialRampToValueAtTime(400, ctx.currentTime + 0.1)
-    gain.gain.setValueAtTime(0.3, ctx.currentTime)
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3)
-    osc.start(ctx.currentTime)
-    osc.stop(ctx.currentTime + 0.3)
-    osc.onended = () => ctx.close()
-  } catch (e) { console.error('ping failed:', e) }
+    const ctx = getCtx()
+    if (ctx.state === 'suspended') await ctx.resume()
+    const t = ctx.currentTime
+    if (type === 'ping') {
+      const osc = ctx.createOscillator(); const g = ctx.createGain()
+      osc.connect(g); g.connect(ctx.destination)
+      osc.frequency.setValueAtTime(800, t); osc.frequency.exponentialRampToValueAtTime(400, t + 0.1)
+      g.gain.setValueAtTime(0.3, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.3)
+      osc.start(t); osc.stop(t + 0.3)
+    } else if (type === 'chime') {
+      ;[523, 659, 784].forEach((freq, i) => {
+        const osc = ctx.createOscillator(); const g = ctx.createGain()
+        osc.type = 'sine'; osc.connect(g); g.connect(ctx.destination)
+        osc.frequency.value = freq
+        const s = t + i * 0.13
+        g.gain.setValueAtTime(0.18, s); g.gain.exponentialRampToValueAtTime(0.001, s + 0.28)
+        osc.start(s); osc.stop(s + 0.28)
+      })
+    } else if (type === 'pop') {
+      const osc = ctx.createOscillator(); const g = ctx.createGain()
+      osc.type = 'sine'; osc.connect(g); g.connect(ctx.destination)
+      osc.frequency.setValueAtTime(150, t); osc.frequency.exponentialRampToValueAtTime(600, t + 0.015)
+      g.gain.setValueAtTime(0.5, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.08)
+      osc.start(t); osc.stop(t + 0.08)
+    } else {
+      // bell — fundamental + 3rd harmonic
+      ;[440, 1320].forEach((freq, i) => {
+        const osc = ctx.createOscillator(); const g = ctx.createGain()
+        osc.type = 'sine'; osc.connect(g); g.connect(ctx.destination)
+        osc.frequency.value = freq
+        g.gain.setValueAtTime(i === 0 ? 0.18 : 0.06, t)
+        g.gain.exponentialRampToValueAtTime(0.001, t + (i === 0 ? 0.9 : 0.4))
+        osc.start(t); osc.stop(t + 0.9)
+      })
+    }
+  } catch (e) { console.error('sound error:', e) }
+}
+
+// ── SoundPicker mini-menu ─────────────────────────────────
+
+function SoundPicker({ current, onSelect, onClose }: { current: SoundType; onSelect: (s: SoundType) => void; onClose: () => void }) {
+  return (
+    <>
+      <div className="fixed inset-0 z-30" onClick={onClose} />
+      <div className="absolute end-0 top-full z-40 mt-1 w-36 overflow-hidden rounded-xl shadow-xl"
+        style={{ background: 'var(--s1)', border: '1px solid var(--bd)' }}>
+        {SOUND_OPTIONS.map((opt, i) => (
+          <button key={opt.value}
+            onClick={() => { playSound(opt.value); onSelect(opt.value); onClose() }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-xs transition hover:bg-purple-50/60"
+            style={{
+              color: 'var(--tx)',
+              borderTop: i > 0 ? '1px solid var(--bd)' : undefined,
+              background: current === opt.value ? 'rgba(124,58,237,.08)' : undefined,
+            }}>
+            <span>{opt.icon}</span>
+            <span className="flex-1 text-start">{opt.label}</span>
+            {current === opt.value && <Check size={11} className="text-purple-600" />}
+          </button>
+        ))}
+      </div>
+    </>
+  )
 }
 
 // ─────────────────────────────────────────────────────────
@@ -387,11 +464,39 @@ export default function ChatClient({
     try { localStorage.setItem('chatMuted', next ? '1' : '0') } catch {}
   }
 
+  // Per-conversation sound preferences
+  const [soundPrefs, setSoundPrefs] = useState<Record<string, SoundType>>({})
+  const soundPrefsRef = useRef<Record<string, SoundType>>({})
+  soundPrefsRef.current = soundPrefs
+  const [soundPickerFor, setSoundPickerFor] = useState<string | null>(null)
+  const getSoundFor = (id: string): SoundType => soundPrefs[id] ?? 'ping'
+  const setSoundFor = (id: string, sound: SoundType) => {
+    setSoundPrefs(prev => ({ ...prev, [id]: sound }))
+    try { localStorage.setItem(SOUND_PREF_PREFIX + id, sound) } catch {}
+  }
+
   // ── Realtime connection status ──
   const [rtStatus, setRtStatus] = useState<'connecting' | 'ok' | 'error'>('connecting')
 
   useEffect(() => {
+    // Restore mute
     try { if (localStorage.getItem('chatMuted') === '1') setIsMuted(true) } catch {}
+    // Load per-conversation sound prefs
+    try {
+      const prefs: Record<string, SoundType> = {}
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i)
+        if (key?.startsWith(SOUND_PREF_PREFIX)) prefs[key.slice(SOUND_PREF_PREFIX.length)] = localStorage.getItem(key) as SoundType
+      }
+      if (Object.keys(prefs).length) setSoundPrefs(prefs)
+    } catch {}
+    // Unlock AudioContext on first user gesture (critical for incognito)
+    window.addEventListener('click', unlockAudio, { once: true })
+    window.addEventListener('keydown', unlockAudio, { once: true })
+    return () => {
+      window.removeEventListener('click', unlockAudio)
+      window.removeEventListener('keydown', unlockAudio)
+    }
   }, [])
 
   // ── Refs ──
@@ -564,7 +669,7 @@ export default function ChatClient({
         if (m.user_id !== currentUserId && !isMutedRef.current) {
           const el = communityScrollRef.current
           const atBottom = !el || el.scrollHeight - el.scrollTop - el.clientHeight < 80
-          if (document.hidden || !atBottom) playPing()
+          if (document.hidden || !atBottom) playSound(soundPrefsRef.current['community'] ?? 'ping')
         }
       })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages', filter: `channel_id=eq.${generalTopicId}` }, (payload) => {
@@ -634,7 +739,7 @@ export default function ChatClient({
         if (m.sender_id !== currentUserId && m.receiver_id === currentUserId && !isMutedRef.current) {
           const el = privateScrollRef.current
           const atBottom = !el || el.scrollHeight - el.scrollTop - el.clientHeight < 80
-          if (document.hidden || !atBottom) playPing()
+          if (document.hidden || !atBottom) playSound(soundPrefsRef.current[m.sender_id] ?? 'ping')
         }
       })
       .subscribe((status, err) => {
@@ -1048,33 +1153,40 @@ export default function ChatClient({
       <div className="flex-1 overflow-y-auto">
 
         {/* Community room — always first */}
-        <button
-          onClick={openCommunity}
-          className="flex w-full items-center gap-3 px-4 py-3.5 text-start transition hover:bg-purple-50/40"
-          style={{
-            borderBottom: '1px solid var(--bd)',
-            background: activeSide === 'community' ? 'rgba(124,58,237,.07)' : undefined,
-          }}
-        >
-          <div
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
-            style={{
-              background: activeSide === 'community' ? 'rgba(124,58,237,.18)' : 'rgba(124,58,237,.09)',
-              border: '1px solid rgba(124,58,237,.2)',
-            }}
+        <div className="relative flex items-center"
+          style={{ borderBottom: '1px solid var(--bd)', background: activeSide === 'community' ? 'rgba(124,58,237,.07)' : undefined }}>
+          <button
+            onClick={openCommunity}
+            className="flex flex-1 items-center gap-3 px-4 py-3.5 text-start transition hover:bg-purple-50/40"
           >
-            <Users size={18} className="text-purple-600" />
+            <div
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+              style={{
+                background: activeSide === 'community' ? 'rgba(124,58,237,.18)' : 'rgba(124,58,237,.09)',
+                border: '1px solid rgba(124,58,237,.2)',
+              }}
+            >
+              <Users size={18} className="text-purple-600" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="font-bold text-sm" style={{ color: activeSide === 'community' ? '#7c3aed' : 'var(--tx)' }}>
+                צ׳אט מרכזי
+              </p>
+              <p className="mt-0.5 text-[11px]" style={{ color: 'var(--tx3)' }}>צ׳אט כללי לכל חברי הקהילה</p>
+            </div>
+          </button>
+          <div className="relative shrink-0 px-1.5">
+            <button onClick={() => setSoundPickerFor(p => p === 'community' ? null : 'community')}
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-sm transition hover:bg-slate-100"
+              title="בחר צליל">
+              {getSoundFor('community') === 'none' ? '🔇' : '🔔'}
+            </button>
+            {soundPickerFor === 'community' && (
+              <SoundPicker current={getSoundFor('community')} onSelect={s => setSoundFor('community', s)} onClose={() => setSoundPickerFor(null)} />
+            )}
           </div>
-          <div className="min-w-0 flex-1">
-            <p className="font-bold text-sm" style={{ color: activeSide === 'community' ? '#7c3aed' : 'var(--tx)' }}>
-              צ׳אט מרכזי
-            </p>
-            <p className="mt-0.5 text-[11px]" style={{ color: 'var(--tx3)' }}>צ׳אט כללי לכל חברי הקהילה</p>
-          </div>
-          {activeSide === 'community' && (
-            <span className="absolute end-0 h-8 w-1 rounded-s-full bg-purple-600" />
-          )}
-        </button>
+          {activeSide === 'community' && <span className="absolute end-0 h-8 w-1 rounded-s-full bg-purple-600" />}
+        </div>
 
         {/* Private conversations */}
         {convos.map(convo => {
@@ -1087,33 +1199,48 @@ export default function ChatClient({
             : convo.lastMsg.attachment_url
               ? (convo.lastMsg.attachment_type === 'image' ? '📷 תמונה' : '📎 קובץ')
               : (convo.lastMsg.content ?? '')
+          const convoSound = getSoundFor(convo.partnerId)
           return (
-            <button
+            <div
               key={convo.partnerId}
-              onClick={() => openConversation(convo.partnerId)}
-              className="relative flex w-full items-center gap-3 px-3 py-3.5 text-start transition hover:bg-slate-50/60"
+              className="relative flex items-center"
               style={{ borderBottom: '1px solid var(--bd)', background: active ? 'rgba(124,58,237,.06)' : undefined }}
             >
-              <AvatarBubble profile={convo.profile} uid={convo.partnerId} size={10} online={isOnline} />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-1">
-                  <span className="truncate text-sm font-semibold" style={{ color: hasUnread ? '#6b21a8' : 'var(--tx)' }}>{name}</span>
-                  <span className="shrink-0 text-[10px]" style={{ color: 'var(--tx3)' }} suppressHydrationWarning>{fmtTime(convo.lastMsg.created_at)}</span>
+              <button
+                onClick={() => openConversation(convo.partnerId)}
+                className="flex min-w-0 flex-1 items-center gap-3 px-3 py-3.5 text-start transition hover:bg-slate-50/60"
+              >
+                <AvatarBubble profile={convo.profile} uid={convo.partnerId} size={10} online={isOnline} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="truncate text-sm font-semibold" style={{ color: hasUnread ? '#6b21a8' : 'var(--tx)' }}>{name}</span>
+                    <span className="shrink-0 text-[10px]" style={{ color: 'var(--tx3)' }} suppressHydrationWarning>{fmtTime(convo.lastMsg.created_at)}</span>
+                  </div>
+                  <div className="mt-0.5 flex items-center justify-between gap-1">
+                    <p className="truncate text-xs" style={{ color: hasUnread ? 'var(--tx2)' : 'var(--tx3)', fontStyle: convo.lastMsg.deleted_for_all ? 'italic' : undefined }}>
+                      {convo.lastMsg.sender_id === currentUserId && <span style={{ color: 'var(--tx3)' }}>אתה: </span>}
+                      {lastContent}
+                    </p>
+                    {hasUnread && (
+                      <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-purple-600 px-1.5 text-[10px] font-bold text-white">
+                        {convo.unread > 9 ? '9+' : convo.unread}
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div className="mt-0.5 flex items-center justify-between gap-1">
-                  <p className="truncate text-xs" style={{ color: hasUnread ? 'var(--tx2)' : 'var(--tx3)', fontStyle: convo.lastMsg.deleted_for_all ? 'italic' : undefined }}>
-                    {convo.lastMsg.sender_id === currentUserId && <span style={{ color: 'var(--tx3)' }}>אתה: </span>}
-                    {lastContent}
-                  </p>
-                  {hasUnread && (
-                    <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-purple-600 px-1.5 text-[10px] font-bold text-white">
-                      {convo.unread > 9 ? '9+' : convo.unread}
-                    </span>
-                  )}
-                </div>
+              </button>
+              <div className="relative shrink-0 px-1.5">
+                <button onClick={() => setSoundPickerFor(p => p === convo.partnerId ? null : convo.partnerId)}
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-sm transition hover:bg-slate-100"
+                  title="בחר צליל">
+                  {convoSound === 'none' ? '🔇' : '🔔'}
+                </button>
+                {soundPickerFor === convo.partnerId && (
+                  <SoundPicker current={convoSound} onSelect={s => setSoundFor(convo.partnerId, s)} onClose={() => setSoundPickerFor(null)} />
+                )}
               </div>
               {active && <span className="absolute end-0 h-8 w-1 rounded-s-full bg-purple-600" />}
-            </button>
+            </div>
           )
         })}
 
@@ -1160,7 +1287,7 @@ export default function ChatClient({
           <h2 className="truncate text-sm font-bold" style={{ color: 'var(--tx)' }}>צ׳אט מרכזי</h2>
           <p className="text-[11px]" style={{ color: 'var(--tx3)' }}>צ׳אט כללי לכל חברי הקהילה</p>
         </div>
-        <button onClick={playPing} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition hover:bg-slate-100" style={{ color: 'var(--tx3)' }} title="בדוק צליל">
+        <button onClick={() => playSound(getSoundFor('community'))} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition hover:bg-slate-100" style={{ color: 'var(--tx3)' }} title="בדוק צליל">
           <Volume2 size={15} />
         </button>
         <button onClick={toggleMute} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition hover:bg-slate-100" style={{ color: isMuted ? '#ef4444' : 'var(--tx3)' }} title={isMuted ? 'בטל השתקה' : 'השתק צלילים'}>
@@ -1381,7 +1508,7 @@ export default function ChatClient({
         <button onClick={() => setShowPrivateSearch(s => !s)} className="flex h-8 w-8 items-center justify-center rounded-xl transition hover:bg-slate-100" style={{ color: showPrivateSearch ? '#7c3aed' : 'var(--tx3)' }}>
           <Search size={15} />
         </button>
-        <button onClick={playPing} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition hover:bg-slate-100" style={{ color: 'var(--tx3)' }} title="בדוק צליל">
+        <button onClick={() => playSound(getSoundFor(selectedPartner!))} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition hover:bg-slate-100" style={{ color: 'var(--tx3)' }} title="בדוק צליל">
           <Volume2 size={15} />
         </button>
         <button onClick={toggleMute} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition hover:bg-slate-100" style={{ color: isMuted ? '#ef4444' : 'var(--tx3)' }} title={isMuted ? 'בטל השתקה' : 'השתק צלילים'}>
