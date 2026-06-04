@@ -48,6 +48,39 @@ function Avatar({ profile, uid, size = 10 }: { profile?: Profile | null; uid: st
   )
 }
 
+function parseImageUrls(raw?: string | null): string[] {
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed.filter(Boolean) : [raw]
+  } catch {
+    return [raw]
+  }
+}
+
+function ImageGrid({ raw }: { raw?: string | null }) {
+  const urls = parseImageUrls(raw)
+  if (!urls.length) return null
+  if (urls.length === 1) {
+    return (
+      <div className="mt-3">
+        <a href={urls[0]} target="_blank" rel="noopener noreferrer">
+          <img src={urls[0]} alt="" style={{ maxWidth: '100%', height: 'auto', borderRadius: '12px', display: 'block', cursor: 'zoom-in' }} />
+        </a>
+      </div>
+    )
+  }
+  return (
+    <div className="mt-3 grid gap-1.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))' }}>
+      {urls.map((url, i) => (
+        <a key={i} href={url} target="_blank" rel="noopener noreferrer">
+          <img src={url} alt="" style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', borderRadius: '10px', display: 'block', cursor: 'zoom-in' }} />
+        </a>
+      ))}
+    </div>
+  )
+}
+
 function ContentBlock({ content }: { content: string }) {
   const lines = content.split('\n')
   return (
@@ -89,48 +122,51 @@ export default function ThreadClient({ thread, replies: initialReplies, currentU
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editText, setEditText] = useState('')
-  const [replyImage, setReplyImage] = useState<File | null>(null)
-  const [replyImagePreview, setReplyImagePreview] = useState<string | null>(null)
+  const [replyImages, setReplyImages] = useState<File[]>([])
+  const [replyImagePreviews, setReplyImagePreviews] = useState<string[]>([])
   const replyFileRef = useRef<HTMLInputElement>(null)
 
   const refresh = () => { startTransition(() => { router.refresh() }) }
 
-  const handleReplyImageFile = (file: File) => {
+  const addReplyImageFile = (file: File) => {
     if (!file.type.startsWith('image/')) return
-    setReplyImage(file)
-    setReplyImagePreview(URL.createObjectURL(file))
+    setReplyImages(prev => [...prev, file])
+    setReplyImagePreviews(prev => [...prev, URL.createObjectURL(file)])
+  }
+
+  const removeReplyImage = (idx: number) => {
+    setReplyImages(prev => prev.filter((_, i) => i !== idx))
+    setReplyImagePreviews(prev => prev.filter((_, i) => i !== idx))
   }
 
   const handleReplyPaste = (e: React.ClipboardEvent) => {
-    const item = Array.from(e.clipboardData.items).find(i => i.type.startsWith('image/'))
-    const file = item?.getAsFile()
-    if (file) handleReplyImageFile(file)
-  }
-
-  const removeReplyImage = () => {
-    setReplyImage(null)
-    setReplyImagePreview(null)
-    if (replyFileRef.current) replyFileRef.current.value = ''
+    Array.from(e.clipboardData.items)
+      .filter(i => i.type.startsWith('image/'))
+      .forEach(i => { const f = i.getAsFile(); if (f) addReplyImageFile(f) })
   }
 
   const handleReply = async () => {
     const full = quotedText ? `${quotedText}${replyText.trim()}` : replyText.trim()
-    if (!full && !replyImage) return
+    if (!full && replyImages.length === 0) return
     setIsSubmitting(true)
     try {
       let imageUrl: string | undefined
-      if (replyImage) {
-        const { signedUrl, publicUrl, error } = await getForumImageUploadUrl()
-        if (!error && signedUrl && publicUrl) {
-          await fetch(signedUrl, { method: 'PUT', body: replyImage, headers: { 'Content-Type': replyImage.type } })
-          imageUrl = publicUrl
+      if (replyImages.length > 0) {
+        const urls: string[] = []
+        for (const file of replyImages) {
+          const { signedUrl, publicUrl, error } = await getForumImageUploadUrl()
+          if (!error && signedUrl && publicUrl) {
+            await fetch(signedUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } })
+            urls.push(publicUrl)
+          }
         }
+        if (urls.length > 0) imageUrl = urls.length === 1 ? urls[0] : JSON.stringify(urls)
       }
       await createReply(thread.id, categoryId, full || ' ', imageUrl)
       setReplyText('')
       setQuotedText('')
-      setReplyImage(null)
-      setReplyImagePreview(null)
+      setReplyImages([])
+      setReplyImagePreviews([])
       if (replyFileRef.current) replyFileRef.current.value = ''
       refresh()
     } finally {
@@ -197,13 +233,7 @@ export default function ThreadClient({ thread, replies: initialReplies, currentU
             </div>
             <div className="mt-3">
               <ContentBlock content={thread.content} />
-              {thread.image_url && (
-                <div className="mt-3">
-                  <a href={thread.image_url} target="_blank" rel="noopener noreferrer">
-                    <img src={thread.image_url} alt="" style={{ maxWidth: '100%', height: 'auto', borderRadius: '12px', display: 'block', cursor: 'zoom-in' }} />
-                  </a>
-                </div>
-              )}
+              <ImageGrid raw={thread.image_url} />
             </div>
             <div className="mt-3 flex items-center gap-2">
               {(thread.user_id === currentUserId || isAdmin) && (
@@ -301,13 +331,7 @@ export default function ThreadClient({ thread, replies: initialReplies, currentU
                       ) : (
                         <>
                           <ContentBlock content={reply.content} />
-                          {reply.image_url && (
-                            <div className="mt-3">
-                              <a href={reply.image_url} target="_blank" rel="noopener noreferrer">
-                                <img src={reply.image_url} alt="" style={{ maxWidth: '100%', height: 'auto', borderRadius: '12px', display: 'block', cursor: 'zoom-in' }} />
-                              </a>
-                            </div>
-                          )}
+                          <ImageGrid raw={reply.image_url} />
                         </>
                       )}
                     </div>
@@ -422,39 +446,44 @@ export default function ThreadClient({ thread, replies: initialReplies, currentU
               style={{ background: 'var(--inp)', border: '1px solid var(--bd)', color: 'var(--tx3)' }}
             >
               <ImageIcon size={13} />
-              הוסף תמונה
+              הוסף תמונות
             </button>
-            <span className="text-xs" style={{ color: 'var(--tx3)' }}>או הדבק תמונה (Ctrl+V)</span>
+            <span className="text-xs" style={{ color: 'var(--tx3)' }}>או הדבק (Ctrl+V)</span>
             <input
               ref={replyFileRef}
               type="file"
               accept="image/*"
+              multiple
               className="hidden"
-              onChange={e => { const f = e.target.files?.[0]; if (f) handleReplyImageFile(f) }}
+              onChange={e => { Array.from(e.target.files ?? []).forEach(addReplyImageFile); if (replyFileRef.current) replyFileRef.current.value = '' }}
             />
           </div>
 
-          {replyImagePreview && (
-            <div className="relative mt-2 inline-block">
-              <img
-                src={replyImagePreview}
-                alt=""
-                style={{ maxWidth: '100%', maxHeight: '200px', height: 'auto', borderRadius: '12px', display: 'block' }}
-              />
-              <button
-                onClick={removeReplyImage}
-                className="absolute end-2 top-2 rounded-full p-1 transition hover:opacity-80"
-                style={{ background: 'rgba(0,0,0,.65)', color: 'white' }}
-              >
-                <X size={12} />
-              </button>
+          {replyImagePreviews.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {replyImagePreviews.map((src, idx) => (
+                <div key={idx} className="relative">
+                  <img
+                    src={src}
+                    alt=""
+                    style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '10px', display: 'block' }}
+                  />
+                  <button
+                    onClick={() => removeReplyImage(idx)}
+                    className="absolute -end-1.5 -top-1.5 rounded-full p-0.5 transition hover:opacity-80"
+                    style={{ background: 'rgba(0,0,0,.7)', color: 'white' }}
+                  >
+                    <X size={11} />
+                  </button>
+                </div>
+              ))}
             </div>
           )}
 
           <div className="mt-3">
             <button
               onClick={handleReply}
-              disabled={(!replyText.trim() && !quotedText && !replyImage) || isSubmitting}
+              disabled={(!replyText.trim() && !quotedText && replyImages.length === 0) || isSubmitting}
               className="rounded-xl px-5 py-2.5 text-sm font-bold text-white transition hover:opacity-90 disabled:opacity-40"
               style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)' }}
             >

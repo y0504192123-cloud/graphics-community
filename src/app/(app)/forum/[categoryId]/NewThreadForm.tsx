@@ -5,30 +5,44 @@ import Link from 'next/link'
 import { ImageIcon, X } from 'lucide-react'
 import { createThread, getForumImageUploadUrl } from '../actions'
 
+function parseImageUrls(raw?: string | null): string[] {
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed.filter(Boolean) : [raw]
+  } catch {
+    return [raw]
+  }
+}
+
 export default function NewThreadForm({ categoryId }: { categoryId: string }) {
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
-  const [imageFile, setImageFile] = useState<File | null>(null)
-  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [imageFiles, setImageFiles] = useState<File[]>([])
+  const [imagePreviews, setImagePreviews] = useState<string[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const handleImageFile = (file: File) => {
+  const addImageFile = (file: File) => {
     if (!file.type.startsWith('image/')) return
-    setImageFile(file)
-    setImagePreview(URL.createObjectURL(file))
+    setImageFiles(prev => [...prev, file])
+    setImagePreviews(prev => [...prev, URL.createObjectURL(file)])
+  }
+
+  const removeImage = (idx: number) => {
+    setImageFiles(prev => prev.filter((_, i) => i !== idx))
+    setImagePreviews(prev => prev.filter((_, i) => i !== idx))
+  }
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    Array.from(e.target.files ?? []).forEach(addImageFile)
+    if (fileRef.current) fileRef.current.value = ''
   }
 
   const handlePaste = (e: React.ClipboardEvent) => {
-    const item = Array.from(e.clipboardData.items).find(i => i.type.startsWith('image/'))
-    const file = item?.getAsFile()
-    if (file) handleImageFile(file)
-  }
-
-  const removeImage = () => {
-    setImageFile(null)
-    setImagePreview(null)
-    if (fileRef.current) fileRef.current.value = ''
+    Array.from(e.clipboardData.items)
+      .filter(i => i.type.startsWith('image/'))
+      .forEach(i => { const f = i.getAsFile(); if (f) addImageFile(f) })
   }
 
   const handleSubmit = async () => {
@@ -36,12 +50,16 @@ export default function NewThreadForm({ categoryId }: { categoryId: string }) {
     setIsSubmitting(true)
     try {
       let imageUrl: string | undefined
-      if (imageFile) {
-        const { signedUrl, publicUrl, error } = await getForumImageUploadUrl()
-        if (!error && signedUrl && publicUrl) {
-          await fetch(signedUrl, { method: 'PUT', body: imageFile, headers: { 'Content-Type': imageFile.type } })
-          imageUrl = publicUrl
+      if (imageFiles.length > 0) {
+        const urls: string[] = []
+        for (const file of imageFiles) {
+          const { signedUrl, publicUrl, error } = await getForumImageUploadUrl()
+          if (!error && signedUrl && publicUrl) {
+            await fetch(signedUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } })
+            urls.push(publicUrl)
+          }
         }
+        if (urls.length > 0) imageUrl = urls.length === 1 ? urls[0] : JSON.stringify(urls)
       }
       await createThread(categoryId, title, content, imageUrl)
     } catch {
@@ -82,32 +100,30 @@ export default function NewThreadForm({ categoryId }: { categoryId: string }) {
             style={{ background: 'var(--inp)', border: '1px solid var(--bd)', color: 'var(--tx3)' }}
           >
             <ImageIcon size={13} />
-            הוסף תמונה
+            הוסף תמונות
           </button>
-          <span className="text-xs" style={{ color: 'var(--tx3)' }}>או הדבק תמונה (Ctrl+V)</span>
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={e => { const f = e.target.files?.[0]; if (f) handleImageFile(f) }}
-          />
+          <span className="text-xs" style={{ color: 'var(--tx3)' }}>או הדבק תמונות (Ctrl+V)</span>
+          <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFileChange} />
         </div>
 
-        {imagePreview && (
-          <div className="relative inline-block">
-            <img
-              src={imagePreview}
-              alt=""
-              style={{ maxWidth: '100%', maxHeight: '220px', height: 'auto', borderRadius: '12px', display: 'block' }}
-            />
-            <button
-              onClick={removeImage}
-              className="absolute end-2 top-2 rounded-full p-1 transition hover:opacity-80"
-              style={{ background: 'rgba(0,0,0,.65)', color: 'white' }}
-            >
-              <X size={12} />
-            </button>
+        {imagePreviews.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {imagePreviews.map((src, idx) => (
+              <div key={idx} className="relative">
+                <img
+                  src={src}
+                  alt=""
+                  style={{ width: '90px', height: '90px', objectFit: 'cover', borderRadius: '10px', display: 'block' }}
+                />
+                <button
+                  onClick={() => removeImage(idx)}
+                  className="absolute -end-1.5 -top-1.5 rounded-full p-0.5 transition hover:opacity-80"
+                  style={{ background: 'rgba(0,0,0,.7)', color: 'white' }}
+                >
+                  <X size={11} />
+                </button>
+              </div>
+            ))}
           </div>
         )}
 

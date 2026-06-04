@@ -183,8 +183,9 @@ type InputBarProps = {
   isSending: boolean
   textRef: React.RefObject<HTMLTextAreaElement | null>
   onAttachClick?: () => void
-  attachment?: { name: string; type: string; preview?: string } | null
-  onRemoveAttachment?: () => void
+  attachments?: { name: string; type: string; preview?: string }[]
+  onRemoveAttachment?: (idx: number) => void
+  onImagePaste?: (file: File) => void
   isUploading?: boolean
   placeholder?: string
   replyTo?: { content: string | null; senderName: string } | null
@@ -193,13 +194,18 @@ type InputBarProps = {
   onMentionSelect?: (p: Profile) => void
 }
 
-function InputBar({ value, onChange, onKeyDown, onSend, isSending, textRef, onAttachClick, attachment, onRemoveAttachment, isUploading, placeholder, replyTo, onCancelReply, mentionUsers, onMentionSelect }: InputBarProps) {
+function InputBar({ value, onChange, onKeyDown, onSend, isSending, textRef, onAttachClick, attachments = [], onRemoveAttachment, onImagePaste, isUploading, placeholder, replyTo, onCancelReply, mentionUsers, onMentionSelect }: InputBarProps) {
   const handleInput = (e: React.FormEvent<HTMLTextAreaElement>) => {
     const el = e.currentTarget
     el.style.height = 'auto'
     el.style.height = Math.min(el.scrollHeight, 140) + 'px'
   }
-  const canSend = (value.trim() || attachment) && !isSending && !isUploading
+  const handlePasteInner = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const item = Array.from(e.clipboardData.items).find(i => i.type.startsWith('image/'))
+    const file = item?.getAsFile()
+    if (file && onImagePaste) { e.preventDefault(); onImagePaste(file) }
+  }
+  const canSend = (value.trim() || attachments.length > 0) && !isSending && !isUploading
 
   return (
     <div className="shrink-0 px-3 py-2.5" style={{ background: 'var(--hdr)', borderTop: '1px solid var(--bd)' }}>
@@ -235,17 +241,29 @@ function InputBar({ value, onChange, onKeyDown, onSend, isSending, textRef, onAt
           </button>
         </div>
       )}
-      {/* Attachment preview */}
-      {attachment && (
-        <div className="mb-2 flex items-center gap-2 rounded-xl px-3 py-2 text-sm" style={{ background: 'var(--inp)', border: '1px solid var(--bd)' }}>
-          {attachment.type.startsWith('image/') && attachment.preview
-            ? <img src={attachment.preview} alt="" className="h-10 w-10 rounded-lg object-cover shrink-0" />
-            : <FileIcon size={20} className="shrink-0 text-purple-500" />
-          }
-          <span className="flex-1 truncate text-xs" style={{ color: 'var(--tx2)' }}>{attachment.name}</span>
-          <button onClick={onRemoveAttachment} className="shrink-0 rounded p-0.5 hover:bg-red-500/10" style={{ color: 'var(--tx3)' }}>
-            <X size={14} />
-          </button>
+      {/* Attachment previews */}
+      {attachments.length > 0 && (
+        <div className="mb-2 flex flex-wrap gap-2 rounded-xl px-3 py-2" style={{ background: 'var(--inp)', border: '1px solid var(--bd)' }}>
+          {attachments.map((att, idx) => (
+            <div key={idx} className="relative">
+              {att.type.startsWith('image/') && att.preview
+                ? <img src={att.preview} alt="" className="h-14 w-14 rounded-lg object-cover" />
+                : (
+                  <div className="flex h-14 w-14 flex-col items-center justify-center gap-1 rounded-lg" style={{ background: 'var(--s1)' }}>
+                    <FileIcon size={16} className="text-purple-500" />
+                    <span className="w-full truncate px-1 text-center text-[9px]" style={{ color: 'var(--tx3)' }}>{att.name}</span>
+                  </div>
+                )
+              }
+              <button
+                onClick={() => onRemoveAttachment?.(idx)}
+                className="absolute -end-1.5 -top-1.5 rounded-full p-0.5 transition hover:opacity-80"
+                style={{ background: 'rgba(0,0,0,.7)', color: 'white' }}
+              >
+                <X size={10} />
+              </button>
+            </div>
+          ))}
         </div>
       )}
       <div className="flex items-end gap-2 rounded-2xl px-2 py-1.5" style={{ background: 'var(--inp)', border: '1px solid var(--bd)' }}>
@@ -260,6 +278,7 @@ function InputBar({ value, onChange, onKeyDown, onSend, isSending, textRef, onAt
           onChange={e => onChange(e.target.value)}
           onInput={handleInput}
           onKeyDown={onKeyDown}
+          onPaste={handlePasteInner}
           rows={1}
           placeholder={placeholder ?? 'כתוב הודעה...'}
           className="flex-1 resize-none bg-transparent py-1.5 text-sm leading-relaxed outline-none placeholder:text-slate-400"
@@ -324,8 +343,8 @@ export default function ChatClient({
   const [privateSearch, setPrivateSearch] = useState('')
   const [showPrivateSearch, setShowPrivateSearch] = useState(false)
   const [pinnedMsgId, setPinnedMsgId] = useState<string | null>(null)
-  const [attachFile, setAttachFile] = useState<File | null>(null)
-  const [attachPreview, setAttachPreview] = useState<string | null>(null)
+  const [attachFiles, setAttachFiles] = useState<File[]>([])
+  const [attachPreviews, setAttachPreviews] = useState<string[]>([])
   const [isUploading, setIsUploading] = useState(false)
 
   // ── Edit / Reply / Reactions ──
@@ -661,34 +680,52 @@ export default function ChatClient({
     }
   }
 
+  const addAttachFile = (file: File) => {
+    setAttachFiles(prev => [...prev, file])
+    setAttachPreviews(prev => [...prev, file.type.startsWith('image/') ? URL.createObjectURL(file) : ''])
+  }
+
+  const removeAttach = (idx: number) => {
+    setAttachFiles(prev => prev.filter((_, i) => i !== idx))
+    setAttachPreviews(prev => prev.filter((_, i) => i !== idx))
+  }
+
   const handleCommunitySend = async () => {
-    if ((!communityText.trim() && !attachFile) || !generalTopicId || isSendingC) return
+    if ((!communityText.trim() && !attachFiles.length) || !generalTopicId || isSendingC) return
     const content = communityText.trim()
     const currentReplyTo = communityReplyTo
     setCommunityReplyTo(null)
     setMentionQuery(null)
 
-    if (attachFile) {
+    if (attachFiles.length > 0) {
       setIsUploading(true)
       try {
-        const { signedUrl, publicUrl, error } = await getChatUploadUrl()
-        if (error || !signedUrl || !publicUrl) return
-        await fetch(signedUrl, { method: 'PUT', body: attachFile, headers: { 'Content-Type': attachFile.type } })
-        const attType = attachFile.type.startsWith('image/') ? 'image' : 'file'
+        const urls: string[] = []
+        for (const file of attachFiles) {
+          const { signedUrl, publicUrl, error } = await getChatUploadUrl()
+          if (error || !signedUrl || !publicUrl) continue
+          await fetch(signedUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } })
+          urls.push(publicUrl)
+        }
+        if (!urls.length) return
+        const allImages = attachFiles.every(f => f.type.startsWith('image/'))
+        const attUrl = urls.length === 1 ? urls[0] : JSON.stringify(urls)
+        const attType = !allImages ? 'file' : urls.length === 1 ? 'image' : 'images'
+        const attName = attachFiles.length === 1 ? attachFiles[0].name : `${attachFiles.length} תמונות`
         setCommunityMsgs(prev => [...prev, {
           id: `temp-${Date.now()}`, channel_id: generalTopicId, user_id: currentUserId,
           content: content || null, created_at: new Date().toISOString(),
-          attachment_url: publicUrl, attachment_type: attType, attachment_name: attachFile.name,
+          attachment_url: attUrl, attachment_type: attType, attachment_name: attName,
           reply_to_id: currentReplyTo?.id ?? null, reply_to: currentReplyTo ? { id: currentReplyTo.id, content: currentReplyTo.content, user_id: currentReplyTo.user_id } : null,
           profiles: currentProfile ?? undefined,
         }])
         setCommunityText('')
         if (communityTextRef.current) communityTextRef.current.style.height = 'auto'
-        await sendMessage(generalTopicId, content, publicUrl, attType, attachFile.name, currentReplyTo?.id)
+        await sendMessage(generalTopicId, content, attUrl, attType, attName, currentReplyTo?.id)
       } finally {
         setIsUploading(false)
-        setAttachFile(null)
-        setAttachPreview(null)
+        setAttachFiles([])
+        setAttachPreviews([])
       }
       return
     }
@@ -706,30 +743,38 @@ export default function ChatClient({
   }
 
   const handlePrivateSend = async () => {
-    if ((!privateText.trim() && !attachFile) || !selectedPartner || isSendingP) return
+    if ((!privateText.trim() && !attachFiles.length) || !selectedPartner || isSendingP) return
     const content = privateText.trim()
     const currentReplyTo = replyTo
     setReplyTo(null)
 
-    if (attachFile) {
+    if (attachFiles.length > 0) {
       setIsUploading(true)
       try {
-        const { signedUrl, publicUrl, error } = await getChatUploadUrl()
-        if (error || !signedUrl || !publicUrl) return
-        await fetch(signedUrl, { method: 'PUT', body: attachFile, headers: { 'Content-Type': attachFile.type } })
-        const attType = attachFile.type.startsWith('image/') ? 'image' : 'file'
+        const urls: string[] = []
+        for (const file of attachFiles) {
+          const { signedUrl, publicUrl, error } = await getChatUploadUrl()
+          if (error || !signedUrl || !publicUrl) continue
+          await fetch(signedUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } })
+          urls.push(publicUrl)
+        }
+        if (!urls.length) return
+        const allImages = attachFiles.every(f => f.type.startsWith('image/'))
+        const attUrl = urls.length === 1 ? urls[0] : JSON.stringify(urls)
+        const attType = !allImages ? 'file' : urls.length === 1 ? 'image' : 'images'
+        const attName = attachFiles.length === 1 ? attachFiles[0].name : `${attachFiles.length} תמונות`
         setPrivateMsgs(prev => [...prev, {
           id: `temp-${Date.now()}`, sender_id: currentUserId, receiver_id: selectedPartner,
           content: content || null, job_id: null, is_read: false, created_at: new Date().toISOString(),
-          attachment_url: publicUrl, attachment_type: attType, attachment_name: attachFile.name,
+          attachment_url: attUrl, attachment_type: attType, attachment_name: attName,
           reply_to_id: currentReplyTo?.id ?? null, reply_to: currentReplyTo ? { id: currentReplyTo.id, content: currentReplyTo.content, sender_id: currentReplyTo.sender_id } : null,
           sender: currentProfile ?? undefined,
         }])
-        await sendPrivateMessage(selectedPartner, content, publicUrl, attType, attachFile.name, currentReplyTo?.id)
+        await sendPrivateMessage(selectedPartner, content, attUrl, attType, attName, currentReplyTo?.id)
       } finally {
         setIsUploading(false)
-        setAttachFile(null)
-        setAttachPreview(null)
+        setAttachFiles([])
+        setAttachPreviews([])
         setPrivateText('')
         if (privateTextRef.current) privateTextRef.current.style.height = 'auto'
       }
@@ -750,16 +795,9 @@ export default function ChatClient({
   }
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setAttachFile(file)
-    if (file.type.startsWith('image/')) {
-      const reader = new FileReader()
-      reader.onload = ev => setAttachPreview(ev.target?.result as string)
-      reader.readAsDataURL(file)
-    } else {
-      setAttachPreview(null)
-    }
+    const files = Array.from(e.target.files ?? [])
+    if (!files.length) return
+    files.forEach(addAttachFile)
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
@@ -1136,15 +1174,30 @@ export default function ChatClient({
                       {/* Attachment */}
                       {msg.attachment_url && (
                         <div className="mb-1">
-                          {msg.attachment_type === 'image'
-                            ? <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer"><img src={msg.attachment_url} alt="" className="max-h-48 max-w-[220px] rounded-xl object-cover cursor-pointer hover:opacity-90 transition" /></a>
-                            : (
-                              <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition hover:opacity-80" style={{ background: isOwn ? 'rgba(255,255,255,.15)' : 'var(--inp)', border: '1px solid var(--bd)' }}>
-                                <FileIcon size={16} />
-                                <span className="truncate text-xs">{msg.attachment_name ?? 'קובץ'}</span>
-                              </a>
+                          {msg.attachment_type === 'image' && (
+                            <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer">
+                              <img src={msg.attachment_url} alt="" className="max-h-48 max-w-[220px] rounded-xl object-cover cursor-pointer hover:opacity-90 transition" />
+                            </a>
+                          )}
+                          {msg.attachment_type === 'images' && (() => {
+                            let urls: string[] = []
+                            try { urls = JSON.parse(msg.attachment_url!) } catch { urls = [msg.attachment_url!] }
+                            return (
+                              <div className="grid gap-1" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', maxWidth: '260px' }}>
+                                {urls.map((url, i) => (
+                                  <a key={i} href={url} target="_blank" rel="noopener noreferrer">
+                                    <img src={url} alt="" className="w-full rounded-lg cursor-pointer hover:opacity-90 transition" style={{ aspectRatio: '1', objectFit: 'cover' }} />
+                                  </a>
+                                ))}
+                              </div>
                             )
-                          }
+                          })()}
+                          {msg.attachment_type !== 'image' && msg.attachment_type !== 'images' && (
+                            <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition hover:opacity-80" style={{ background: isOwn ? 'rgba(255,255,255,.15)' : 'var(--inp)', border: '1px solid var(--bd)' }}>
+                              <FileIcon size={16} />
+                              <span className="truncate text-xs">{msg.attachment_name ?? 'קובץ'}</span>
+                            </a>
+                          )}
                         </div>
                       )}
                       {msg.content && <span className="whitespace-pre-wrap">{renderContent(msg.content)}</span>}
@@ -1223,8 +1276,9 @@ export default function ChatClient({
         isSending={isSendingC}
         textRef={communityTextRef}
         onAttachClick={() => fileInputRef.current?.click()}
-        attachment={attachFile ? { name: attachFile.name, type: attachFile.type, preview: attachPreview ?? undefined } : null}
-        onRemoveAttachment={() => { setAttachFile(null); setAttachPreview(null) }}
+        attachments={attachFiles.map((f, i) => ({ name: f.name, type: f.type, preview: attachPreviews[i] || undefined }))}
+        onRemoveAttachment={removeAttach}
+        onImagePaste={addAttachFile}
         isUploading={isUploading}
         replyTo={communityReplyTo ? {
           content: communityReplyTo.content,
@@ -1378,15 +1432,30 @@ export default function ChatClient({
                           {/* Attachment */}
                           {msg.attachment_url && (
                             <div className="mb-1">
-                              {msg.attachment_type === 'image'
-                                ? <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer"><img src={msg.attachment_url} alt="" className="max-h-48 max-w-[220px] rounded-xl object-cover cursor-pointer hover:opacity-90 transition" /></a>
-                                : (
-                                  <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition hover:opacity-80" style={{ background: isOwn ? 'rgba(255,255,255,.15)' : 'var(--inp)', border: '1px solid var(--bd)' }}>
-                                    <FileIcon size={16} />
-                                    <span className="truncate text-xs">{msg.attachment_name ?? 'קובץ'}</span>
-                                  </a>
+                              {msg.attachment_type === 'image' && (
+                                <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer">
+                                  <img src={msg.attachment_url} alt="" className="max-h-48 max-w-[220px] rounded-xl object-cover cursor-pointer hover:opacity-90 transition" />
+                                </a>
+                              )}
+                              {msg.attachment_type === 'images' && (() => {
+                                let urls: string[] = []
+                                try { urls = JSON.parse(msg.attachment_url!) } catch { urls = [msg.attachment_url!] }
+                                return (
+                                  <div className="grid gap-1" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', maxWidth: '260px' }}>
+                                    {urls.map((url, i) => (
+                                      <a key={i} href={url} target="_blank" rel="noopener noreferrer">
+                                        <img src={url} alt="" className="w-full rounded-lg cursor-pointer hover:opacity-90 transition" style={{ aspectRatio: '1', objectFit: 'cover' }} />
+                                      </a>
+                                    ))}
+                                  </div>
                                 )
-                              }
+                              })()}
+                              {msg.attachment_type !== 'image' && msg.attachment_type !== 'images' && (
+                                <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition hover:opacity-80" style={{ background: isOwn ? 'rgba(255,255,255,.15)' : 'var(--inp)', border: '1px solid var(--bd)' }}>
+                                  <FileIcon size={16} />
+                                  <span className="truncate text-xs">{msg.attachment_name ?? 'קובץ'}</span>
+                                </a>
+                              )}
                             </div>
                           )}
                           {msg.content && <span className="whitespace-pre-wrap">{renderContent(msg.content)}</span>}
@@ -1532,8 +1601,9 @@ export default function ChatClient({
         isSending={isSendingP}
         textRef={privateTextRef}
         onAttachClick={() => fileInputRef.current?.click()}
-        attachment={attachFile ? { name: attachFile.name, type: attachFile.type, preview: attachPreview ?? undefined } : null}
-        onRemoveAttachment={() => { setAttachFile(null); setAttachPreview(null) }}
+        attachments={attachFiles.map((f, i) => ({ name: f.name, type: f.type, preview: attachPreviews[i] || undefined }))}
+        onRemoveAttachment={removeAttach}
+        onImagePaste={addAttachFile}
         isUploading={isUploading}
         replyTo={replyTo ? {
           content: replyTo.content,
@@ -1556,7 +1626,7 @@ export default function ChatClient({
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)] overflow-hidden lg:h-screen">
-      <input ref={fileInputRef} type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.zip,.rar" className="hidden" onChange={handleFileSelect} />
+      <input ref={fileInputRef} type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.zip,.rar" multiple className="hidden" onChange={handleFileSelect} />
       <div
         className={`${mobileShowChat ? 'hidden' : 'flex'} lg:flex w-full flex-col lg:w-80 xl:w-96 shrink-0`}
         style={{ borderInlineEnd: '1px solid var(--bd)' }}
