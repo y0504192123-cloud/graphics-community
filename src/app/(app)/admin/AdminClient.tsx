@@ -456,6 +456,10 @@ export default function AdminClient({
                       </select>
                     </div>
                     <div>
+                      <label className={labelCls}>תאריך תפוגה (אופציונלי)</label>
+                      <input name="expires_at" type="datetime-local" className={`${inputCls} [color-scheme:dark]`} dir="ltr" />
+                    </div>
+                    <div>
                       <label className={labelCls}>תמונה</label>
                       <div className="flex items-center gap-3">
                         <button type="button"
@@ -531,6 +535,12 @@ export default function AdminClient({
                       </div>
                       <p className="font-semibold line-clamp-1 text-sm" style={{ color: 'var(--tx)' }}>{item.title}</p>
                       <p className="text-xs line-clamp-1" style={{ color: 'var(--tx2)' }}>{item.content}</p>
+                      {item.expires_at && (
+                        <p className="text-[10px]" style={{ color: new Date(item.expires_at) < new Date() ? '#ef4444' : 'var(--tx3)' }}>
+                          תפוגה: {new Date(item.expires_at).toLocaleDateString('he-IL')}
+                          {new Date(item.expires_at) < new Date() ? ' · פג תוקף' : ''}
+                        </p>
+                      )}
                     </div>
                     <button disabled={isPending}
                       onClick={() => startTransition(async () => { await deleteNews(item.id) })}

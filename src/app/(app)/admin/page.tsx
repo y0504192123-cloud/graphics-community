@@ -32,6 +32,9 @@ export default async function AdminPage() {
     admin.from('font_weights').select('*').order('created_at', { ascending: true }),
   ])
 
+  // Auto-archive expired news on every admin page load
+  await admin.rpc('archive_expired_news').catch(() => {})
+
   const pendingUsers          = (pendingRes.data    ?? []) as Profile[]
   const activeUsers           = (activeRes.data     ?? []) as Profile[]
   const newsItems             = (newsRes.data       ?? []) as NewsItem[]
@@ -116,11 +119,13 @@ export default async function AdminPage() {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return { error: 'לא מחובר' }
+    const expiresRaw = formData.get('expires_at') as string
     const { error } = await supabase.from('news').insert({
       title:       formData.get('title') as string,
       content:     formData.get('content') as string,
       image_url:   (formData.get('image_url') as string) || null,
       category_id: (formData.get('category_id') as string) || null,
+      expires_at:  expiresRaw ? new Date(expiresRaw).toISOString() : null,
       created_by:  user.id,
     })
     if (error) return { error: error.message }

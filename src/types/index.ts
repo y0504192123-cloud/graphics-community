@@ -105,6 +105,8 @@ export type NewsItem = {
   content: string
   image_url: string | null
   category_id: string | null
+  expires_at: string | null
+  is_archived: boolean
   created_by: string
   created_at: string
   profiles?: Profile
