@@ -426,6 +426,9 @@ export default function ThreadClient({
   const [replyPreviews, setReplyPreviews] = useState<string[]>([])
   const replyFileRef = useRef<HTMLInputElement>(null)
 
+  // Sync replies when server data refreshes (replaces optimistic entries)
+  useEffect(() => { setReplies(initialReplies) }, [initialReplies])
+
   const refresh = () => { startTransition(() => { router.refresh() }) }
 
   const addReplyImage = (f: File) => {
@@ -444,6 +447,7 @@ export default function ThreadClient({
     setIsSubmitting(true)
     setUploadError(null)
     try {
+      // Upload images first
       const urls: string[] = []
       for (const file of replyFiles) {
         const { signedUrl, publicUrl, error } = await getForumImageUploadUrl()
@@ -455,10 +459,29 @@ export default function ThreadClient({
         await fetch(signedUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } })
         urls.push(publicUrl)
       }
-      await createReply(thread.id, categoryId, full || ' ', urls.length > 0 ? urls : undefined)
+
+      // Optimistic update — show reply immediately before server round-trip
+      const optimistic: ForumReply = {
+        id: `opt-${Date.now()}`,
+        thread_id: thread.id,
+        user_id: currentUserId,
+        content: full || ' ',
+        images: urls.length > 0 ? urls : [],
+        image_url: null,
+        is_best_answer: false,
+        edited_at: null,
+        created_at: new Date().toISOString(),
+        profiles: currentProfile ?? undefined,
+        like_count: 0,
+        user_liked: false,
+      }
+      setReplies(prev => [...prev, optimistic])
       setReplyText(''); setQuotedText('')
       setReplyFiles([]); setReplyPreviews([])
       if (replyFileRef.current) replyFileRef.current.value = ''
+
+      // Save to DB; router.refresh() triggers useEffect to replace optimistic with real
+      await createReply(thread.id, categoryId, full || ' ', urls.length > 0 ? urls : undefined)
       refresh()
     } finally {
       setIsSubmitting(false)
