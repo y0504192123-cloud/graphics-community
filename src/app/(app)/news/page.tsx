@@ -10,7 +10,7 @@ export default async function NewsPage() {
   if (!user) redirect('/login')
 
   // Auto-archive expired items on every page load
-  await createAdminClient().rpc('archive_expired_news').catch(() => {})
+  await createAdminClient().rpc('archive_expired_news').then(() => {}, () => {})
 
   const { data } = await supabase
     .from('news')

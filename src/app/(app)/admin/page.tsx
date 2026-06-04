@@ -33,7 +33,7 @@ export default async function AdminPage() {
   ])
 
   // Auto-archive expired news on every admin page load
-  await admin.rpc('archive_expired_news').catch(() => {})
+  await admin.rpc('archive_expired_news').then(() => {}, () => {})
 
   const pendingUsers          = (pendingRes.data    ?? []) as Profile[]
   const activeUsers           = (activeRes.data     ?? []) as Profile[]
