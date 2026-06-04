@@ -19,12 +19,11 @@ function fmtDate(d: string) {
   return new Date(d).toLocaleDateString('he-IL', { day: 'numeric', month: 'long', year: 'numeric' })
 }
 
-function ExpiryBadge({ expiresAt }: { expiresAt: string | null }) {
-  if (!expiresAt) return null
+function ExpiryBadge({ expiresAt }: { expiresAt: string }) {
   const soon = new Date(expiresAt).getTime() - Date.now() < 3 * 24 * 60 * 60 * 1000
   return (
     <span className="flex items-center gap-1 text-[11px] font-medium"
-      style={{ color: soon ? '#f59e0b' : 'var(--tx3)' }}>
+      style={{ color: soon ? '#f59e0b' : '#ef4444' }}>
       <CalendarX size={10} />
       בתוקף עד {fmtDate(expiresAt)}
     </span>
@@ -32,7 +31,7 @@ function ExpiryBadge({ expiresAt }: { expiresAt: string | null }) {
 }
 
 // ── Hero ──────────────────────────────────────────────────────────────────────
-// RTL flex-row: order-1 = rightmost (text), order-2 = leftmost (image)
+// RTL flex-row: order-1 = rightmost (text on RIGHT), order-2 = leftmost (image on LEFT)
 // Mobile flex-col: order-1 = top (image), order-2 = bottom (text)
 
 function HeroCard({ item, onClick }: { item: NewsItem; onClick: () => void }) {
@@ -42,7 +41,7 @@ function HeroCard({ item, onClick }: { item: NewsItem; onClick: () => void }) {
       className="group mb-6 flex cursor-pointer flex-col overflow-hidden rounded-2xl transition-all duration-300 hover:shadow-2xl lg:flex-row"
       style={{ background: 'var(--s1)', border: '1px solid var(--bd)' }}
     >
-      {/* Text — right on desktop */}
+      {/* Text — right side on desktop */}
       <div className="order-2 flex flex-1 flex-col justify-center p-6 lg:order-1 lg:p-8">
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <CategoryBadge cat={item.news_categories} />
@@ -55,16 +54,18 @@ function HeroCard({ item, onClick }: { item: NewsItem; onClick: () => void }) {
           <span className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--tx3)' }}>
             <Clock size={12} />{fmtDate(item.created_at)}
           </span>
-          <ExpiryBadge expiresAt={item.expires_at ?? null} />
+          {item.show_expiry && item.expires_at && <ExpiryBadge expiresAt={item.expires_at} />}
         </div>
         <p className="mt-4 text-sm font-black" style={{ color: '#7c3aed' }}>קרא עוד ←</p>
       </div>
-      {/* Image — left on desktop, no cropping */}
-      <div className="order-1 shrink-0 overflow-hidden lg:order-2 lg:w-[55%]">
+      {/* Image — left side on desktop, no overflow-hidden, full natural height */}
+      <div className="order-1 shrink-0 lg:order-2 lg:w-[55%]">
         {item.image_url ? (
-          <img src={item.image_url} alt={item.title}
-            className="transition-transform duration-500 group-hover:scale-[1.02]"
-            style={{ width: '100%', height: 'auto', display: 'block' }} />
+          <img
+            src={item.image_url}
+            alt={item.title}
+            style={{ width: '100%', height: 'auto', display: 'block' }}
+          />
         ) : (
           <div className="flex items-center justify-center py-16" style={{ background: 'var(--inp)' }}>
             <span style={{ fontSize: '5rem', opacity: 0.12 }}>📰</span>
@@ -84,11 +85,13 @@ function MediumCard({ item, onClick }: { item: NewsItem; onClick: () => void }) 
       className="group flex cursor-pointer flex-col overflow-hidden rounded-2xl transition-all duration-300 hover:translate-y-[-3px] hover:shadow-xl"
       style={{ background: 'var(--s1)', border: '1px solid var(--bd)' }}
     >
-      <div className="relative overflow-hidden">
+      <div className="relative">
         {item.image_url ? (
-          <img src={item.image_url} alt={item.title}
-            className="transition-transform duration-500 group-hover:scale-[1.02]"
-            style={{ width: '100%', height: 'auto', display: 'block' }} />
+          <img
+            src={item.image_url}
+            alt={item.title}
+            style={{ width: '100%', height: 'auto', display: 'block' }}
+          />
         ) : (
           <div className="flex items-center justify-center py-12" style={{ background: 'var(--inp)' }}>
             <span style={{ fontSize: '3rem', opacity: 0.12 }}>📰</span>
@@ -108,7 +111,7 @@ function MediumCard({ item, onClick }: { item: NewsItem; onClick: () => void }) 
         <p className="mt-1.5 line-clamp-3 flex-1 text-sm leading-relaxed" style={{ color: 'var(--tx2)' }}>
           {item.content}
         </p>
-        {item.expires_at && (
+        {item.show_expiry && item.expires_at && (
           <div className="mt-3 border-t pt-2.5" style={{ borderColor: 'var(--bd)' }}>
             <ExpiryBadge expiresAt={item.expires_at} />
           </div>
@@ -127,10 +130,13 @@ function SmallCard({ item, onClick }: { item: NewsItem; onClick: () => void }) {
       className="group flex cursor-pointer flex-col overflow-hidden rounded-xl transition-all duration-300 hover:translate-y-[-2px] hover:shadow-lg"
       style={{ background: 'var(--s1)', border: '1px solid var(--bd)' }}
     >
-      <div className="relative overflow-hidden">
+      <div className="relative">
         {item.image_url ? (
-          <img src={item.image_url} alt={item.title}
-            style={{ width: '100%', height: 'auto', display: 'block' }} />
+          <img
+            src={item.image_url}
+            alt={item.title}
+            style={{ width: '100%', height: 'auto', display: 'block' }}
+          />
         ) : (
           <div className="flex items-center justify-center py-8" style={{ background: 'var(--inp)' }}>
             <span style={{ fontSize: '2.5rem', opacity: 0.12 }}>📰</span>
@@ -176,8 +182,11 @@ function ArticleModal({ item, onClose }: { item: NewsItem; onClose: () => void }
         </button>
 
         {item.image_url && (
-          <img src={item.image_url} alt={item.title}
-            style={{ width: '100%', height: 'auto', display: 'block' }} />
+          <img
+            src={item.image_url}
+            alt={item.title}
+            style={{ width: '100%', height: 'auto', display: 'block' }}
+          />
         )}
 
         <div className="p-6 lg:p-8">
@@ -186,7 +195,7 @@ function ArticleModal({ item, onClose }: { item: NewsItem; onClose: () => void }
             <span className="flex items-center gap-1.5 text-xs font-medium" style={{ color: 'var(--tx3)' }}>
               <Clock size={12} />{fmtDate(item.created_at)}
             </span>
-            <ExpiryBadge expiresAt={item.expires_at ?? null} />
+            {item.show_expiry && item.expires_at && <ExpiryBadge expiresAt={item.expires_at} />}
           </div>
           <h1 className="mb-5 text-2xl font-black leading-tight" style={{ color: 'var(--tx)', lineHeight: 1.25 }}>
             {item.title}

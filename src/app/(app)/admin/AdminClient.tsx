@@ -460,6 +460,12 @@ export default function AdminClient({
                       <input name="expires_at" type="datetime-local" className={`${inputCls} [color-scheme:dark]`} dir="ltr" />
                     </div>
                     <div>
+                      <label className="flex cursor-pointer items-center gap-2.5 text-sm font-medium" style={{ color: 'var(--tx2)' }}>
+                        <input name="show_expiry" type="checkbox" className="h-4 w-4 rounded" style={{ accentColor: '#7c3aed' }} />
+                        הצג תאריך תפוגה בחדשה
+                      </label>
+                    </div>
+                    <div>
                       <label className={labelCls}>תמונה</label>
                       <div className="flex items-center gap-3">
                         <button type="button"

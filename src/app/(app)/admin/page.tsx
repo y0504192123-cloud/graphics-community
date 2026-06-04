@@ -126,6 +126,7 @@ export default async function AdminPage() {
       image_url:   (formData.get('image_url') as string) || null,
       category_id: (formData.get('category_id') as string) || null,
       expires_at:  expiresRaw ? new Date(expiresRaw).toISOString() : null,
+      show_expiry: formData.get('show_expiry') === 'on',
       created_by:  user.id,
     })
     if (error) return { error: error.message }

@@ -106,6 +106,7 @@ export type NewsItem = {
   image_url: string | null
   category_id: string | null
   expires_at: string | null
+  show_expiry: boolean | null
   is_archived: boolean
   created_by: string
   created_at: string

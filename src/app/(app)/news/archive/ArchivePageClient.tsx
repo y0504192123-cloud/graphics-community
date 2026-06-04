@@ -38,8 +38,11 @@ function ArticleModal({ item, onClose }: { item: NewsItem; onClose: () => void }
         </button>
 
         {item.image_url && (
-          <img src={item.image_url} alt={item.title}
-            style={{ width: '100%', height: 'auto', display: 'block', opacity: 0.85 }} />
+          <img
+            src={item.image_url}
+            alt={item.title}
+            style={{ width: '100%', height: 'auto', display: 'block', opacity: 0.85 }}
+          />
         )}
 
         <div className="p-6 lg:p-8">
@@ -114,10 +117,13 @@ export default function ArchivePageClient({ newsItems }: { newsItems: NewsItem[]
                 className="group flex cursor-pointer flex-col overflow-hidden rounded-2xl transition-all duration-300 hover:translate-y-[-2px] hover:shadow-lg"
                 style={{ background: 'var(--s1)', border: '1px solid var(--bd)', opacity: 0.88 }}
               >
-                <div className="relative overflow-hidden">
+                <div className="relative">
                   {item.image_url ? (
-                    <img src={item.image_url} alt={item.title}
-                      style={{ width: '100%', height: 'auto', display: 'block', opacity: 0.8 }} />
+                    <img
+                      src={item.image_url}
+                      alt={item.title}
+                      style={{ width: '100%', height: 'auto', display: 'block', opacity: 0.8 }}
+                    />
                   ) : (
                     <div className="flex items-center justify-center py-10" style={{ background: 'var(--inp)' }}>
                       <span style={{ fontSize: '3rem', opacity: 0.12 }}>📰</span>
