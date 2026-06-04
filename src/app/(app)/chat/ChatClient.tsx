@@ -667,7 +667,7 @@ export default function ChatClient({
           return [...deduped, { ...m, profiles: prof as Profile | undefined ?? undefined }]
         })
         if (m.user_id !== currentUserId && !isMutedRef.current) {
-          if (!window.location.pathname.startsWith('/chat')) playSound(soundPrefsRef.current['community'] ?? 'ping')
+          playSound(soundPrefsRef.current['community'] ?? 'ping')
         }
       })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages', filter: `channel_id=eq.${generalTopicId}` }, (payload) => {
@@ -735,7 +735,7 @@ export default function ChatClient({
           setPrivateMsgs(prev => prev.map(x => x.sender_id === m.sender_id && x.receiver_id === currentUserId && !x.is_read ? { ...x, is_read: true } : x))
         }
         if (m.sender_id !== currentUserId && m.receiver_id === currentUserId && !isMutedRef.current) {
-          if (!window.location.pathname.startsWith('/chat')) playSound(soundPrefsRef.current[m.sender_id] ?? 'ping')
+          playSound(soundPrefsRef.current[m.sender_id] ?? 'ping')
         }
       })
       .subscribe((status, err) => {

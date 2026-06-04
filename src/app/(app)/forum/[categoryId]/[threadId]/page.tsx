@@ -27,8 +27,8 @@ export default async function ThreadPage({ params }: Props) {
     admin.from('profiles').select('role').eq('id', user.id).single(),
   ])
 
-  if (!catRes.data) notFound()
-  if (!threadRes.data) notFound()
+  if (!catRes.data) { console.error('[ThreadPage] catRes error:', catRes.error, 'categoryId:', categoryId); notFound() }
+  if (!threadRes.data) { console.error('[ThreadPage] threadRes error:', threadRes.error, 'threadId:', threadId); notFound() }
 
   const category = catRes.data as ForumCategory
   const thread = threadRes.data as ForumThread & { profiles?: Profile }

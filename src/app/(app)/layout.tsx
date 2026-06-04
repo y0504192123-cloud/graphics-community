@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import Sidebar from './_components/Sidebar'
+import FloatingNotifications from './_components/FloatingNotifications'
 import type { Profile } from '@/types'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -49,6 +50,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <div className="flex h-screen overflow-hidden" style={{ background: 'var(--bg)' }}>
       <Sidebar profile={profileData as Profile} email={user.email ?? ''} currentUserId={user.id} logoUrl={logoUrl} />
       <main className="flex-1 overflow-y-auto pt-14 lg:pt-0">{children}</main>
+      <FloatingNotifications currentUserId={user.id} />
     </div>
   )
 }
