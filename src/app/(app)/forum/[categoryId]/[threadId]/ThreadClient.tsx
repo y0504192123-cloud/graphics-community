@@ -378,65 +378,58 @@ const SOUND_OPTIONS: { value: SoundType; label: string; icon: string }[] = [
   { value: 'none',  label: 'השתק',  icon: '🔇' },
 ]
 const FORUM_SOUND_PREF_PREFIX = 'sndPref_thread_'
-let _forumCtx: AudioContext | null = null
-function getForumCtx() {
-  if (!_forumCtx || _forumCtx.state === 'closed') _forumCtx = new (window.AudioContext || (window as any).webkitAudioContext)()
-  return _forumCtx
-}
-function unlockForumAudio() {
-  try { const c = getForumCtx(); if (c.state !== 'running') c.resume() } catch {}
-}
-async function playForumSound(type: SoundType) {
+function playForumSound(type: SoundType) {
   if (type === 'none') return
   try {
-    const ctx = getForumCtx()
-    if (ctx.state !== 'running') await ctx.resume()
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.connect(gain); gain.connect(ctx.destination)
     const t = ctx.currentTime
     if (type === 'ping') {
-      const o = ctx.createOscillator(); const g = ctx.createGain()
-      o.connect(g); g.connect(ctx.destination)
-      o.frequency.setValueAtTime(800, t); o.frequency.exponentialRampToValueAtTime(400, t + 0.3)
-      g.gain.setValueAtTime(0.3, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.3)
-      o.start(t); o.stop(t + 0.3)
+      osc.frequency.setValueAtTime(800, t); osc.frequency.exponentialRampToValueAtTime(400, t + 0.1)
+      gain.gain.setValueAtTime(0.3, t); gain.gain.exponentialRampToValueAtTime(0.001, t + 0.3)
+      osc.start(t); osc.stop(t + 0.3)
     } else if (type === 'chime') {
-      ;([[523, 0], [659, 0.12], [784, 0.24]] as [number, number][]).forEach(([freq, delay]) => {
-        const o = ctx.createOscillator(); const g = ctx.createGain()
-        o.type = 'sine'; o.connect(g); g.connect(ctx.destination)
-        o.frequency.value = freq
-        g.gain.setValueAtTime(0, t + delay); g.gain.linearRampToValueAtTime(0.25, t + delay + 0.02)
-        g.gain.exponentialRampToValueAtTime(0.001, t + delay + 0.5)
-        o.start(t + delay); o.stop(t + delay + 0.5)
-      })
+      osc.frequency.setValueAtTime(400, t); osc.frequency.exponentialRampToValueAtTime(800, t + 0.15)
+      gain.gain.setValueAtTime(0.25, t); gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4)
+      osc.start(t); osc.stop(t + 0.4)
     } else if (type === 'pop') {
-      const o = ctx.createOscillator(); const g = ctx.createGain()
-      o.connect(g); g.connect(ctx.destination)
-      o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(600, t + 0.08)
-      g.gain.setValueAtTime(0.4, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.08)
-      o.start(t); o.stop(t + 0.08)
+      osc.frequency.setValueAtTime(600, t)
+      gain.gain.setValueAtTime(0.4, t); gain.gain.exponentialRampToValueAtTime(0.001, t + 0.05)
+      osc.start(t); osc.stop(t + 0.05)
     } else {
-      ;([440, 1320] as number[]).forEach((freq, i) => {
-        const o = ctx.createOscillator(); const g = ctx.createGain()
-        o.type = 'sine'; o.connect(g); g.connect(ctx.destination)
-        o.frequency.value = freq
-        g.gain.setValueAtTime(i === 0 ? 0.3 : 0.1, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.9)
-        o.start(t); o.stop(t + 0.9)
-      })
+      osc.frequency.setValueAtTime(600, t); osc.frequency.exponentialRampToValueAtTime(300, t + 0.5)
+      gain.gain.setValueAtTime(0.25, t); gain.gain.exponentialRampToValueAtTime(0.001, t + 0.5)
+      osc.start(t); osc.stop(t + 0.5)
     }
-  } catch (e) { console.error('sound error:', e) }
+    osc.onended = () => ctx.close()
+  } catch {}
 }
 
-function ForumSoundPicker({ current, onSelect, onClose }: { current: SoundType; onSelect: (s: SoundType) => void; onClose: () => void }) {
+function ForumSoundPicker({ current, onSelect, onClose, rect }: { current: SoundType; onSelect: (s: SoundType) => void; onClose: () => void; rect: DOMRect | null }) {
+  if (!rect) return null
   return (
     <>
-      <div className="fixed inset-0 z-[99]" onClick={onClose} />
-      <div className="absolute start-0 top-full z-[100] mt-1 overflow-hidden rounded-xl shadow-2xl"
-        style={{ background: 'var(--s1)', border: '1px solid var(--bd)', width: '160px' }}>
+      <div style={{ position: 'fixed', inset: 0, zIndex: 9998 }} onClick={onClose} />
+      <div style={{
+        position: 'fixed',
+        zIndex: 9999,
+        bottom: window.innerHeight - rect.top + 6,
+        left: rect.left,
+        width: 160,
+        background: 'var(--s1)',
+        border: '1px solid var(--bd)',
+        borderRadius: 12,
+        boxShadow: '0 -4px 24px rgba(0,0,0,.16)',
+        overflow: 'hidden',
+      }}>
         {SOUND_OPTIONS.map((opt, i) => (
           <button key={opt.value} onClick={() => { playForumSound(opt.value); onSelect(opt.value); onClose() }}
             className="flex w-full items-center gap-2 px-3 py-2 text-xs transition hover:bg-purple-50/60"
             style={{
               color: 'var(--tx)',
-              borderTop: i > 0 ? '1px solid var(--bd)' : undefined,
+              borderBottom: i < SOUND_OPTIONS.length - 1 ? '1px solid var(--bd)' : undefined,
               background: current === opt.value ? 'rgba(124,58,237,.08)' : undefined,
             }}>
             <span>{opt.icon}</span><span className="flex-1 text-start">{opt.label}</span>
@@ -503,6 +496,7 @@ export default function ThreadClient({
   // Sound
   const [threadSoundPref, setThreadSoundPref] = useState<SoundType>('ping')
   const [soundPickerOpen, setSoundPickerOpen] = useState(false)
+  const [soundPickerRect, setSoundPickerRect] = useState<DOMRect | null>(null)
   const threadSoundPrefRef = useRef<SoundType>('ping')
   threadSoundPrefRef.current = threadSoundPref
   const isFollowingRef = useRef(false)
@@ -541,13 +535,6 @@ export default function ThreadClient({
       const saved = localStorage.getItem(FORUM_SOUND_PREF_PREFIX + thread.id) as SoundType | null
       if (saved && SOUND_OPTIONS.some(o => o.value === saved)) setThreadSoundPref(saved)
     } catch {}
-    const unlock = () => unlockForumAudio()
-    window.addEventListener('click', unlock, { once: true })
-    window.addEventListener('keydown', unlock, { once: true })
-    return () => {
-      window.removeEventListener('click', unlock)
-      window.removeEventListener('keydown', unlock)
-    }
   }, [thread.id])
 
   // Mark forum notifications for this thread as read on mount
@@ -852,7 +839,7 @@ export default function ThreadClient({
                       {isFollowing ? <><BellOff size={11} /> עוקב</> : <><Bell size={11} /> עקוב</>}
                     </button>
                     <button
-                      onClick={() => setSoundPickerOpen(o => !o)}
+                      onClick={(e) => { setSoundPickerRect(e.currentTarget.getBoundingClientRect()); setSoundPickerOpen(o => !o) }}
                       title="בחר צליל לאשון"
                       className="flex h-7 w-7 items-center justify-center rounded-lg transition hover:bg-purple-50"
                       style={{ color: 'var(--tx3)', border: '1px solid var(--bd)' }}>
@@ -861,6 +848,7 @@ export default function ThreadClient({
                     {soundPickerOpen && (
                       <ForumSoundPicker
                         current={threadSoundPref}
+                        rect={soundPickerRect}
                         onSelect={s => {
                           setThreadSoundPref(s)
                           try { localStorage.setItem(FORUM_SOUND_PREF_PREFIX + thread.id, s) } catch {}

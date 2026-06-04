@@ -324,33 +324,55 @@ function playSound(type: SoundType) {
     const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
     const osc = ctx.createOscillator()
     const gain = ctx.createGain()
-    osc.connect(gain)
-    gain.connect(ctx.destination)
-    osc.frequency.setValueAtTime(800, ctx.currentTime)
-    osc.frequency.exponentialRampToValueAtTime(400, ctx.currentTime + 0.1)
-    gain.gain.setValueAtTime(0.3, ctx.currentTime)
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3)
-    osc.start(ctx.currentTime)
-    osc.stop(ctx.currentTime + 0.3)
+    osc.connect(gain); gain.connect(ctx.destination)
+    const t = ctx.currentTime
+    if (type === 'ping') {
+      osc.frequency.setValueAtTime(800, t); osc.frequency.exponentialRampToValueAtTime(400, t + 0.1)
+      gain.gain.setValueAtTime(0.3, t); gain.gain.exponentialRampToValueAtTime(0.001, t + 0.3)
+      osc.start(t); osc.stop(t + 0.3)
+    } else if (type === 'chime') {
+      osc.frequency.setValueAtTime(400, t); osc.frequency.exponentialRampToValueAtTime(800, t + 0.15)
+      gain.gain.setValueAtTime(0.25, t); gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4)
+      osc.start(t); osc.stop(t + 0.4)
+    } else if (type === 'pop') {
+      osc.frequency.setValueAtTime(600, t)
+      gain.gain.setValueAtTime(0.4, t); gain.gain.exponentialRampToValueAtTime(0.001, t + 0.05)
+      osc.start(t); osc.stop(t + 0.05)
+    } else {
+      osc.frequency.setValueAtTime(600, t); osc.frequency.exponentialRampToValueAtTime(300, t + 0.5)
+      gain.gain.setValueAtTime(0.25, t); gain.gain.exponentialRampToValueAtTime(0.001, t + 0.5)
+      osc.start(t); osc.stop(t + 0.5)
+    }
     osc.onended = () => ctx.close()
   } catch {}
 }
 
 // ── SoundPicker mini-menu ─────────────────────────────────
 
-function SoundPicker({ current, onSelect, onClose }: { current: SoundType; onSelect: (s: SoundType) => void; onClose: () => void }) {
+function SoundPicker({ current, onSelect, onClose, rect }: { current: SoundType; onSelect: (s: SoundType) => void; onClose: () => void; rect: DOMRect | null }) {
+  if (!rect) return null
   return (
     <>
-      <div className="fixed inset-0 z-[99]" onClick={onClose} />
-      <div className="absolute start-0 top-full z-[100] mt-1 overflow-hidden rounded-xl shadow-2xl"
-        style={{ background: 'var(--s1)', border: '1px solid var(--bd)', width: '160px' }}>
+      <div style={{ position: 'fixed', inset: 0, zIndex: 9998 }} onClick={onClose} />
+      <div style={{
+        position: 'fixed',
+        zIndex: 9999,
+        bottom: window.innerHeight - rect.top + 6,
+        left: rect.left,
+        width: 160,
+        background: 'var(--s1)',
+        border: '1px solid var(--bd)',
+        borderRadius: 12,
+        boxShadow: '0 -4px 24px rgba(0,0,0,.16)',
+        overflow: 'hidden',
+      }}>
         {SOUND_OPTIONS.map((opt, i) => (
           <button key={opt.value}
             onClick={() => { playSound(opt.value); onSelect(opt.value); onClose() }}
             className="flex w-full items-center gap-2 px-3 py-2 text-xs transition hover:bg-purple-50/60"
             style={{
               color: 'var(--tx)',
-              borderTop: i > 0 ? '1px solid var(--bd)' : undefined,
+              borderBottom: i < SOUND_OPTIONS.length - 1 ? '1px solid var(--bd)' : undefined,
               background: current === opt.value ? 'rgba(124,58,237,.08)' : undefined,
             }}>
             <span>{opt.icon}</span>
@@ -434,6 +456,7 @@ export default function ChatClient({
   const soundPrefsRef = useRef<Record<string, SoundType>>({})
   soundPrefsRef.current = soundPrefs
   const [soundPickerFor, setSoundPickerFor] = useState<string | null>(null)
+  const [soundPickerRect, setSoundPickerRect] = useState<DOMRect | null>(null)
   const getSoundFor = (id: string): SoundType => soundPrefs[id] ?? 'ping'
   const setSoundFor = (id: string, sound: SoundType) => {
     setSoundPrefs(prev => ({ ...prev, [id]: sound }))
@@ -1129,14 +1152,14 @@ export default function ChatClient({
               <p className="mt-0.5 text-[11px]" style={{ color: 'var(--tx3)' }}>צ׳אט כללי לכל חברי הקהילה</p>
             </div>
           </button>
-          <div className="relative shrink-0 px-1.5">
-            <button onClick={() => setSoundPickerFor(p => p === 'community' ? null : 'community')}
+          <div className="shrink-0 px-1.5">
+            <button onClick={(e) => { setSoundPickerRect(e.currentTarget.getBoundingClientRect()); setSoundPickerFor(p => p === 'community' ? null : 'community') }}
               className="flex h-7 w-7 items-center justify-center rounded-lg text-sm transition hover:bg-slate-100"
               title="בחר צליל">
               {getSoundFor('community') === 'none' ? '🔇' : '🔔'}
             </button>
             {soundPickerFor === 'community' && (
-              <SoundPicker current={getSoundFor('community')} onSelect={s => setSoundFor('community', s)} onClose={() => setSoundPickerFor(null)} />
+              <SoundPicker current={getSoundFor('community')} onSelect={s => setSoundFor('community', s)} onClose={() => setSoundPickerFor(null)} rect={soundPickerRect} />
             )}
           </div>
           {activeSide === 'community' && <span className="absolute end-0 h-8 w-1 rounded-s-full bg-purple-600" />}
@@ -1183,14 +1206,14 @@ export default function ChatClient({
                   </div>
                 </div>
               </button>
-              <div className="relative shrink-0 px-1.5">
-                <button onClick={() => setSoundPickerFor(p => p === convo.partnerId ? null : convo.partnerId)}
+              <div className="shrink-0 px-1.5">
+                <button onClick={(e) => { setSoundPickerRect(e.currentTarget.getBoundingClientRect()); setSoundPickerFor(p => p === convo.partnerId ? null : convo.partnerId) }}
                   className="flex h-7 w-7 items-center justify-center rounded-lg text-sm transition hover:bg-slate-100"
                   title="בחר צליל">
                   {convoSound === 'none' ? '🔇' : '🔔'}
                 </button>
                 {soundPickerFor === convo.partnerId && (
-                  <SoundPicker current={convoSound} onSelect={s => setSoundFor(convo.partnerId, s)} onClose={() => setSoundPickerFor(null)} />
+                  <SoundPicker current={convoSound} onSelect={s => setSoundFor(convo.partnerId, s)} onClose={() => setSoundPickerFor(null)} rect={soundPickerRect} />
                 )}
               </div>
               {active && <span className="absolute end-0 h-8 w-1 rounded-s-full bg-purple-600" />}

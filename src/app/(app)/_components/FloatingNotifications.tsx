@@ -114,7 +114,7 @@ export default function FloatingNotifications({ currentUserId }: { currentUserId
   if (notifs.length === 0) return null
 
   return (
-    <div className="fixed bottom-5 start-5 z-50 flex flex-col-reverse gap-2">
+    <div className="fixed z-50 flex flex-col-reverse gap-2" style={{ bottom: 20, left: 20 }}>
       {notifs.map((n) => (
         <div
           key={n.id}
