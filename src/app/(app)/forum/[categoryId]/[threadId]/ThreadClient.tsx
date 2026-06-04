@@ -380,17 +380,17 @@ const SOUND_OPTIONS: { value: SoundType; label: string; icon: string }[] = [
 const FORUM_SOUND_PREF_PREFIX = 'sndPref_thread_'
 let _forumCtx: AudioContext | null = null
 function getForumCtx() {
-  if (!_forumCtx) _forumCtx = new (window.AudioContext || (window as any).webkitAudioContext)()
+  if (!_forumCtx || _forumCtx.state === 'closed') _forumCtx = new (window.AudioContext || (window as any).webkitAudioContext)()
   return _forumCtx
 }
 function unlockForumAudio() {
-  try { const c = getForumCtx(); if (c.state === 'suspended') c.resume() } catch {}
+  try { const c = getForumCtx(); if (c.state !== 'running') c.resume() } catch {}
 }
 async function playForumSound(type: SoundType) {
   if (type === 'none') return
   try {
     const ctx = getForumCtx()
-    if (ctx.state === 'suspended') await ctx.resume()
+    if (ctx.state !== 'running') await ctx.resume()
     const t = ctx.currentTime
     if (type === 'ping') {
       const o = ctx.createOscillator(); const g = ctx.createGain()

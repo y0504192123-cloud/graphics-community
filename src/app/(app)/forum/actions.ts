@@ -5,18 +5,18 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
-export async function createThread(categoryId: string, title: string, content: string, imageUrls?: string[], tags?: string[]) {
+export async function createThread(categoryId: string, title: string, content: string, imageUrls?: string[], tags?: string[]): Promise<{ threadId?: string; error?: string }> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
+  if (!user) return { error: 'לא מחובר' }
   const { data, error } = await supabase
     .from('forum_threads')
     .insert({ category_id: categoryId, user_id: user.id, title: title.trim(), content: content.trim(), images: imageUrls ?? [], tags: tags ?? [] })
     .select('id')
     .single()
-  if (error || !data) return { error: error?.message ?? 'שגיאה' }
+  if (error || !data?.id) return { error: error?.message ?? 'שגיאה ביצירת נושא' }
   revalidatePath(`/forum/${categoryId}`)
-  redirect(`/forum/${categoryId}/${data.id}`)
+  return { threadId: data.id }
 }
 
 export async function createReply(threadId: string, categoryId: string, content: string, imageUrls?: string[]) {

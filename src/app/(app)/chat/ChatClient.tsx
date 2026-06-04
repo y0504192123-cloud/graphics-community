@@ -323,18 +323,18 @@ const SOUND_PREF_PREFIX = 'sndPref_'
 
 let _ctx: AudioContext | null = null
 function getCtx() {
-  if (!_ctx) _ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+  if (!_ctx || _ctx.state === 'closed') _ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
   return _ctx
 }
 function unlockAudio() {
-  try { const c = getCtx(); if (c.state === 'suspended') c.resume() } catch {}
+  try { const c = getCtx(); if (c.state !== 'running') c.resume() } catch {}
 }
 
 async function playSound(type: SoundType) {
   if (type === 'none') return
   try {
     const ctx = getCtx()
-    if (ctx.state === 'suspended') await ctx.resume()
+    if (ctx.state !== 'running') await ctx.resume()
     const t = ctx.currentTime
     if (type === 'ping') {
       const osc = ctx.createOscillator(); const g = ctx.createGain()

@@ -2,7 +2,8 @@
 
 import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
-import { ImageIcon, X, Bold, Italic, List, Quote, Tag } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { ImageIcon, X, Bold, Italic, List, Quote, Tag, AlertCircle } from 'lucide-react'
 import { createThread, getForumImageUploadUrl } from '../actions'
 
 function TagsInput({ tags, onChange }: { tags: string[]; onChange: (t: string[]) => void }) {
@@ -44,12 +45,14 @@ function TagsInput({ tags, onChange }: { tags: string[]; onChange: (t: string[])
 const DRAFT_PREFIX = 'forumNewThreadDraft_'
 
 export default function NewThreadForm({ categoryId }: { categoryId: string }) {
+  const router = useRouter()
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
   const [tags, setTags] = useState<string[]>([])
   const [imageFiles, setImageFiles] = useState<File[]>([])
   const [imagePreviews, setImagePreviews] = useState<string[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -119,6 +122,7 @@ export default function NewThreadForm({ categoryId }: { categoryId: string }) {
   const handleSubmit = async () => {
     if (!title.trim() || !content.trim() || isSubmitting) return
     setIsSubmitting(true)
+    setSubmitError(null)
     try {
       const urls: string[] = []
       for (const file of imageFiles) {
@@ -128,12 +132,18 @@ export default function NewThreadForm({ categoryId }: { categoryId: string }) {
           urls.push(publicUrl)
         }
       }
-      try { localStorage.removeItem(DRAFT_PREFIX + categoryId) } catch {}
-      await createThread(
+      const result = await createThread(
         categoryId, title, content,
         urls.length > 0 ? urls : undefined,
         tags.length > 0 ? tags : undefined,
       )
+      if (result.error) {
+        setSubmitError(result.error)
+        setIsSubmitting(false)
+      } else if (result.threadId) {
+        try { localStorage.removeItem(DRAFT_PREFIX + categoryId) } catch {}
+        router.push(`/forum/${categoryId}/${result.threadId}`)
+      }
     } catch { setIsSubmitting(false) }
   }
 
@@ -210,6 +220,13 @@ export default function NewThreadForm({ categoryId }: { categoryId: string }) {
               style={{ border: '2px dashed var(--bd)' }}>
               <ImageIcon size={18} style={{ color: 'var(--tx3)' }} />
             </button>
+          </div>
+        )}
+
+        {submitError && (
+          <div className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs"
+            style={{ background: 'rgba(239,68,68,.08)', border: '1px solid rgba(239,68,68,.2)', color: '#ef4444' }}>
+            <AlertCircle size={13} /> {submitError}
           </div>
         )}
 
