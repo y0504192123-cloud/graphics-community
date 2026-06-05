@@ -71,40 +71,77 @@ export default function FloatingNotifications({ currentUserId }: { currentUserId
   }, [])
 
   useEffect(() => {
-    const pmCh = supabase.channel(`float-pm-${currentUserId}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'private_messages' }, async (payload) => {
-        const m = payload.new as { id: string; sender_id: string; receiver_id: string; content: string }
-        if (m.receiver_id !== currentUserId) return
-        const path = window.location.pathname + window.location.search
-        if (path.includes('/chat') && path.includes(m.sender_id)) return
-        const { data: prof } = await supabase.from('profiles').select('id,full_name,username,avatar_url').eq('id', m.sender_id).single()
-        const p = prof as Profile | null
-        const name = p?.full_name ?? p?.username ?? 'משתמש'
-        addNotif({
-          id: `pm-${m.id}`,
-          senderName: name,
-          senderAvatar: p?.avatar_url ?? null,
-          preview: m.content.slice(0, 70),
-          source: 'chat',
-          link: `/chat?dm=${m.sender_id}`,
-        })
-      })
-      .subscribe()
+    console.log('[FloatingNotifications] mounting for user', currentUserId)
 
-    const forumCh = supabase.channel(`float-forum-${currentUserId}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${currentUserId}` }, (payload) => {
-        const n = payload.new as { id: string; type: string; content: string; link: string | null }
-        if (n.type !== 'forum_reply') return
-        addNotif({
-          id: `forum-${n.id}`,
-          senderName: 'פורום',
-          senderAvatar: null,
-          preview: n.content,
-          source: 'forum',
-          link: n.link ?? '/forum',
-        })
+    // Private messages — server-side filter so Supabase only delivers relevant rows
+    const pmCh = supabase.channel(`float-pm-${currentUserId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'private_messages',
+          filter: `receiver_id=eq.${currentUserId}`,
+        },
+        async (payload) => {
+          console.log('[FloatingNotifications] private_message received', payload.new)
+          const m = payload.new as { id: string; sender_id: string; receiver_id: string; content: string | null }
+
+          // Suppress if already viewing this exact DM conversation
+          const path = window.location.pathname + window.location.search
+          if (path.includes('/chat') && path.includes(m.sender_id)) {
+            console.log('[FloatingNotifications] suppressed — already on DM page')
+            return
+          }
+
+          const { data: prof } = await supabase
+            .from('profiles')
+            .select('id,full_name,username,avatar_url')
+            .eq('id', m.sender_id)
+            .single()
+          const p = prof as Profile | null
+          const name = p?.full_name ?? p?.username ?? 'משתמש'
+          addNotif({
+            id: `pm-${m.id}`,
+            senderName: name,
+            senderAvatar: p?.avatar_url ?? null,
+            preview: m.content?.slice(0, 70) ?? '📎 קובץ',
+            source: 'chat',
+            link: `/chat?dm=${m.sender_id}`,
+          })
+        }
+      )
+      .subscribe((status) => {
+        console.log('[FloatingNotifications] PM channel status:', status)
       })
-      .subscribe()
+
+    // Forum notifications
+    const forumCh = supabase.channel(`float-forum-${currentUserId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${currentUserId}`,
+        },
+        (payload) => {
+          console.log('[FloatingNotifications] notification received', payload.new)
+          const n = payload.new as { id: string; type: string; content: string; link: string | null }
+          if (n.type !== 'forum_reply') return
+          addNotif({
+            id: `forum-${n.id}`,
+            senderName: 'פורום',
+            senderAvatar: null,
+            preview: n.content,
+            source: 'forum',
+            link: n.link ?? '/forum',
+          })
+        }
+      )
+      .subscribe((status) => {
+        console.log('[FloatingNotifications] Forum channel status:', status)
+      })
 
     return () => {
       supabase.removeChannel(pmCh)
