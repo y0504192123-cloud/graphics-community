@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { LogOut } from 'lucide-react'
 
-export default function LogoutButton() {
+export default function LogoutButton({ compact }: { compact?: boolean }) {
   const router = useRouter()
 
   const handleLogout = async () => {
@@ -12,6 +12,19 @@ export default function LogoutButton() {
     await supabase.auth.signOut()
     router.push('/login')
     router.refresh()
+  }
+
+  if (compact) {
+    return (
+      <button
+        onClick={handleLogout}
+        className="flex items-center justify-center rounded-xl px-3 py-2 transition-all hover:bg-red-500/[0.08] hover:text-red-400"
+        style={{ color: 'var(--tx3)', border: '1px solid var(--bd)' }}
+        title="יציאה"
+      >
+        <LogOut size={13} />
+      </button>
+    )
   }
 
   return (

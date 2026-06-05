@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Briefcase, MessageSquare, Library, Menu, X, ShieldCheck, Palette, Globe, MessagesSquare, ScanText, LayoutGrid } from 'lucide-react'
+import { LayoutDashboard, Briefcase, MessageSquare, Library, Menu, X, ShieldCheck, Palette, Globe, MessagesSquare, ScanText, LayoutGrid, Info, Settings } from 'lucide-react'
 import { useState, useEffect, useMemo } from 'react'
 import LogoutButton from './LogoutButton'
 import { useLanguage } from '@/components/LanguageProvider'
@@ -17,11 +17,13 @@ const labels = {
     home: 'ראשי', jobs: 'לוח עבודות', chat: "צ'אטים", forum: 'פורום',
     inspiration: 'ספריית השראה', assets: 'חומרים לשימוש', admin: 'פאנל ניהול',
     designer: 'גרפיקאי', fontId: 'זיהוי פונט', portfolio: 'גלריית עבודות',
+    about: 'אודות', settings: 'הגדרות',
   },
   en: {
     home: 'Home', jobs: 'Job Board', chat: 'Chats', forum: 'Forum',
     inspiration: 'Inspiration', assets: 'Resources', admin: 'Admin Panel',
     designer: 'Designer', fontId: 'Font Identifier', portfolio: 'Portfolio',
+    about: 'About', settings: 'Settings',
   },
 }
 
@@ -108,6 +110,7 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
     { href: '/portfolio',        label: t.portfolio,   icon: <LayoutGrid size={17} /> },
     { href: '/assets',           label: t.assets,      icon: <Library size={17} /> },
     { href: '/font-identifier',  label: t.fontId,      icon: <ScanText size={17} /> },
+    { href: '/about',            label: t.about,       icon: <Info size={17} /> },
   ]
 
   const displayName = profile?.full_name ?? profile?.username ?? email.split('@')[0]
@@ -248,7 +251,18 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
             <p className="truncate text-[11px]" style={{ color: 'var(--tx3)' }}>{profile?.specialization ?? t.designer}</p>
           </div>
         </Link>
-        <LogoutButton />
+        <div className="mt-1 flex gap-1">
+          <Link
+            href="/settings"
+            onClick={() => setOpen(false)}
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-medium transition hover:bg-slate-100"
+            style={{ color: 'var(--tx3)', border: '1px solid var(--bd)' }}
+          >
+            <Settings size={13} />
+            {t.settings}
+          </Link>
+          <LogoutButton compact />
+        </div>
       </div>
     </div>
   )

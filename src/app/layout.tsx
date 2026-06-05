@@ -11,8 +11,17 @@ const rubik = Rubik({
 })
 
 export const metadata: Metadata = {
-  title: 'Grafi',
-  description: 'קהילת הגרפיקאים החרדים',
+  title: { default: 'Grafi — קהילת הגרפיקאים החרדים', template: '%s | Grafi' },
+  description: 'Grafi היא הפלטפורמה המרכזית לגרפיקאים חרדים — קהילה, השראה, לוח עבודות וכלים מקצועיים.',
+  keywords: ['גרפיקה', 'גרפיקאים חרדים', 'עיצוב גרפי', 'קהילת גרפיקאים'],
+  openGraph: {
+    title: 'Grafi — קהילת הגרפיקאים החרדים',
+    description: 'Grafi היא הפלטפורמה המרכזית לגרפיקאים חרדים — קהילה, השראה, לוח עבודות וכלים מקצועיים.',
+    type: 'website',
+    locale: 'he_IL',
+    siteName: 'Grafi',
+  },
+  robots: { index: true, follow: true },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
