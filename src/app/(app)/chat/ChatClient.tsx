@@ -306,18 +306,15 @@ function InputBar({ value, onChange, onKeyDown, onSend, isSending, textRef, onAt
 
 // ── Audio system ──────────────────────────────────────────
 
-type SoundType = 'ping' | 'chime' | 'pop' | 'bell' | 'bubble' | 'ding' | 'whoosh' | 'alto' | 'none'
+type SoundType = 'message' | 'notification' | 'pop' | 'bell' | 'chime' | 'none'
 
 const SOUND_OPTIONS: { value: SoundType; label: string; icon: string }[] = [
-  { value: 'ping',   label: 'Ping',      icon: '🔔' },
-  { value: 'chime',  label: 'Chime',     icon: '🎵' },
-  { value: 'pop',    label: 'Pop',       icon: '💬' },
-  { value: 'bell',   label: 'Soft Bell', icon: '🔕' },
-  { value: 'bubble', label: 'Bubble',    icon: '🫧' },
-  { value: 'ding',   label: 'Ding',      icon: '✨' },
-  { value: 'whoosh', label: 'Whoosh',    icon: '💨' },
-  { value: 'alto',   label: 'Alto',      icon: '🎶' },
-  { value: 'none',   label: 'השתק',      icon: '🔇' },
+  { value: 'message',      label: 'הודעה',  icon: '💬' },
+  { value: 'notification', label: 'התראה',  icon: '🔔' },
+  { value: 'pop',          label: 'Pop',    icon: '🫧' },
+  { value: 'bell',         label: 'פעמון', icon: '🔕' },
+  { value: 'chime',        label: 'צלצול', icon: '🎵' },
+  { value: 'none',         label: 'השתק',  icon: '🔇' },
 ]
 
 const SOUND_PREF_PREFIX = 'sndPref_'
@@ -326,56 +323,64 @@ function playSound(type: SoundType) {
   if (type === 'none') return
   try {
     const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
-    const t = ctx.currentTime
-    if (type === 'whoosh') {
-      const bufSize = Math.ceil(ctx.sampleRate * 0.18)
-      const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate)
-      const d = buf.getChannelData(0)
-      for (let i = 0; i < bufSize; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / bufSize)
-      const src = ctx.createBufferSource(); src.buffer = buf
-      const gain = ctx.createGain()
-      gain.gain.setValueAtTime(0.3, t); gain.gain.exponentialRampToValueAtTime(0.001, t + 0.18)
-      src.connect(gain); gain.connect(ctx.destination)
-      src.start(t); src.onended = () => ctx.close()
-    } else if (type === 'ding') {
-      ;[800, 1000].forEach((freq, i) => {
-        const osc = ctx.createOscillator(); const gain = ctx.createGain()
-        osc.connect(gain); gain.connect(ctx.destination)
-        osc.frequency.value = freq
-        const s = t + i * 0.1
-        gain.gain.setValueAtTime(0.25, s); gain.gain.exponentialRampToValueAtTime(0.001, s + 0.1)
-        osc.start(s); osc.stop(s + 0.1)
-        if (i === 1) osc.onended = () => ctx.close()
-      })
-    } else {
+    const play = (freq: number, time: number, dur: number) => {
       const osc = ctx.createOscillator(); const gain = ctx.createGain()
       osc.connect(gain); gain.connect(ctx.destination)
-      if (type === 'ping') {
-        osc.frequency.setValueAtTime(800, t); osc.frequency.exponentialRampToValueAtTime(400, t + 0.1)
-        gain.gain.setValueAtTime(0.3, t); gain.gain.exponentialRampToValueAtTime(0.001, t + 0.3)
-        osc.start(t); osc.stop(t + 0.3)
-      } else if (type === 'chime') {
-        osc.frequency.setValueAtTime(400, t); osc.frequency.exponentialRampToValueAtTime(800, t + 0.15)
-        gain.gain.setValueAtTime(0.25, t); gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4)
+      osc.type = 'sine'; osc.frequency.value = freq
+      gain.gain.setValueAtTime(0, time)
+      gain.gain.linearRampToValueAtTime(0.4, time + 0.01)
+      gain.gain.exponentialRampToValueAtTime(0.001, time + dur)
+      osc.start(time); osc.stop(time + dur)
+    }
+    if (type === 'message') {
+      play(880, ctx.currentTime, 0.15)
+      play(1100, ctx.currentTime + 0.1, 0.2)
+      setTimeout(() => ctx.close(), 500)
+    } else if (type === 'notification') {
+      ;[523, 659, 784].forEach((freq, i) => {
+        const osc = ctx.createOscillator(); const gain = ctx.createGain()
+        osc.connect(gain); gain.connect(ctx.destination)
+        osc.type = 'sine'; osc.frequency.value = freq
+        const t = ctx.currentTime + i * 0.12
+        gain.gain.setValueAtTime(0, t)
+        gain.gain.linearRampToValueAtTime(0.3, t + 0.01)
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.2)
+        osc.start(t); osc.stop(t + 0.2)
+      })
+      setTimeout(() => ctx.close(), 800)
+    } else if (type === 'pop') {
+      const osc = ctx.createOscillator(); const gain = ctx.createGain()
+      osc.connect(gain); gain.connect(ctx.destination)
+      osc.type = 'sine'
+      osc.frequency.setValueAtTime(150, ctx.currentTime)
+      osc.frequency.exponentialRampToValueAtTime(80, ctx.currentTime + 0.08)
+      gain.gain.setValueAtTime(0.5, ctx.currentTime)
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08)
+      osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.08)
+      setTimeout(() => ctx.close(), 300)
+    } else if (type === 'bell') {
+      const freqs = [440, 880, 1320, 1760]
+      const gVals = [1, 0.6, 0.4, 0.2]
+      freqs.forEach((freq, i) => {
+        const osc = ctx.createOscillator(); const gain = ctx.createGain()
+        osc.connect(gain); gain.connect(ctx.destination)
+        osc.type = 'sine'; osc.frequency.value = freq
+        gain.gain.setValueAtTime(gVals[i] * 0.3, ctx.currentTime)
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.5)
+        osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 1.5)
+      })
+      setTimeout(() => ctx.close(), 2000)
+    } else if (type === 'chime') {
+      ;[523, 659, 784, 1047].forEach((freq, i) => {
+        const osc = ctx.createOscillator(); const gain = ctx.createGain()
+        osc.connect(gain); gain.connect(ctx.destination)
+        osc.type = 'triangle'; osc.frequency.value = freq
+        const t = ctx.currentTime + i * 0.15
+        gain.gain.setValueAtTime(0.25, t)
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4)
         osc.start(t); osc.stop(t + 0.4)
-      } else if (type === 'pop') {
-        osc.frequency.setValueAtTime(600, t)
-        gain.gain.setValueAtTime(0.4, t); gain.gain.exponentialRampToValueAtTime(0.001, t + 0.05)
-        osc.start(t); osc.stop(t + 0.05)
-      } else if (type === 'bell') {
-        osc.frequency.setValueAtTime(600, t); osc.frequency.exponentialRampToValueAtTime(300, t + 0.5)
-        gain.gain.setValueAtTime(0.25, t); gain.gain.exponentialRampToValueAtTime(0.001, t + 0.5)
-        osc.start(t); osc.stop(t + 0.5)
-      } else if (type === 'bubble') {
-        osc.frequency.setValueAtTime(300, t); osc.frequency.exponentialRampToValueAtTime(600, t + 0.08)
-        gain.gain.setValueAtTime(0.3, t); gain.gain.exponentialRampToValueAtTime(0.001, t + 0.15)
-        osc.start(t); osc.stop(t + 0.15)
-      } else if (type === 'alto') {
-        osc.frequency.setValueAtTime(400, t); osc.frequency.exponentialRampToValueAtTime(200, t + 0.5)
-        gain.gain.setValueAtTime(0.25, t); gain.gain.exponentialRampToValueAtTime(0.001, t + 0.5)
-        osc.start(t); osc.stop(t + 0.5)
-      }
-      osc.onended = () => ctx.close()
+      })
+      setTimeout(() => ctx.close(), 1500)
     }
   } catch {}
 }
@@ -490,7 +495,7 @@ export default function ChatClient({
   soundPrefsRef.current = soundPrefs
   const [soundPickerFor, setSoundPickerFor] = useState<string | null>(null)
   const [soundPickerRect, setSoundPickerRect] = useState<DOMRect | null>(null)
-  const getSoundFor = (id: string): SoundType => soundPrefs[id] ?? 'ping'
+  const getSoundFor = (id: string): SoundType => soundPrefs[id] ?? 'message'
   const setSoundFor = (id: string, sound: SoundType) => {
     setSoundPrefs(prev => ({ ...prev, [id]: sound }))
     try { localStorage.setItem(SOUND_PREF_PREFIX + id, sound) } catch {}
@@ -690,7 +695,7 @@ export default function ChatClient({
           return [...deduped, { ...m, profiles: prof as Profile | undefined ?? undefined }]
         })
         if (m.user_id !== currentUserId && !isMutedRef.current) {
-          playSound(soundPrefsRef.current['community'] ?? 'ping')
+          playSound(soundPrefsRef.current['community'] ?? 'message')
         }
       })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages', filter: `channel_id=eq.${generalTopicId}` }, (payload) => {
@@ -758,7 +763,7 @@ export default function ChatClient({
           setPrivateMsgs(prev => prev.map(x => x.sender_id === m.sender_id && x.receiver_id === currentUserId && !x.is_read ? { ...x, is_read: true } : x))
         }
         if (m.sender_id !== currentUserId && m.receiver_id === currentUserId && !isMutedRef.current) {
-          playSound(soundPrefsRef.current[m.sender_id] ?? 'ping')
+          playSound(soundPrefsRef.current[m.sender_id] ?? 'message')
         }
       })
       .subscribe((status, err) => {
