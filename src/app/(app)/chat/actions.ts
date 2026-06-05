@@ -142,17 +142,19 @@ export async function sendPrivateMessage(
   }
 }
 
-export async function deletePrivateMessage(messageId: string) {
+export async function deletePrivateMessage(messageId: string): Promise<{ error?: string }> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return
+  if (!user) return { error: 'לא מחובר' }
   const admin = createAdminClient()
   const { data: msg } = await admin.from('private_messages').select('sender_id').eq('id', messageId).single()
-  if (!msg) return
-  if (msg.sender_id !== user.id) return
-  await admin.from('private_messages')
+  if (!msg) return { error: 'הודעה לא נמצאה' }
+  if (msg.sender_id !== user.id) return { error: 'אין הרשאה' }
+  const { error } = await admin.from('private_messages')
     .update({ deleted_for_all: true, content: null })
     .eq('id', messageId)
+  if (error) return { error: 'שגיאה במחיקת ההודעה' }
+  return {}
 }
 
 export async function markMessagesRead(senderId: string) {
@@ -167,14 +169,16 @@ export async function markMessagesRead(senderId: string) {
     .eq('is_read', false)
 }
 
-export async function editPrivateMessage(messageId: string, content: string) {
+export async function editPrivateMessage(messageId: string, content: string): Promise<{ error?: string }> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return
+  if (!user) return { error: 'לא מחובר' }
   const admin = createAdminClient()
   const { data: msg } = await admin.from('private_messages').select('sender_id').eq('id', messageId).single()
-  if (!msg || msg.sender_id !== user.id) return
-  await admin.from('private_messages').update({ content, edited_at: new Date().toISOString() }).eq('id', messageId)
+  if (!msg || msg.sender_id !== user.id) return { error: 'אין הרשאה' }
+  const { error } = await admin.from('private_messages').update({ content, edited_at: new Date().toISOString() }).eq('id', messageId)
+  if (error) return { error: 'שגיאה בעריכת ההודעה' }
+  return {}
 }
 
 export async function toggleReaction(messageId: string, emoji: string) {
@@ -195,7 +199,18 @@ export async function toggleReaction(messageId: string, emoji: string) {
   }
 }
 
-export async function getChatUploadUrl(): Promise<{ signedUrl?: string; publicUrl?: string; error?: string }> {
+const ALLOWED_MIME_TYPES = new Set([
+  'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml', 'image/avif',
+  'application/pdf',
+  'video/mp4', 'video/quicktime', 'video/webm',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+])
+
+export async function getChatUploadUrl(mimeType?: string): Promise<{ signedUrl?: string; publicUrl?: string; error?: string }> {
+  if (mimeType && !ALLOWED_MIME_TYPES.has(mimeType) && !mimeType.startsWith('image/')) {
+    return { error: `סוג הקובץ "${mimeType}" אינו נתמך` }
+  }
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'לא מחובר' }

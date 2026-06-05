@@ -21,16 +21,18 @@ export async function createThread(categoryId: string, title: string, content: s
   return { threadId: data.id }
 }
 
-export async function createReply(threadId: string, categoryId: string, content: string, imageUrls?: string[]) {
+export async function createReply(threadId: string, categoryId: string, content: string, imageUrls?: string[]): Promise<{ error?: string }> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
   const admin = createAdminClient()
   const { error: replyError } = await admin.from('forum_replies').insert({ thread_id: threadId, user_id: user.id, content: content.trim(), images: imageUrls ?? [] })
-  if (replyError) console.error('[createReply] reply insert error:', replyError)
+  if (replyError) {
+    console.error('[createReply] reply insert error:', replyError)
+    return { error: 'שגיאה בשמירת התגובה — נסה שוב' }
+  }
   const { data: thread } = await admin.from('forum_threads').select('title, followers').eq('id', threadId).single()
   await admin.from('forum_threads').update({ updated_at: new Date().toISOString() }).eq('id', threadId)
-  // Notify followers
   try {
     const followerIds: string[] = ((thread?.followers ?? []) as string[]).filter((id: string) => id !== user.id)
     if (followerIds.length) {
@@ -45,9 +47,11 @@ export async function createReply(threadId: string, categoryId: string, content:
     }
   } catch (e) { console.error('[createReply] notification error:', e) }
   revalidatePath(`/forum/${categoryId}/${threadId}`)
+  return {}
 }
 
-export async function getForumImageUploadUrl(): Promise<{ signedUrl?: string; publicUrl?: string; error?: string }> {
+export async function getForumImageUploadUrl(mimeType?: string): Promise<{ signedUrl?: string; publicUrl?: string; error?: string }> {
+  if (mimeType && !mimeType.startsWith('image/')) return { error: 'ניתן להעלות תמונות בלבד' }
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'לא מחובר' }

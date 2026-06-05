@@ -639,15 +639,21 @@ export default function ThreadClient({
     setUploadError(null)
     try {
       const urls: string[] = []
+      const failedFiles: string[] = []
       for (const file of replyFiles) {
-        const { signedUrl, publicUrl, error } = await getForumImageUploadUrl()
+        const { signedUrl, publicUrl, error } = await getForumImageUploadUrl(file.type)
         if (error || !signedUrl || !publicUrl) {
-          setUploadError('שגיאה בהעלאת תמונה — ודא שה-bucket "forum-images" קיים ב-Supabase Storage')
-          setIsSubmitting(false)
-          return
+          failedFiles.push(file.name)
+          continue
         }
-        await fetch(signedUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } })
+        const uploadRes = await fetch(signedUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } })
+        if (!uploadRes.ok) { failedFiles.push(file.name); continue }
         urls.push(publicUrl)
+      }
+      if (failedFiles.length > 0) {
+        setUploadError(`שגיאה בהעלאת: ${failedFiles.join(', ')}`)
+        setIsSubmitting(false)
+        return
       }
 
       // Optimistic reply
@@ -668,7 +674,13 @@ export default function ThreadClient({
       if (replyFileRef.current) replyFileRef.current.value = ''
       try { localStorage.removeItem(REPLY_DRAFT_KEY_PREFIX + thread.id) } catch {}
 
-      await createReply(thread.id, categoryId, full || ' ', urls.length > 0 ? urls : undefined)
+      const { error: replyErr } = await createReply(thread.id, categoryId, full || ' ', urls.length > 0 ? urls : undefined)
+      if (replyErr) {
+        setReplies(prev => prev.filter(r => !r.id.startsWith('opt-')))
+        setUploadError(replyErr)
+        setIsSubmitting(false)
+        return
+      }
       markRead()
       refresh()
     } finally { setIsSubmitting(false) }

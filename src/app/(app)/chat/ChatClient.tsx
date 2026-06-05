@@ -30,11 +30,11 @@ type Props = {
   toggleCommunityReaction: (messageId: string, emoji: string) => Promise<void>
   initialPrivateMessages: PrivateMessage[]
   sendPrivateMessage: (receiverId: string, content: string, attUrl?: string, attType?: string, attName?: string, replyToId?: string) => Promise<void>
-  deletePrivateMessage: (id: string) => Promise<void>
-  editPrivateMessage: (id: string, content: string) => Promise<void>
+  deletePrivateMessage: (id: string) => Promise<{ error?: string }>
+  editPrivateMessage: (id: string, content: string) => Promise<{ error?: string }>
   toggleReaction: (messageId: string, emoji: string) => Promise<void>
   markMessagesRead: (senderId: string) => Promise<void>
-  getChatUploadUrl: () => Promise<{ signedUrl?: string; publicUrl?: string; error?: string }>
+  getChatUploadUrl: (mimeType?: string) => Promise<{ signedUrl?: string; publicUrl?: string; error?: string }>
   initialDmUserId: string | null
   initialDmProfile: Profile | null
   initialJobQuote: string | null
@@ -496,6 +496,15 @@ export default function ChatClient({
     try { localStorage.setItem(SOUND_PREF_PREFIX + id, sound) } catch {}
   }
 
+  // ── Error toast ──
+  const [chatError, setChatError] = useState<string | null>(null)
+  const chatErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const showChatError = (msg: string) => {
+    setChatError(msg)
+    if (chatErrorTimerRef.current) clearTimeout(chatErrorTimerRef.current)
+    chatErrorTimerRef.current = setTimeout(() => setChatError(null), 5000)
+  }
+
   // ── Realtime connection status ──
   const [rtStatus, setRtStatus] = useState<'connecting' | 'ok' | 'error'>('connecting')
 
@@ -876,12 +885,15 @@ export default function ChatClient({
       setIsUploading(true)
       try {
         const urls: string[] = []
+        const failedFiles: string[] = []
         for (const file of attachFiles) {
-          const { signedUrl, publicUrl, error } = await getChatUploadUrl()
-          if (error || !signedUrl || !publicUrl) continue
-          await fetch(signedUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } })
+          const { signedUrl, publicUrl, error } = await getChatUploadUrl(file.type)
+          if (error || !signedUrl || !publicUrl) { failedFiles.push(file.name); continue }
+          const uploadRes = await fetch(signedUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } })
+          if (!uploadRes.ok) { failedFiles.push(file.name); continue }
           urls.push(publicUrl)
         }
+        if (failedFiles.length > 0) showChatError(`שגיאה בהעלאת: ${failedFiles.join(', ')}`)
         if (!urls.length) return
         const allImages = attachFiles.every(f => f.type.startsWith('image/'))
         const attUrl = urls.length === 1 ? urls[0] : JSON.stringify(urls)
@@ -933,12 +945,15 @@ export default function ChatClient({
       setIsUploading(true)
       try {
         const urls: string[] = []
+        const failedFiles: string[] = []
         for (const file of attachFiles) {
-          const { signedUrl, publicUrl, error } = await getChatUploadUrl()
-          if (error || !signedUrl || !publicUrl) continue
-          await fetch(signedUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } })
+          const { signedUrl, publicUrl, error } = await getChatUploadUrl(file.type)
+          if (error || !signedUrl || !publicUrl) { failedFiles.push(file.name); continue }
+          const uploadRes = await fetch(signedUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } })
+          if (!uploadRes.ok) { failedFiles.push(file.name); continue }
           urls.push(publicUrl)
         }
+        if (failedFiles.length > 0) showChatError(`שגיאה בהעלאת: ${failedFiles.join(', ')}`)
         if (!urls.length) return
         const allImages = attachFiles.every(f => f.type.startsWith('image/'))
         const attUrl = urls.length === 1 ? urls[0] : JSON.stringify(urls)
@@ -991,7 +1006,11 @@ export default function ChatClient({
   const handleDeletePrivate = async (msgId: string) => {
     setPrivateMsgs(prev => prev.map(m => m.id === msgId ? { ...m, deleted_for_all: true, content: null, attachment_url: null } : m))
     typingChannelRef.current?.send({ type: 'broadcast', event: 'msg_delete', payload: { msgId } })
-    await deletePrivateMessage(msgId)
+    const { error } = await deletePrivateMessage(msgId)
+    if (error) {
+      setPrivateMsgs(prev => prev.map(m => m.id === msgId ? { ...m, deleted_for_all: false } : m))
+      showChatError(error)
+    }
   }
 
   const handleEditSave = async () => {
@@ -999,11 +1018,16 @@ export default function ChatClient({
     const id = editingMsgId
     const content = editingText.trim()
     const editedAt = new Date().toISOString()
+    const prevContent = privateMsgs.find(m => m.id === id)?.content ?? null
     setPrivateMsgs(prev => prev.map(m => m.id === id ? { ...m, content, edited_at: editedAt } : m))
     setEditingMsgId(null)
     setEditingText('')
     typingChannelRef.current?.send({ type: 'broadcast', event: 'msg_edit', payload: { msgId: id, content, editedAt } })
-    await editPrivateMessage(id, content)
+    const { error } = await editPrivateMessage(id, content)
+    if (error) {
+      setPrivateMsgs(prev => prev.map(m => m.id === id ? { ...m, content: prevContent, edited_at: null } : m))
+      showChatError(error)
+    }
   }
 
   const handleReaction = async (msgId: string, emoji: string) => {
@@ -1861,6 +1885,25 @@ export default function ChatClient({
       <div className={`${mobileShowChat ? 'flex' : 'hidden'} lg:flex flex-1 flex-col overflow-hidden`}>
         {rightContent}
       </div>
+
+      {/* Error toast */}
+      {chatError && (
+        <div
+          className="fixed bottom-5 right-5 z-[200] flex items-center gap-2.5 rounded-2xl px-4 py-3 shadow-xl text-sm font-medium text-white"
+          style={{ background: 'linear-gradient(135deg,#dc2626,#b91c1c)', maxWidth: 320 }}
+        >
+          <svg width="15" height="15" viewBox="0 0 15 15" fill="none" className="shrink-0">
+            <circle cx="7.5" cy="7.5" r="6.5" stroke="white" strokeWidth="1.5"/>
+            <path d="M7.5 4.5v3.5M7.5 10h.01" stroke="white" strokeWidth="1.5" strokeLinecap="round"/>
+          </svg>
+          {chatError}
+          <button onClick={() => setChatError(null)} className="ms-1 shrink-0 opacity-70 hover:opacity-100 transition">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M1 1l10 10M11 1L1 11" stroke="white" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+          </button>
+        </div>
+      )}
     </div>
   )
 }
