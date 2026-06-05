@@ -3,12 +3,12 @@
 import { useState, useTransition, useActionState, useRef } from 'react'
 import {
   ShieldCheck, Users, Clock, CheckCircle2, XCircle, Newspaper,
-  Hash, Plus, Trash2, ExternalLink, Phone, MapPin, Briefcase, Star, X, Palette, FolderOpen, ImageIcon, MessagesSquare, ScanText, Flag,
+  Hash, Plus, Trash2, ExternalLink, Phone, MapPin, Briefcase, Star, X, Palette, FolderOpen, ImageIcon, MessagesSquare, ScanText, Flag, FileText, Save,
 } from 'lucide-react'
 import type { Profile, NewsItem, NewsCategory, ChatCategory, Specialization, InspirationCategory, JobCategory, AssetCategory, ForumCategory, Font, FontWeight, ContentReport } from '@/types'
 import FontsTab from './FontsTab'
 
-type Tab = 'pending' | 'users' | 'news' | 'categories' | 'specializations' | 'insp_cats' | 'job_cats' | 'asset_cats' | 'branding' | 'forum_cats' | 'fonts' | 'reports'
+type Tab = 'pending' | 'users' | 'news' | 'categories' | 'specializations' | 'insp_cats' | 'job_cats' | 'asset_cats' | 'branding' | 'forum_cats' | 'fonts' | 'reports' | 'terms'
 
 type Props = {
   pendingUsers:    Profile[]
@@ -63,6 +63,10 @@ type Props = {
   reports:                     ContentReport[]
   updateReportStatus:          (id: string, status: 'reviewed' | 'dismissed') => Promise<void>
   deleteReportedContent:       (reportId: string, contentType: string, contentId: string) => Promise<void>
+  termsContent:                string
+  privacyContent:              string
+  saveTerms:                   (content: string) => Promise<{ error?: string }>
+  savePrivacy:                 (content: string) => Promise<{ error?: string }>
 }
 
 const inputCls = 'w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition-all placeholder:text-slate-400 hover:border-slate-300 focus:border-purple-400 focus:ring-2 focus:ring-purple-100'
@@ -81,6 +85,7 @@ const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'fonts',           label: 'מאגר פונטים',        icon: <ScanText size={15} /> },
   { id: 'branding',        label: 'מיתוג',              icon: <ImageIcon size={15} /> },
   { id: 'reports',         label: 'דיווחים',             icon: <Flag size={15} /> },
+  { id: 'terms',           label: 'תנאים ומדיניות',     icon: <FileText size={15} /> },
 ]
 
 export default function AdminClient({
@@ -101,6 +106,7 @@ export default function AdminClient({
   createFontWithPreview, updateFontsCompany, quickUpdateFont,
   recomputeHashBatch, rebuildPreviewsBatch, computeEmbeddingBatch, buildLetterEmbeddingsBatch,
   reports, updateReportStatus, deleteReportedContent,
+  termsContent: initialTerms, privacyContent: initialPrivacy, saveTerms, savePrivacy,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('pending')
   const [isPending, startTransition] = useTransition()
@@ -122,6 +128,14 @@ export default function AdminClient({
   const [newsImgUploading, setNewsImgUploading] = useState(false)
   const newsImgRef = useRef<HTMLInputElement>(null)
   const [reportFilter, setReportFilter] = useState<'all' | 'pending' | 'reviewed' | 'dismissed'>('pending')
+  const [termsText, setTermsText] = useState(initialTerms)
+  const [privacyText, setPrivacyText] = useState(initialPrivacy)
+  const [termsSaving, setTermsSaving] = useState(false)
+  const [privacySaving, setPrivacySaving] = useState(false)
+  const [termsSaved, setTermsSaved] = useState(false)
+  const [privacySaved, setPrivacySaved] = useState(false)
+  const [termsSaveError, setTermsSaveError] = useState<string | null>(null)
+  const [privacySaveError, setPrivacySaveError] = useState<string | null>(null)
 
   return (
     <div className="min-h-full" style={{ background: 'var(--bg)' }}>
@@ -341,6 +355,12 @@ export default function AdminClient({
                           <ExternalLink size={12} />
                           {user.portfolio_url}
                         </a>
+                      </div>
+                    )}
+                    {user.agreed_at && (
+                      <div className="flex items-center gap-2 text-sm text-slate-400">
+                        <CheckCircle2 size={13} className="text-emerald-500 shrink-0" />
+                        הסכים לתנאים: {new Date(user.agreed_at).toLocaleDateString('he-IL')}
                       </div>
                     )}
                   </div>
@@ -1065,6 +1085,101 @@ export default function AdminClient({
             </div>
           )
         })()}
+
+        {/* ── Terms & Privacy ── */}
+        {activeTab === 'terms' && (
+          <div className="space-y-6">
+
+            {/* Terms of Service */}
+            <div className="rounded-2xl overflow-hidden" style={{ background: 'var(--s2)', border: '1px solid var(--bd)' }}>
+              <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid var(--bd)' }}>
+                <div className="flex items-center gap-2">
+                  <FileText size={16} className="text-purple-500" />
+                  <h3 className="font-bold text-sm" style={{ color: 'var(--tx)' }}>תנאי השימוש</h3>
+                </div>
+                <div className="flex items-center gap-2">
+                  {termsSaved && <span className="text-xs text-emerald-500 font-semibold">✓ נשמר</span>}
+                  {termsSaveError && <span className="text-xs text-red-500">{termsSaveError}</span>}
+                  <a href="/terms" target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs transition hover:opacity-80"
+                    style={{ background: 'var(--inp)', border: '1px solid var(--bd)', color: 'var(--tx2)' }}>
+                    <ExternalLink size={11} /> צפייה
+                  </a>
+                  <button
+                    disabled={termsSaving}
+                    onClick={async () => {
+                      setTermsSaving(true); setTermsSaved(false); setTermsSaveError(null)
+                      const { error } = await saveTerms(termsText)
+                      setTermsSaving(false)
+                      if (error) setTermsSaveError(error)
+                      else { setTermsSaved(true); setTimeout(() => setTermsSaved(false), 3000) }
+                    }}
+                    className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-50"
+                    style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)' }}>
+                    {termsSaving ? <span className="h-3 w-3 animate-spin rounded-full border-2 border-white/30 border-t-white" /> : <Save size={12} />}
+                    שמור
+                  </button>
+                </div>
+              </div>
+              <div className="p-4">
+                <textarea
+                  value={termsText}
+                  onChange={e => setTermsText(e.target.value)}
+                  rows={18}
+                  placeholder="הכנס כאן את תנאי השימוש..."
+                  className="w-full resize-y rounded-xl border px-4 py-3 text-sm outline-none transition leading-relaxed"
+                  style={{ background: 'var(--inp)', border: '1px solid var(--bd)', color: 'var(--tx)', fontFamily: 'inherit', minHeight: 320 }}
+                  dir="rtl"
+                />
+              </div>
+            </div>
+
+            {/* Privacy Policy */}
+            <div className="rounded-2xl overflow-hidden" style={{ background: 'var(--s2)', border: '1px solid var(--bd)' }}>
+              <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid var(--bd)' }}>
+                <div className="flex items-center gap-2">
+                  <FileText size={16} className="text-blue-500" />
+                  <h3 className="font-bold text-sm" style={{ color: 'var(--tx)' }}>מדיניות הפרטיות</h3>
+                </div>
+                <div className="flex items-center gap-2">
+                  {privacySaved && <span className="text-xs text-emerald-500 font-semibold">✓ נשמר</span>}
+                  {privacySaveError && <span className="text-xs text-red-500">{privacySaveError}</span>}
+                  <a href="/privacy" target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs transition hover:opacity-80"
+                    style={{ background: 'var(--inp)', border: '1px solid var(--bd)', color: 'var(--tx2)' }}>
+                    <ExternalLink size={11} /> צפייה
+                  </a>
+                  <button
+                    disabled={privacySaving}
+                    onClick={async () => {
+                      setPrivacySaving(true); setPrivacySaved(false); setPrivacySaveError(null)
+                      const { error } = await savePrivacy(privacyText)
+                      setPrivacySaving(false)
+                      if (error) setPrivacySaveError(error)
+                      else { setPrivacySaved(true); setTimeout(() => setPrivacySaved(false), 3000) }
+                    }}
+                    className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-50"
+                    style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)' }}>
+                    {privacySaving ? <span className="h-3 w-3 animate-spin rounded-full border-2 border-white/30 border-t-white" /> : <Save size={12} />}
+                    שמור
+                  </button>
+                </div>
+              </div>
+              <div className="p-4">
+                <textarea
+                  value={privacyText}
+                  onChange={e => setPrivacyText(e.target.value)}
+                  rows={18}
+                  placeholder="הכנס כאן את מדיניות הפרטיות..."
+                  className="w-full resize-y rounded-xl border px-4 py-3 text-sm outline-none transition leading-relaxed"
+                  style={{ background: 'var(--inp)', border: '1px solid var(--bd)', color: 'var(--tx)', fontFamily: 'inherit', minHeight: 320 }}
+                  dir="rtl"
+                />
+              </div>
+            </div>
+
+          </div>
+        )}
 
       </div>
     </div>

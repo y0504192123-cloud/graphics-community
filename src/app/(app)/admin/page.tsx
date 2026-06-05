@@ -16,7 +16,7 @@ export default async function AdminPage() {
   if (profileData?.role !== 'admin') redirect('/dashboard')
 
   const admin = createAdminClient()
-  const [pendingRes, activeRes, newsRes, newsCatRes, catRes, specsRes, inspCatsRes, jobCatsRes, assetCatsRes, logoRes, forumCatsRes, fontsRes, fontWeightsRes, reportsRes] = await Promise.all([
+  const [pendingRes, activeRes, newsRes, newsCatRes, catRes, specsRes, inspCatsRes, jobCatsRes, assetCatsRes, logoRes, forumCatsRes, fontsRes, fontWeightsRes, reportsRes, termsRes, privacyRes] = await Promise.all([
     admin.from('profiles').select('*').eq('status', 'pending').order('created_at', { ascending: false }),
     admin.from('profiles').select('*').eq('status', 'active').order('created_at', { ascending: false }),
     admin.from('news').select('*, profiles(*), news_categories(*)').order('created_at', { ascending: false }),
@@ -31,6 +31,8 @@ export default async function AdminPage() {
     admin.from('fonts').select('*').order('name', { ascending: true }),
     admin.from('font_weights').select('*').order('created_at', { ascending: true }),
     admin.from('content_reports').select('*, reporter:profiles!reporter_id(id, full_name, username)').order('created_at', { ascending: false }).limit(200),
+    admin.from('site_settings').select('value').eq('key', 'terms_of_service').single(),
+    admin.from('site_settings').select('value').eq('key', 'privacy_policy').single(),
   ])
 
   // Auto-archive expired news on every admin page load
@@ -50,6 +52,8 @@ export default async function AdminPage() {
   const fonts                 = (fontsRes.data       ?? []) as Font[]
   const fontWeights           = (fontWeightsRes.data ?? []) as FontWeight[]
   const reports               = (reportsRes.data     ?? []) as any[]
+  const termsContent          = termsRes.data?.value   ?? ''
+  const privacyContent        = privacyRes.data?.value ?? ''
 
   /* ── Server Actions ── */
 
@@ -802,6 +806,28 @@ export default async function AdminPage() {
     return { done, errors, total, batchSize: fontsData.length }
   }
 
+  async function saveTerms(content: string): Promise<{ error?: string }> {
+    'use server'
+    const { error } = await createAdminClient()
+      .from('site_settings')
+      .upsert({ key: 'terms_of_service', value: content }, { onConflict: 'key' })
+    if (error) return { error: error.message }
+    revalidatePath('/terms')
+    revalidatePath('/admin')
+    return {}
+  }
+
+  async function savePrivacy(content: string): Promise<{ error?: string }> {
+    'use server'
+    const { error } = await createAdminClient()
+      .from('site_settings')
+      .upsert({ key: 'privacy_policy', value: content }, { onConflict: 'key' })
+    if (error) return { error: error.message }
+    revalidatePath('/privacy')
+    revalidatePath('/admin')
+    return {}
+  }
+
   async function updateReportStatus(id: string, status: 'reviewed' | 'dismissed') {
     'use server'
     await createAdminClient().from('content_reports').update({ status }).eq('id', id)
@@ -878,6 +904,10 @@ export default async function AdminPage() {
       reports={reports}
       updateReportStatus={updateReportStatus}
       deleteReportedContent={deleteReportedContent}
+      termsContent={termsContent}
+      privacyContent={privacyContent}
+      saveTerms={saveTerms}
+      savePrivacy={savePrivacy}
     />
   )
 }

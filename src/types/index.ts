@@ -15,6 +15,9 @@ export type Profile = {
   status: 'pending' | 'active' | 'rejected' | null
   created_at: string
   last_seen: string | null
+  agreed_to_terms: boolean | null
+  agreed_at: string | null
+  agreed_ip: string | null
 }
 
 export type PortfolioItem = {

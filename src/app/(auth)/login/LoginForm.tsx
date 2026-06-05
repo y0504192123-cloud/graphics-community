@@ -205,6 +205,28 @@ export default function LoginForm({ urlError, urlMessage, logoUrl }: Props) {
             <p className="rounded-xl border border-purple-500/20 bg-purple-500/[0.06] px-3 py-2.5 text-xs text-purple-300">
               💡 לאחר ההרשמה, הבקשה תועבר לאישור מנהל. תקבל גישה לאחר אישור.
             </p>
+
+            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-white/[0.07] bg-white/[0.04] px-3 py-2.5">
+              <input
+                type="checkbox"
+                name="agreed_to_terms"
+                required
+                className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-purple-500"
+              />
+              <span className="text-xs leading-relaxed text-slate-400">
+                קראתי ואני מסכים/ה ל
+                <a href="/terms" target="_blank" rel="noopener noreferrer"
+                  className="mx-0.5 text-purple-400 underline underline-offset-2 hover:text-purple-300 transition">
+                  תנאי השימוש
+                </a>
+                ולמדיניות
+                <a href="/privacy" target="_blank" rel="noopener noreferrer"
+                  className="mx-0.5 text-purple-400 underline underline-offset-2 hover:text-purple-300 transition">
+                  הפרטיות
+                </a>
+                <span className="text-red-400"> *</span>
+              </span>
+            </label>
           </>
         )}
 
@@ -225,12 +247,14 @@ export default function LoginForm({ urlError, urlMessage, logoUrl }: Props) {
         </button>
       </form>
 
-      <p className="mt-5 text-center text-xs text-slate-600">
-        {mode === 'signup'
-          ? 'בשליחת הבקשה אתה מסכים לתנאי השימוש ומדיניות הפרטיות'
-          : 'בהתחברות אתה מסכים לתנאי השימוש ומדיניות הפרטיות'
-        }
-      </p>
+      {mode === 'login' && (
+        <p className="mt-5 text-center text-xs text-slate-600">
+          בהתחברות אתה מסכים ל
+          <a href="/terms" target="_blank" rel="noopener noreferrer" className="mx-0.5 text-slate-500 hover:text-slate-300 transition">תנאי השימוש</a>
+          ולמדיניות
+          <a href="/privacy" target="_blank" rel="noopener noreferrer" className="mx-0.5 text-slate-500 hover:text-slate-300 transition">הפרטיות</a>
+        </p>
+      )}
     </div>
   )
 }

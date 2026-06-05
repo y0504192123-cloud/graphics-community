@@ -44,6 +44,9 @@ export async function signIn(prevState: AuthState, formData: FormData): Promise<
 }
 
 export async function signUp(prevState: AuthState, formData: FormData): Promise<AuthState> {
+  const agreedToTerms = formData.get('agreed_to_terms') === 'on'
+  if (!agreedToTerms) return { error: 'יש להסכים לתנאי השימוש ולמדיניות הפרטיות כדי להמשיך' }
+
   const supabase = await createClient()
   const email = formData.get('email') as string
   const password = formData.get('password') as string
@@ -51,6 +54,11 @@ export async function signUp(prevState: AuthState, formData: FormData): Promise<
   const { data: authData, error } = await supabase.auth.signUp({ email, password })
   if (error) return { error: error.message }
   if (!authData.user) return { error: 'שגיאה ביצירת החשבון' }
+
+  const headersList = await headers()
+  const ip = headersList.get('x-forwarded-for')?.split(',')[0]?.trim()
+    ?? headersList.get('x-real-ip')
+    ?? null
 
   const adminSupabase = createAdminClient()
   const yearsRaw = formData.get('years_experience') as string
@@ -64,6 +72,9 @@ export async function signUp(prevState: AuthState, formData: FormData): Promise<
     portfolio_url: (formData.get('portfolio_url') as string)?.trim() || null,
     phone: (formData.get('phone') as string)?.trim() || null,
     status: 'pending',
+    agreed_to_terms: true,
+    agreed_at: new Date().toISOString(),
+    agreed_ip: ip,
   })
 
   if (profileError) {
