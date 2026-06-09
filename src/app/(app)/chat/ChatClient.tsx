@@ -64,6 +64,19 @@ const GRADIENTS = [
 
 const EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏']
 
+const GROUP_THRESHOLD_MS = 5 * 60 * 1000
+
+function getBubbleRadius(isOwn: boolean, topConnected: boolean, bottomConnected: boolean): string {
+  const R = '18px', S = '4px'
+  if (isOwn) {
+    // Right side — sender-adjacent corners are TR and BR
+    return `${R} ${topConnected ? S : R} ${bottomConnected ? S : R} ${R}`
+  } else {
+    // Left side — sender-adjacent corners are TL and BL
+    return `${topConnected ? S : R} ${R} ${R} ${bottomConnected ? S : R}`
+  }
+}
+
 // ─────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────
@@ -1365,7 +1378,13 @@ export default function ChatClient({
         {communityMsgs.map((msg, i) => {
           const isOwn = msg.user_id === currentUserId
           const prev = communityMsgs[i - 1]
-          const sameUser = prev?.user_id === msg.user_id
+          const next = communityMsgs[i + 1]
+          const isFirstInGroup = !prev || prev.user_id !== msg.user_id ||
+            needsDateSep(msg.created_at, prev.created_at) ||
+            new Date(msg.created_at).getTime() - new Date(prev.created_at).getTime() > GROUP_THRESHOLD_MS
+          const isLastInGroup = !next || next.user_id !== msg.user_id ||
+            needsDateSep(next.created_at, msg.created_at) ||
+            new Date(next.created_at).getTime() - new Date(msg.created_at).getTime() > GROUP_THRESHOLD_MS
           const isTemp = String(msg.id).startsWith('temp-')
           const name = dName(msg.profiles)
           const isEditing = communityEditingId === msg.id
@@ -1374,17 +1393,16 @@ export default function ChatClient({
           return (
             <div key={msg.id}>
               {needsDateSep(msg.created_at, prev?.created_at) && <DateSepLine iso={msg.created_at} />}
-              <div className={`group flex items-end gap-2 ${isOwn ? 'flex-row-reverse' : ''} ${sameUser ? 'mt-0.5' : 'mt-3'}`}>
-                {!sameUser
+              <div className={`group flex items-end gap-2 ${isOwn ? 'flex-row-reverse' : ''} ${isFirstInGroup ? 'mt-3' : 'mt-0.5'}`}>
+                {isFirstInGroup
                   ? <AvatarBubble profile={msg.profiles} uid={msg.user_id} size={8} />
                   : <div className="w-8 shrink-0" />
                 }
                 <div className={`flex max-w-[75%] flex-col gap-0.5 ${isOwn ? 'items-end' : 'items-start'}`}>
-                  {!sameUser && (
+                  {isFirstInGroup && (
                     <div className={`flex items-center gap-2 px-1 ${isOwn ? 'flex-row-reverse' : ''}`}>
                       <span className="text-xs font-semibold" style={{ color: 'var(--tx2)' }}>{isOwn ? 'אתה' : name}</span>
                       {!isOwn && badgesMap[msg.user_id] && <BadgeDisplay badges={badgesMap[msg.user_id]} max={1} />}
-                      <span className="text-[10px]" style={{ color: 'var(--tx3)' }} suppressHydrationWarning>{fmtTime(msg.created_at)}</span>
                     </div>
                   )}
 
@@ -1410,11 +1428,13 @@ export default function ChatClient({
                     </div>
                   ) : (
                     <div
-                      className={`rounded-2xl text-sm leading-relaxed ${isTemp ? 'opacity-70' : ''}`}
-                      style={isOwn
-                        ? { background: 'linear-gradient(135deg,#7c3aed,#6d28d9)', color: 'white', padding: '8px 14px' }
-                        : { background: 'var(--s2)', border: '1px solid var(--bd)', color: 'var(--tx)', padding: '8px 14px' }
-                      }
+                      className={`text-sm leading-relaxed ${isTemp ? 'opacity-70' : ''}`}
+                      style={{
+                        borderRadius: getBubbleRadius(isOwn, !isFirstInGroup, !isLastInGroup),
+                        ...(isOwn
+                          ? { background: 'linear-gradient(135deg,#7c3aed,#6d28d9)', color: 'white', padding: '8px 14px' }
+                          : { background: 'var(--s2)', border: '1px solid var(--bd)', color: 'var(--tx)', padding: '8px 14px' })
+                      }}
                     >
                       {/* Reply quote */}
                       {msg.reply_to_id && msg.reply_to && 'id' in msg.reply_to && (
@@ -1476,7 +1496,7 @@ export default function ChatClient({
                   {/* Time + hover actions */}
                   {!isEditing && (
                     <div className={`relative flex items-center gap-1 px-1 ${isOwn ? 'flex-row-reverse' : ''}`}>
-                      {sameUser && <span className="text-[10px]" style={{ color: 'var(--tx3)' }} suppressHydrationWarning>{fmtTime(msg.created_at)}</span>}
+                      {isLastInGroup && !isTemp && <span className="text-[10px]" style={{ color: 'var(--tx3)' }} suppressHydrationWarning>{fmtTime(msg.created_at)}</span>}
                       {isOwn && isTemp && <span className="text-[10px]" style={{ color: 'var(--tx3)' }}>שולח...</span>}
                       {!isTemp && (
                         <div className={`flex items-center gap-0.5 opacity-0 transition group-hover:opacity-100 ${isOwn ? 'flex-row-reverse' : ''}`}>
@@ -1612,7 +1632,13 @@ export default function ChatClient({
         {currentConvMsgs.map((msg, i) => {
           const isOwn = msg.sender_id === currentUserId
           const prev = currentConvMsgs[i - 1]
-          const sameUser = prev?.sender_id === msg.sender_id
+          const next = currentConvMsgs[i + 1]
+          const isFirstInGroup = !prev || prev.sender_id !== msg.sender_id ||
+            needsDateSep(msg.created_at, prev.created_at) ||
+            new Date(msg.created_at).getTime() - new Date(prev.created_at).getTime() > GROUP_THRESHOLD_MS
+          const isLastInGroup = !next || next.sender_id !== msg.sender_id ||
+            needsDateSep(next.created_at, msg.created_at) ||
+            new Date(next.created_at).getTime() - new Date(msg.created_at).getTime() > GROUP_THRESHOLD_MS
           const isTemp = String(msg.id).startsWith('temp-')
           const isDeleted = !!msg.deleted_for_all
           const isPinned = pinnedMsgId === msg.id
@@ -1623,18 +1649,17 @@ export default function ChatClient({
           return (
             <div key={msg.id}>
               {needsDateSep(msg.created_at, prev?.created_at) && <DateSepLine iso={msg.created_at} />}
-              <div className={`group flex items-end gap-2 ${isOwn ? 'flex-row-reverse' : ''} ${sameUser ? 'mt-0.5' : 'mt-3'}`}>
-                {!sameUser
+              <div className={`group flex items-end gap-2 ${isOwn ? 'flex-row-reverse' : ''} ${isFirstInGroup ? 'mt-3' : 'mt-0.5'}`}>
+                {isFirstInGroup
                   ? <AvatarBubble profile={isOwn ? currentProfile : partnerProfile} uid={msg.sender_id} size={8} />
                   : <div className="w-8 shrink-0" />
                 }
 
                 <div className={`flex max-w-[75%] flex-col gap-0.5 ${isOwn ? 'items-end' : 'items-start'}`}>
-                  {!sameUser && (
+                  {isFirstInGroup && (
                     <div className={`flex items-center gap-2 px-1 ${isOwn ? 'flex-row-reverse' : ''}`}>
                       <span className="text-xs font-semibold" style={{ color: 'var(--tx2)' }}>{isOwn ? 'אתה' : dName(partnerProfile)}</span>
                       {!isOwn && selectedPartner && badgesMap[selectedPartner] && <BadgeDisplay badges={badgesMap[selectedPartner]} max={1} />}
-                      <span className="text-[10px]" style={{ color: 'var(--tx3)' }} suppressHydrationWarning>{fmtTime(msg.created_at)}</span>
                     </div>
                   )}
 
@@ -1669,11 +1694,13 @@ export default function ChatClient({
                   ) : (
                     /* Normal bubble */
                     <div
-                      className={`rounded-2xl text-sm leading-relaxed ${isTemp ? 'opacity-70' : ''} ${isPinned ? 'ring-2 ring-purple-400' : ''}`}
-                      style={isOwn
-                        ? { background: isDeleted ? 'var(--inp)' : 'linear-gradient(135deg,#7c3aed,#6d28d9)', color: isDeleted ? 'var(--tx3)' : 'white', padding: '8px 14px' }
-                        : { background: isDeleted ? 'var(--inp)' : 'var(--s2)', border: '1px solid var(--bd)', color: isDeleted ? 'var(--tx3)' : 'var(--tx)', padding: '8px 14px' }
-                      }
+                      className={`text-sm leading-relaxed ${isTemp ? 'opacity-70' : ''} ${isPinned ? 'ring-2 ring-purple-400' : ''}`}
+                      style={{
+                        borderRadius: isDeleted ? '18px' : getBubbleRadius(isOwn, !isFirstInGroup, !isLastInGroup),
+                        ...(isOwn
+                          ? { background: isDeleted ? 'var(--inp)' : 'linear-gradient(135deg,#7c3aed,#6d28d9)', color: isDeleted ? 'var(--tx3)' : 'white', padding: '8px 14px' }
+                          : { background: isDeleted ? 'var(--inp)' : 'var(--s2)', border: '1px solid var(--bd)', color: isDeleted ? 'var(--tx3)' : 'var(--tx)', padding: '8px 14px' })
+                      }}
                     >
                       {isDeleted ? (
                         <span style={{ fontStyle: 'italic' }}>🚫 הודעה נמחקה</span>
@@ -1752,10 +1779,10 @@ export default function ChatClient({
                   {/* Status + hover actions */}
                   {!isEditing && (
                     <div className={`relative flex items-center gap-1 px-1 ${isOwn ? 'flex-row-reverse' : ''}`}>
-                      {sameUser && (
+                      {isLastInGroup && !isTemp && (
                         <span className="text-[10px]" style={{ color: 'var(--tx3)' }} suppressHydrationWarning>{fmtTime(msg.created_at)}</span>
                       )}
-                      {isOwn && !isTemp && !isDeleted && (
+                      {isOwn && isLastInGroup && !isTemp && !isDeleted && (
                         msg.is_read
                           ? <CheckCheck size={12} className="text-purple-500" />
                           : <Check size={12} style={{ color: 'var(--tx3)' }} />
