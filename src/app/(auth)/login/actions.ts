@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { headers } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { sendAdminNewUserEmail } from '@/lib/mail'
 
 export type AuthState = { error?: string; message?: string } | null
 
@@ -82,6 +83,15 @@ export async function signUp(prevState: AuthState, formData: FormData): Promise<
     await adminSupabase.auth.admin.deleteUser(authData.user.id)
     return { error: `שגיאה ביצירת הפרופיל: ${profileError.message}` }
   }
+
+  // Fire-and-forget — don't block signup if mail fails
+  sendAdminNewUserEmail({
+    fullName: (formData.get('full_name') as string)?.trim() || null,
+    email,
+    city: (formData.get('city') as string)?.trim() || null,
+    yearsExperience: yearsRaw ? parseInt(yearsRaw) : null,
+    registeredAt: new Date().toISOString(),
+  }).catch((err) => console.error('[mail] failed to send admin notification:', err))
 
   await supabase.auth.signOut()
   return { message: 'pending' }
