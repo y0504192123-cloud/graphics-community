@@ -32,7 +32,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <meta name="theme-color" content="#6b21a8" />
         <link rel="apple-touch-icon" href="/icons/icon-192.svg" />
-        <script dangerouslySetInnerHTML={{ __html: `if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}))}` }} />
+        <script dangerouslySetInnerHTML={{ __html: `if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{})}` }} />
       </head>
       <body className="min-h-full antialiased" style={{ fontFamily: 'var(--font-rubik), Segoe UI, Arial, sans-serif' }}>
         <ThemeProvider><LanguageProvider>{children}</LanguageProvider></ThemeProvider>
