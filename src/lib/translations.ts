@@ -4,7 +4,11 @@ export const translations = {
       home: 'ראשי', jobs: 'לוח עבודות', chat: "צ'אטים", forum: 'פורום',
       inspiration: 'ספריית השראה', assets: 'חומרים לשימוש', admin: 'פאנל ניהול',
       fontId: 'זיהוי פונט', about: 'אודות', settings: 'הגדרות', news: 'חדשות',
-      search: 'חיפוש...', designer: 'גרפיקאי',
+      search: 'חיפוש...', designer: 'גרפיקאי', members: 'חברים',
+    },
+    members: {
+      title: 'חברים', search: 'חיפוש לפי שם או התמחות...', noResults: 'לא נמצאו חברים',
+      joined: 'הצטרף', active: 'פעיל לאחרונה',
     },
     sidebar: {
       members: 'חברים', online: 'מחוברים עכשיו', newUnread: 'חדשות חדשות',
@@ -92,7 +96,11 @@ export const translations = {
       home: 'Home', jobs: 'Job Board', chat: 'Chats', forum: 'Forum',
       inspiration: 'Inspiration', assets: 'Resources', admin: 'Admin Panel',
       fontId: 'Font ID', about: 'About', settings: 'Settings', news: 'News',
-      search: 'Search...', designer: 'Designer',
+      search: 'Search...', designer: 'Designer', members: 'Members',
+    },
+    members: {
+      title: 'Members', search: 'Search by name or specialization...', noResults: 'No members found',
+      joined: 'Joined', active: 'Last active',
     },
     sidebar: {
       members: 'members', online: 'online now', newUnread: 'new articles',

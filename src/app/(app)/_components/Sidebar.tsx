@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { LayoutDashboard, Briefcase, MessageSquare, Library, Menu, X, ShieldCheck, Palette, Globe, MessagesSquare, ScanText, Info, Settings, Newspaper, Search } from 'lucide-react'
+import { LayoutDashboard, Briefcase, MessageSquare, Library, Menu, X, ShieldCheck, Palette, Globe, MessagesSquare, ScanText, Info, Settings, Newspaper, Search, Users } from 'lucide-react'
 import { useState, useEffect, useMemo } from 'react'
 import LogoutButton from './LogoutButton'
 import { useLanguage, useT } from '@/components/LanguageProvider'
@@ -115,6 +115,7 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
     { href: '/assets',           label: t.nav.assets,      icon: <Library size={17} /> },
     { href: '/font-identifier',  label: t.nav.fontId,      icon: <ScanText size={17} /> },
     { href: '/news',             label: t.nav.news,        icon: <Newspaper size={17} /> },
+    { href: '/members',          label: t.nav.members,     icon: <Users size={17} /> },
   ]
 
   const displayName = profile?.full_name ?? profile?.username ?? email.split('@')[0]
@@ -167,7 +168,7 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
           const isChat = item.href === '/chat'
           const isForum = item.href === '/forum'
           const isNews = item.href === '/news'
-          const badge = isChat ? unreadCount : isForum ? forumUnreadCount : isNews ? newsUnreadCount : 0
+          const numBadge = isChat ? unreadCount : isNews ? newsUnreadCount : 0
           return (
             <Link
               key={item.href}
@@ -193,10 +194,13 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
                 {item.icon}
               </span>
               <span className="relative" style={{ color: active ? '#6b21a8' : 'var(--tx2)' }}>{item.label}</span>
-              {badge > 0 && (
+              {numBadge > 0 && (
                 <span className="relative ms-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">
-                  {badge > 9 ? '9+' : badge}
+                  {numBadge > 9 ? '9+' : numBadge}
                 </span>
+              )}
+              {isForum && forumUnreadCount > 0 && numBadge === 0 && (
+                <span className="relative ms-auto h-2 w-2 rounded-full bg-red-500" />
               )}
             </Link>
           )
