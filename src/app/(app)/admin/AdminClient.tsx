@@ -75,6 +75,7 @@ type Props = {
   deleteBadge:                 (id: string) => Promise<void>
   assignBadge:                 (userId: string, badgeId: string) => Promise<{ error?: string }>
   revokeBadge:                 (userId: string, badgeId: string) => Promise<void>
+  assignBadgeToAll:            (badgeId: string) => Promise<{ error?: string; count?: number }>
   setDesignerOfWeek:           (userId: string) => Promise<void>
   clearDesignerOfWeek:         () => Promise<void>
 }
@@ -119,7 +120,7 @@ export default function AdminClient({
   reports, updateReportStatus, deleteReportedContent,
   termsContent: initialTerms, privacyContent: initialPrivacy, saveTerms, savePrivacy,
   badges, userBadgesMap, designerOfWeek,
-  createBadge, deleteBadge, assignBadge, revokeBadge, setDesignerOfWeek, clearDesignerOfWeek,
+  createBadge, deleteBadge, assignBadge, revokeBadge, assignBadgeToAll, setDesignerOfWeek, clearDesignerOfWeek,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('pending')
   const [isPending, startTransition] = useTransition()
@@ -1110,6 +1111,7 @@ export default function AdminClient({
             deleteBadge={deleteBadge}
             assignBadge={assignBadge}
             revokeBadge={revokeBadge}
+            assignBadgeToAll={assignBadgeToAll}
             setDesignerOfWeek={setDesignerOfWeek}
             clearDesignerOfWeek={clearDesignerOfWeek}
           />

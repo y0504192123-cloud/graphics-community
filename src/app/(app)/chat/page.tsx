@@ -93,13 +93,22 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
   const pmProfilesMap = Object.fromEntries(((pmProfilesRes.data ?? []) as Profile[]).map(p => [p.id, p]))
   const replyMap = Object.fromEntries(((replyMsgsRes.data ?? []) as { id: string; content: string | null; sender_id: string }[]).map(r => [r.id, r]))
 
-  // Fetch badges for all participants
+  // Fetch badges for all chat participants (2-step to avoid nested join issues)
   const allChatUserIds = Array.from(new Set([...pmUserIds, user.id]))
-  const { data: chatBadgesData } = await admin.from('profile_badges').select('user_id, user_badges(*)').in('user_id', allChatUserIds)
   const chatBadgesMap: Record<string, any[]> = {}
-  for (const pb of (chatBadgesData ?? []) as any[]) {
-    if (!chatBadgesMap[pb.user_id]) chatBadgesMap[pb.user_id] = []
-    if (pb.user_badges) chatBadgesMap[pb.user_id].push(pb.user_badges)
+  if (allChatUserIds.length > 0) {
+    const { data: chatPbRows } = await admin.from('profile_badges').select('user_id, badge_id').in('user_id', allChatUserIds)
+    const chatPb = (chatPbRows ?? []) as { user_id: string; badge_id: string }[]
+    if (chatPb.length > 0) {
+      const chatBadgeIds = [...new Set(chatPb.map(r => r.badge_id))]
+      const { data: chatBadgeDefs } = await admin.from('user_badges').select('*').in('id', chatBadgeIds)
+      const chatBadgeDefsMap = Object.fromEntries((chatBadgeDefs ?? []).map((b: any) => [b.id, b]))
+      for (const pb of chatPb) {
+        if (!chatBadgesMap[pb.user_id]) chatBadgesMap[pb.user_id] = []
+        const b = chatBadgeDefsMap[pb.badge_id]
+        if (b) chatBadgesMap[pb.user_id].push(b)
+      }
+    }
   }
 
   const privateMessages = msgsRaw.map(m => ({

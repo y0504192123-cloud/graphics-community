@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { Star, MapPin, Briefcase, MessageSquare, FileText } from 'lucide-react'
-import type { Profile, PortfolioItem, Specialization } from '@/types'
+import type { Profile, PortfolioItem, Specialization, UserBadge } from '@/types'
 import type { Metadata } from 'next'
 
 const placeholderGradients = [
@@ -32,7 +32,7 @@ export default async function UserProfilePage({ params }: { params: Promise<{ id
 
   const [
     profileRes, portfolioRes, specsRes, selectedSpecsRes,
-    currentUserRes, threadsRes, repliesRes,
+    currentUserRes, threadsRes, repliesRes, pbRes,
   ] = await Promise.all([
     admin.from('profiles').select('*').eq('id', id).single(),
     admin.from('portfolio_items').select('*').eq('user_id', id).order('created_at', { ascending: false }),
@@ -41,6 +41,7 @@ export default async function UserProfilePage({ params }: { params: Promise<{ id
     supabase.auth.getUser(),
     admin.from('forum_threads').select('id', { count: 'exact', head: true }).eq('author_id', id),
     admin.from('forum_replies').select('id', { count: 'exact', head: true }).eq('author_id', id),
+    admin.from('profile_badges').select('badge_id').eq('user_id', id),
   ])
 
   if (!profileRes.data) notFound()
@@ -55,6 +56,14 @@ export default async function UserProfilePage({ params }: { params: Promise<{ id
   const replyCount = repliesRes.count ?? 0
   const forumTotal = threadCount + replyCount
   const isOwnProfile = currentUserId === id
+
+  // Fetch badge definitions for this user
+  const pbBadgeIds = (pbRes.data ?? []).map((r: any) => r.badge_id as string)
+  let userBadges: UserBadge[] = []
+  if (pbBadgeIds.length > 0) {
+    const { data: badgeDefs } = await admin.from('user_badges').select('*').in('id', pbBadgeIds)
+    userBadges = (badgeDefs ?? []) as UserBadge[]
+  }
 
   const displayName = profile.full_name ?? profile.username ?? 'ללא שם'
   const initials = displayName.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()
@@ -129,6 +138,21 @@ export default async function UserProfilePage({ params }: { params: Promise<{ id
               )}
             </div>
 
+            {userBadges.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {userBadges.map((b) => (
+                  <span
+                    key={b.id}
+                    title={b.description ?? b.name}
+                    className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-bold"
+                    style={{ background: `${b.color}18`, color: b.color, border: `1px solid ${b.color}30` }}
+                  >
+                    <span className="text-sm">{b.icon}</span>
+                    {b.name}
+                  </span>
+                ))}
+              </div>
+            )}
             {specs.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-2">
                 {specs.map((spec) => (

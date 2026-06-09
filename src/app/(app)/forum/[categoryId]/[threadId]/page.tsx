@@ -37,18 +37,25 @@ export default async function ThreadPage({ params }: Props) {
   // Fetch all author profiles in one query
   const repliesRaw = (repliesRes.data ?? []) as ForumReply[]
   const userIds = Array.from(new Set([threadRes.data!.user_id, ...repliesRaw.map(r => r.user_id)]))
-  const [profilesRes2, badgesRes] = await Promise.all([
+  const [profilesRes2, pbRes] = await Promise.all([
     admin.from('profiles').select('id, full_name, username, avatar_url, role').in('id', userIds),
-    admin.from('profile_badges').select('user_id, user_badges(*)').in('user_id', userIds),
+    admin.from('profile_badges').select('user_id, badge_id').in('user_id', userIds),
   ])
   const profilesData = profilesRes2.data
   const profilesMap = Object.fromEntries((profilesData ?? []).map((p) => [p.id, p as unknown as Profile]))
 
-  // Build badgesMap: userId → UserBadge[]
+  // Fetch badge definitions separately (nested join unreliable with non-standard FK names)
   const badgesMap: Record<string, any[]> = {}
-  for (const pb of (badgesRes.data ?? []) as any[]) {
-    if (!badgesMap[pb.user_id]) badgesMap[pb.user_id] = []
-    if (pb.user_badges) badgesMap[pb.user_id].push(pb.user_badges)
+  const pbRows = (pbRes.data ?? []) as { user_id: string; badge_id: string }[]
+  if (pbRows.length > 0) {
+    const badgeIds = [...new Set(pbRows.map(r => r.badge_id))]
+    const { data: badgeDefs } = await admin.from('user_badges').select('*').in('id', badgeIds)
+    const badgeDefsMap = Object.fromEntries((badgeDefs ?? []).map((b: any) => [b.id, b]))
+    for (const pb of pbRows) {
+      if (!badgesMap[pb.user_id]) badgesMap[pb.user_id] = []
+      const b = badgeDefsMap[pb.badge_id]
+      if (b) badgesMap[pb.user_id].push(b)
+    }
   }
 
   const thread = { ...threadRes.data, profiles: profilesMap[threadRes.data!.user_id] ?? null } as ForumThread & { profiles?: Profile }

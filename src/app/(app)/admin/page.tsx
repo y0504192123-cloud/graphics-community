@@ -34,7 +34,7 @@ export default async function AdminPage() {
     admin.from('site_settings').select('value').eq('key', 'terms_of_service').single(),
     admin.from('site_settings').select('value').eq('key', 'privacy_policy').single(),
     admin.from('user_badges').select('*').order('created_at', { ascending: true }),
-    admin.from('profile_badges').select('*, user_badges(*)').order('assigned_at', { ascending: false }),
+    admin.from('profile_badges').select('user_id, badge_id, assigned_at').order('assigned_at', { ascending: false }),
     admin.from('site_settings').select('value').eq('key', 'designer_of_week').single(),
   ])
 
@@ -61,12 +61,16 @@ export default async function AdminPage() {
   const allProfileBadges      = (profileBadgesRes.data ?? []) as any[]
   const dotWRaw               = dotWRes.data?.value ?? null
 
-  // Build map: userId → badges[]
+  // Build map: userId → badges[] (2-step to avoid nested join issues)
   const userBadgesMap: Record<string, any[]> = {}
-  for (const pb of allProfileBadges) {
-    const uid = pb.user_id
-    if (!userBadgesMap[uid]) userBadgesMap[uid] = []
-    if (pb.user_badges) userBadgesMap[uid].push(pb.user_badges)
+  const pbRows2 = allProfileBadges as { user_id: string; badge_id: string }[]
+  if (pbRows2.length > 0) {
+    const badgeDefsMap2 = Object.fromEntries(allBadges.map((b: any) => [b.id, b]))
+    for (const pb of pbRows2) {
+      if (!userBadgesMap[pb.user_id]) userBadgesMap[pb.user_id] = []
+      const b = badgeDefsMap2[pb.badge_id]
+      if (b) userBadgesMap[pb.user_id].push(b)
+    }
   }
 
   let designerOfWeek: { userId: string; name: string } | null = null
@@ -97,6 +101,13 @@ export default async function AdminPage() {
     } else {
       console.warn('[approveUser] no email on profile, skipping email send')
     }
+    // Auto-assign "חבר חדש" badge
+    try {
+      const { data: newMemberBadge } = await admin.from('user_badges').select('id').eq('name', 'חבר חדש').single()
+      if (newMemberBadge) {
+        await admin.from('profile_badges').upsert({ user_id: userId, badge_id: newMemberBadge.id }, { onConflict: 'user_id,badge_id', ignoreDuplicates: true })
+      }
+    } catch {}
     revalidatePath('/admin')
   }
 
@@ -856,6 +867,17 @@ export default async function AdminPage() {
     revalidatePath('/admin')
   }
 
+  async function assignBadgeToAll(badgeId: string): Promise<{ error?: string; count?: number }> {
+    'use server'
+    const { data: users } = await createAdminClient().from('profiles').select('id').eq('status', 'active')
+    if (!users?.length) return { count: 0 }
+    const rows = users.map(u => ({ user_id: u.id, badge_id: badgeId }))
+    const { error } = await createAdminClient().from('profile_badges').upsert(rows, { onConflict: 'user_id,badge_id', ignoreDuplicates: true })
+    if (error) return { error: error.message }
+    revalidatePath('/admin')
+    return { count: users.length }
+  }
+
   async function createBadge(name: string, description: string, color: string, icon: string): Promise<{ error?: string }> {
     'use server'
     const { error } = await createAdminClient().from('user_badges').insert({ name, description: description || null, color, icon, is_auto: false })
@@ -983,6 +1005,7 @@ export default async function AdminPage() {
       deleteBadge={deleteBadge}
       assignBadge={assignBadge}
       revokeBadge={revokeBadge}
+      assignBadgeToAll={assignBadgeToAll}
       setDesignerOfWeek={setDesignerOfWeek}
       clearDesignerOfWeek={clearDesignerOfWeek}
     />

@@ -16,13 +16,14 @@ interface Props {
   deleteBadge: (id: string) => Promise<void>
   assignBadge: (userId: string, badgeId: string) => Promise<{ error?: string }>
   revokeBadge: (userId: string, badgeId: string) => Promise<void>
+  assignBadgeToAll: (badgeId: string) => Promise<{ error?: string; count?: number }>
   setDesignerOfWeek: (userId: string) => Promise<void>
   clearDesignerOfWeek: () => Promise<void>
 }
 
 export default function BadgesTab({
   badges, activeUsers, userBadgesMap, designerOfWeek,
-  createBadge, deleteBadge, assignBadge, revokeBadge,
+  createBadge, deleteBadge, assignBadge, revokeBadge, assignBadgeToAll,
   setDesignerOfWeek, clearDesignerOfWeek,
 }: Props) {
   const [isPending, startTransition] = useTransition()
@@ -195,10 +196,18 @@ export default function BadgesTab({
                 {b.description && <p className="text-xs" style={{ color: 'var(--tx3)' }}>{b.description}</p>}
               </div>
               {b.is_auto && (
-                <span className="text-[10px] rounded-full px-2 py-0.5"
-                  style={{ background: 'rgba(16,185,129,.1)', color: '#059669', border: '1px solid rgba(16,185,129,.2)' }}>
-                  אוטומטי
-                </span>
+                <button
+                  onClick={() => startTransition(async () => {
+                    const r = await assignBadgeToAll(b.id)
+                    if (r.count !== undefined) alert(`הוקצה ל-${r.count} משתמשים`)
+                  })}
+                  disabled={isPending}
+                  className="text-[10px] rounded-full px-2 py-0.5 transition hover:opacity-70"
+                  style={{ background: 'rgba(16,185,129,.1)', color: '#059669', border: '1px solid rgba(16,185,129,.2)' }}
+                  title="הקצה לכל המשתמשים הפעילים"
+                >
+                  הקצה לכולם
+                </button>
               )}
               <button onClick={() => startTransition(() => deleteBadge(b.id))}
                 className="text-slate-400 hover:text-red-500 transition">
