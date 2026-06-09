@@ -9,7 +9,7 @@ export default async function MembersPage() {
   const [profilesRes, specsRes, profileSpecsRes] = await Promise.all([
     supabase
       .from('profiles')
-      .select('id, full_name, username, avatar_url, avatar_color, city, specialization, created_at, last_seen')
+      .select('id, full_name, username, avatar_url, city, specialization, created_at, last_seen')
       .order('created_at', { ascending: false })
       .limit(300),
     supabase.from('specializations').select('id, name'),
@@ -33,7 +33,7 @@ export default async function MembersPage() {
     full_name: p.full_name as string | null,
     username: p.username as string | null,
     avatar_url: p.avatar_url as string | null,
-    avatar_color: p.avatar_color as string | null,
+    avatar_color: null,
     city: p.city as string | null,
     specialization: p.specialization as string | null,
     created_at: p.created_at as string,

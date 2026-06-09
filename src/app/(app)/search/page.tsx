@@ -31,7 +31,7 @@ export default async function SearchPage({ searchParams }: Props) {
         .order('created_at', { ascending: false })
         .limit(10),
       admin.from('profiles')
-        .select('id, full_name, username, specialization, avatar_url, avatar_color')
+        .select('id, full_name, username, specialization, avatar_url')
         .eq('status', 'active')
         .or(`full_name.ilike.%${query}%,username.ilike.%${query}%,specialization.ilike.%${query}%`)
         .limit(8),

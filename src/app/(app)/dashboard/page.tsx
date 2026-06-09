@@ -87,7 +87,7 @@ export default async function DashboardPage() {
     try {
       const parsed = typeof dotWRaw === 'string' ? JSON.parse(dotWRaw) : dotWRaw
       if (parsed?.userId) {
-        const { data: dotWProfile } = await admin.from('profiles').select('id, full_name, username, avatar_url, avatar_color, specialization').eq('id', parsed.userId).single()
+        const { data: dotWProfile } = await admin.from('profiles').select('id, full_name, username, avatar_url, specialization').eq('id', parsed.userId).single()
         designerOfWeek = { ...parsed, profile: dotWProfile }
       }
     } catch {}
