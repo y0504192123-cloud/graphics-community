@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Briefcase, MessageSquare, Library, Menu, X, ShieldCheck, Palette, Globe, MessagesSquare, ScanText, LayoutGrid, Info, Settings } from 'lucide-react'
+import { LayoutDashboard, Briefcase, MessageSquare, Library, Menu, X, ShieldCheck, Palette, Globe, MessagesSquare, ScanText, LayoutGrid, Info, Settings, Newspaper } from 'lucide-react'
 import { useState, useEffect, useMemo } from 'react'
 import LogoutButton from './LogoutButton'
 import { useLanguage } from '@/components/LanguageProvider'
@@ -17,13 +17,13 @@ const labels = {
     home: 'ראשי', jobs: 'לוח עבודות', chat: "צ'אטים", forum: 'פורום',
     inspiration: 'ספריית השראה', assets: 'חומרים לשימוש', admin: 'פאנל ניהול',
     designer: 'גרפיקאי', fontId: 'זיהוי פונט', portfolio: 'גלריית עבודות',
-    about: 'אודות', settings: 'הגדרות',
+    about: 'אודות', settings: 'הגדרות', news: 'חדשות',
   },
   en: {
     home: 'Home', jobs: 'Job Board', chat: 'Chats', forum: 'Forum',
     inspiration: 'Inspiration', assets: 'Resources', admin: 'Admin Panel',
     designer: 'Designer', fontId: 'Font Identifier', portfolio: 'Portfolio',
-    about: 'About', settings: 'Settings',
+    about: 'About', settings: 'Settings', news: 'News',
   },
 }
 
@@ -110,6 +110,7 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
     { href: '/portfolio',        label: t.portfolio,   icon: <LayoutGrid size={17} /> },
     { href: '/assets',           label: t.assets,      icon: <Library size={17} /> },
     { href: '/font-identifier',  label: t.fontId,      icon: <ScanText size={17} /> },
+    { href: '/news',             label: t.news,        icon: <Newspaper size={17} /> },
     { href: '/about',            label: t.about,       icon: <Info size={17} /> },
   ]
 
