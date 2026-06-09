@@ -93,8 +93,9 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
   const pmProfilesMap = Object.fromEntries(((pmProfilesRes.data ?? []) as Profile[]).map(p => [p.id, p]))
   const replyMap = Object.fromEntries(((replyMsgsRes.data ?? []) as { id: string; content: string | null; sender_id: string }[]).map(r => [r.id, r]))
 
-  // Fetch badges for all chat participants (2-step to avoid nested join issues)
-  const allChatUserIds = Array.from(new Set([...pmUserIds, user.id]))
+  // Fetch badges for all active users so community chat messages show badges
+  const allActiveUserIds = (usersRes.data ?? []).map((u: any) => u.id as string)
+  const allChatUserIds = Array.from(new Set([...allActiveUserIds, ...pmUserIds, user.id]))
   const chatBadgesMap: Record<string, any[]> = {}
   if (allChatUserIds.length > 0) {
     const { data: chatPbRows } = await admin.from('profile_badges').select('user_id, badge_id').in('user_id', allChatUserIds)
