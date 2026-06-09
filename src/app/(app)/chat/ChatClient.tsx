@@ -67,15 +67,16 @@ const EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏']
 const GROUP_THRESHOLD_MS = 5 * 60 * 1000
 
 function getBubbleRadius(isOwn: boolean, topConnected: boolean, bottomConnected: boolean): string {
-  const R = '18px', S = '4px'
+  const R = '16px', S = '4px'
   if (isOwn) {
-    // Right side — sender-adjacent corners are TR and BR
     return `${R} ${topConnected ? S : R} ${bottomConnected ? S : R} ${R}`
   } else {
-    // Left side — sender-adjacent corners are TL and BL
     return `${topConnected ? S : R} ${R} ${R} ${bottomConnected ? S : R}`
   }
 }
+
+const NAME_COLORS = ['#e53e3e', '#dd6b20', '#d69e2e', '#38a169', '#3182ce', '#805ad5', '#d53f8c', '#00b5d8']
+function nameColor(uid: string) { return NAME_COLORS[hashStr(uid) % NAME_COLORS.length] }
 
 // ─────────────────────────────────────────────────────────
 // Helpers
@@ -1393,15 +1394,19 @@ export default function ChatClient({
           return (
             <div key={msg.id}>
               {needsDateSep(msg.created_at, prev?.created_at) && <DateSepLine iso={msg.created_at} />}
-              <div className={`group flex items-end gap-2 ${isOwn ? 'flex-row-reverse' : ''} ${isFirstInGroup ? 'mt-3' : 'mt-0.5'}`}>
-                {isFirstInGroup
+              <div className={`group flex items-end gap-2 ${isOwn ? 'flex-row-reverse' : ''} ${isFirstInGroup ? 'mt-4' : 'mt-1'}`}>
+                {/* Avatar: others only, beside last message in group (Telegram style) */}
+                {!isOwn && (isLastInGroup
                   ? <AvatarBubble profile={msg.profiles} uid={msg.user_id} size={8} />
                   : <div className="w-8 shrink-0" />
-                }
-                <div className={`flex max-w-[75%] flex-col gap-0.5 ${isOwn ? 'items-end' : 'items-start'}`}>
+                )}
+                <div className={`flex max-w-[75%] flex-col ${isOwn ? 'items-end' : 'items-start'}`} style={{ gap: '2px' }}>
+                  {/* Name + badge above first message in group */}
                   {isFirstInGroup && (
-                    <div className={`flex items-center gap-2 px-1 ${isOwn ? 'flex-row-reverse' : ''}`}>
-                      <span className="text-xs font-semibold" style={{ color: 'var(--tx2)' }}>{isOwn ? 'אתה' : name}</span>
+                    <div className={`flex items-center gap-1.5 px-1 ${isOwn ? 'flex-row-reverse' : ''}`}>
+                      <span className="text-xs font-semibold" style={{ color: isOwn ? 'var(--tx3)' : nameColor(msg.user_id) }}>
+                        {isOwn ? 'אתה' : name}
+                      </span>
                       {!isOwn && badgesMap[msg.user_id] && <BadgeDisplay badges={badgesMap[msg.user_id]} max={1} />}
                     </div>
                   )}
@@ -1649,17 +1654,21 @@ export default function ChatClient({
           return (
             <div key={msg.id}>
               {needsDateSep(msg.created_at, prev?.created_at) && <DateSepLine iso={msg.created_at} />}
-              <div className={`group flex items-end gap-2 ${isOwn ? 'flex-row-reverse' : ''} ${isFirstInGroup ? 'mt-3' : 'mt-0.5'}`}>
-                {isFirstInGroup
-                  ? <AvatarBubble profile={isOwn ? currentProfile : partnerProfile} uid={msg.sender_id} size={8} />
+              <div className={`group flex items-end gap-2 ${isOwn ? 'flex-row-reverse' : ''} ${isFirstInGroup ? 'mt-4' : 'mt-1'}`}>
+                {/* Avatar: partner only, beside last message in group */}
+                {!isOwn && (isLastInGroup
+                  ? <AvatarBubble profile={partnerProfile} uid={msg.sender_id} size={8} />
                   : <div className="w-8 shrink-0" />
-                }
+                )}
 
-                <div className={`flex max-w-[75%] flex-col gap-0.5 ${isOwn ? 'items-end' : 'items-start'}`}>
-                  {isFirstInGroup && (
-                    <div className={`flex items-center gap-2 px-1 ${isOwn ? 'flex-row-reverse' : ''}`}>
-                      <span className="text-xs font-semibold" style={{ color: 'var(--tx2)' }}>{isOwn ? 'אתה' : dName(partnerProfile)}</span>
-                      {!isOwn && selectedPartner && badgesMap[selectedPartner] && <BadgeDisplay badges={badgesMap[selectedPartner]} max={1} />}
+                <div className={`flex max-w-[75%] flex-col ${isOwn ? 'items-end' : 'items-start'}`} style={{ gap: '2px' }}>
+                  {/* Name above first message in group (partner only) */}
+                  {isFirstInGroup && !isOwn && (
+                    <div className="flex items-center gap-1.5 px-1">
+                      <span className="text-xs font-semibold" style={{ color: nameColor(msg.sender_id) }}>
+                        {dName(partnerProfile)}
+                      </span>
+                      {selectedPartner && badgesMap[selectedPartner] && <BadgeDisplay badges={badgesMap[selectedPartner]} max={1} />}
                     </div>
                   )}
 
