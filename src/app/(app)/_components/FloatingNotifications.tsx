@@ -71,6 +71,7 @@ export default function FloatingNotifications({ currentUserId }: { currentUserId
   }, [])
 
   useEffect(() => {
+    console.log('[FloatingNotif] mounting, userId:', currentUserId)
 
     // Private messages — rely on RLS for delivery, filter receiver client-side
     const pmCh = supabase.channel(`float-pm-${currentUserId}`)
@@ -78,6 +79,7 @@ export default function FloatingNotifications({ currentUserId }: { currentUserId
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'private_messages' },
         async (payload) => {
+          console.log('[FloatingNotif] PM INSERT raw event:', payload.new)
           const m = payload.new as { id: string; sender_id: string; receiver_id: string; content: string | null }
           if (!m?.id) return
           // Only show notification for messages received by current user
@@ -104,7 +106,9 @@ export default function FloatingNotifications({ currentUserId }: { currentUserId
           })
         }
       )
-      .subscribe()
+      .subscribe((status, err) => {
+        console.log('[FloatingNotif] PM channel status:', status, err ?? '')
+      })
 
     // Forum notifications — rely on RLS, filter client-side
     const forumCh = supabase.channel(`float-forum-${currentUserId}`)
@@ -112,6 +116,7 @@ export default function FloatingNotifications({ currentUserId }: { currentUserId
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'notifications' },
         (payload) => {
+          console.log('[FloatingNotif] notification INSERT raw event:', payload.new)
           const n = payload.new as { id: string; user_id: string; type: string; content: string; link: string | null }
           if (!n?.id) return
           if (n.user_id !== currentUserId) return
@@ -126,7 +131,9 @@ export default function FloatingNotifications({ currentUserId }: { currentUserId
           })
         }
       )
-      .subscribe()
+      .subscribe((status, err) => {
+        console.log('[FloatingNotif] Forum channel status:', status, err ?? '')
+      })
 
     return () => {
       supabase.removeChannel(pmCh)

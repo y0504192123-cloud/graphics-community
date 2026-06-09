@@ -830,6 +830,7 @@ export default function ChatClient({
         if (m.receiver_id === currentUserId && selectedPartnerRef.current === m.sender_id) {
           markReadRef.current(m.sender_id)
           setPrivateMsgs(prev => prev.map(x => x.sender_id === m.sender_id && x.receiver_id === currentUserId && !x.is_read ? { ...x, is_read: true } : x))
+          window.dispatchEvent(new CustomEvent('pm-read'))
         }
         if (m.sender_id !== currentUserId && m.receiver_id === currentUserId) {
           if (!isMutedRef.current) playSound(soundPrefsRef.current[m.sender_id] ?? 'message')
@@ -924,6 +925,7 @@ export default function ChatClient({
         ? { ...m, is_read: true } : m
     ))
     await markMessagesRead(partnerId)
+    window.dispatchEvent(new CustomEvent('pm-read'))
     // Load reactions for this conversation
     const ids = privateMsgs
       .filter(m => !String(m.id).startsWith('temp-') && (
