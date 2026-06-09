@@ -61,6 +61,7 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
         .channel(`sidebar-pm-${currentUserId}`)
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'private_messages' }, (payload) => {
           console.log('[Sidebar] PM INSERT event', payload.new)
+          window.dispatchEvent(new CustomEvent('new-pm', { detail: payload.new }))
           fetchCount()
         })
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'private_messages' }, (payload) => {
@@ -119,7 +120,10 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, (payload) => {
           console.log('[Sidebar] notifications INSERT event', payload.new)
           const row = (payload.new) as any
-          if (row?.user_id === currentUserId) fetchForumCount()
+          if (row?.user_id === currentUserId) {
+            window.dispatchEvent(new CustomEvent('new-forum-notification', { detail: payload.new }))
+            fetchForumCount()
+          }
         })
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'notifications' }, (payload) => {
           console.log('[Sidebar] notifications UPDATE event', payload.new)

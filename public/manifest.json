@@ -1,7 +1,7 @@
 {
-  "name": "Grafi — קהילת הגרפיקאים החרדים",
+  "name": "Grafi - קהילת הגרפיקאים החרדים",
   "short_name": "Grafi",
-  "description": "קהילת הגרפיקאים החרדים — השראה, פורום, לוח עבודות וכלים מקצועיים",
+  "description": "קהילת הגרפיקאים החרדים - השראה, פורום, לוח עבודות וכלים מקצועיים",
   "start_url": "/dashboard",
   "display": "standalone",
   "background_color": "#f8f7ff",

@@ -62,114 +62,57 @@ export default function FloatingNotifications({ currentUserId }: { currentUserId
   useEffect(() => {
     console.log('[FloatingNotifications] mounted, userId:', currentUserId)
 
-    // ── PM channel with auto-reconnect ───────────────────────────────────────
-    let pmCh: ReturnType<typeof supabase.channel> | null = null
-    let pmReconnect: ReturnType<typeof setTimeout> | null = null
-    let cancelled = false
+    // Receive PM events relayed from Sidebar (avoids duplicate subscription)
+    const handleNewPm = async (e: Event) => {
+      const m = (e as CustomEvent).detail as {
+        id: string; sender_id: string; receiver_id: string; content: string | null
+      }
+      console.log('[FloatingNotif] new-pm event received:', m)
+      if (!m?.id || m.receiver_id !== currentUserId) return
 
-    function connectPm() {
-      if (cancelled) return
-      if (pmCh) supabase.removeChannel(pmCh)
-      const name = `float-pm-${currentUserId}`
-      console.log('[FloatingNotif] PM subscription details:', {
-        channel: name,
-        table: 'private_messages',
-        event: 'INSERT',
-        schema: 'public',
-        userId: currentUserId,
+      // Suppress if already viewing this exact conversation
+      const path = window.location.pathname + window.location.search
+      if (path.includes('/chat') && path.includes(m.sender_id)) return
+
+      const { data: prof } = await supabase
+        .from('profiles')
+        .select('id,full_name,username,avatar_url')
+        .eq('id', m.sender_id)
+        .single()
+      const p = prof as Profile | null
+      addNotif({
+        id: `pm-${m.id}`,
+        senderName: p?.full_name ?? p?.username ?? 'משתמש',
+        senderAvatar: p?.avatar_url ?? null,
+        preview: m.content?.slice(0, 70) ?? '📎 קובץ',
+        source: 'chat',
+        link: `/chat?dm=${m.sender_id}`,
       })
-      pmCh = supabase
-        .channel(name)
-        .on(
-          'postgres_changes',
-          { event: 'INSERT', schema: 'public', table: 'private_messages' },
-          async (payload) => {
-            console.log('[FloatingNotif] new message received')
-            console.log('[FloatingNotif] RAW event:', payload)
-            const m = payload.new as { id: string; sender_id: string; receiver_id: string; content: string | null }
-            if (!m?.id) return
-            if (m.receiver_id !== currentUserId) return
-            const path = window.location.pathname + window.location.search
-            if (path.includes('/chat') && path.includes(m.sender_id)) return
-            const { data: prof } = await supabase
-              .from('profiles')
-              .select('id,full_name,username,avatar_url')
-              .eq('id', m.sender_id)
-              .single()
-            const p = prof as Profile | null
-            addNotif({
-              id: `pm-${m.id}`,
-              senderName: p?.full_name ?? p?.username ?? 'משתמש',
-              senderAvatar: p?.avatar_url ?? null,
-              preview: m.content?.slice(0, 70) ?? '📎 קובץ',
-              source: 'chat',
-              link: `/chat?dm=${m.sender_id}`,
-            })
-          }
-        )
-        .subscribe((status, err) => {
-          console.log('[FloatingNotif] PM channel status:', status, err ?? '')
-          if (!cancelled && (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT')) {
-            console.log('[FloatingNotif] PM reconnecting in 5s...')
-            pmReconnect = setTimeout(connectPm, 5_000)
-          }
-        })
     }
 
-    // ── Forum channel with auto-reconnect ────────────────────────────────────
-    let forumCh: ReturnType<typeof supabase.channel> | null = null
-    let forumReconnect: ReturnType<typeof setTimeout> | null = null
-
-    function connectForum() {
-      if (cancelled) return
-      if (forumCh) supabase.removeChannel(forumCh)
-      const name = `float-forum-${currentUserId}`
-      console.log('[FloatingNotif] Forum subscription details:', {
-        channel: name,
-        table: 'notifications',
-        event: 'INSERT',
-        schema: 'public',
-        userId: currentUserId,
+    // Receive forum notification events relayed from Sidebar
+    const handleNewForum = (e: Event) => {
+      const n = (e as CustomEvent).detail as {
+        id: string; user_id: string; type: string; content: string; link: string | null
+      }
+      console.log('[FloatingNotif] new-forum-notification event received:', n)
+      if (!n?.id || n.user_id !== currentUserId || n.type !== 'forum_reply') return
+      addNotif({
+        id: `forum-${n.id}`,
+        senderName: 'פורום',
+        senderAvatar: null,
+        preview: n.content,
+        source: 'forum',
+        link: n.link ?? '/forum',
       })
-      forumCh = supabase
-        .channel(name)
-        .on(
-          'postgres_changes',
-          { event: 'INSERT', schema: 'public', table: 'notifications' },
-          (payload) => {
-            console.log('[FloatingNotif] notification INSERT raw event:', payload.new)
-            const n = payload.new as { id: string; user_id: string; type: string; content: string; link: string | null }
-            if (!n?.id) return
-            if (n.user_id !== currentUserId) return
-            if (n.type !== 'forum_reply') return
-            addNotif({
-              id: `forum-${n.id}`,
-              senderName: 'פורום',
-              senderAvatar: null,
-              preview: n.content,
-              source: 'forum',
-              link: n.link ?? '/forum',
-            })
-          }
-        )
-        .subscribe((status, err) => {
-          console.log('[FloatingNotif] Forum channel status:', status, err ?? '')
-          if (!cancelled && (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT')) {
-            console.log('[FloatingNotif] Forum reconnecting in 5s...')
-            forumReconnect = setTimeout(connectForum, 5_000)
-          }
-        })
     }
 
-    connectPm()
-    connectForum()
+    window.addEventListener('new-pm', handleNewPm)
+    window.addEventListener('new-forum-notification', handleNewForum)
 
     return () => {
-      cancelled = true
-      if (pmReconnect) clearTimeout(pmReconnect)
-      if (forumReconnect) clearTimeout(forumReconnect)
-      if (pmCh) supabase.removeChannel(pmCh)
-      if (forumCh) supabase.removeChannel(forumCh)
+      window.removeEventListener('new-pm', handleNewPm)
+      window.removeEventListener('new-forum-notification', handleNewForum)
       Object.values(timersRef.current).forEach(clearTimeout)
     }
   }, [currentUserId, supabase, addNotif])
