@@ -6,29 +6,40 @@ import FloatingNotifications from './_components/FloatingNotifications'
 import type { Profile } from '@/types'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  let supabase: Awaited<ReturnType<typeof createClient>>
+  try {
+    supabase = await createClient()
+  } catch {
+    redirect('/login?error=auth_failed')
+  }
 
+  const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const admin = createAdminClient()
-  const [{ data: profileData }, { data: logoData }] = await Promise.all([
-    supabase.from('profiles').select('*').eq('id', user.id).single(),
-    admin.from('site_settings').select('value').eq('key', 'logo_url').single(),
-  ])
-  const logoUrl: string | null = logoData?.value ?? null
+  let profileData: Profile | null = null
+  let logoUrl: string | null = null
+  try {
+    const admin = createAdminClient()
+    const [profileRes, logoRes] = await Promise.all([
+      supabase.from('profiles').select('*').eq('id', user.id).single(),
+      admin.from('site_settings').select('value').eq('key', 'logo_url').single(),
+    ])
+    profileData = profileRes.data as Profile | null
+    logoUrl = logoRes.data?.value ?? null
+  } catch {
+    // Supabase query threw — treat as missing profile to avoid full crash
+  }
 
   if (!profileData) {
-    // Attempt insert for genuinely new users (no-op on conflict)
-    await supabase.from('profiles').insert({
-      id: user.id,
-      email: user.email ?? null,
-      full_name: user.user_metadata?.full_name ?? null,
-      avatar_url: user.user_metadata?.avatar_url ?? null,
-      status: 'pending',
-    })
-    // Must sign out before redirecting — proxy redirects logged-in users away from /login.
-    // ?error=no_profile shown when profile can't be read (missing RLS SELECT policy or missing row).
+    try {
+      await supabase.from('profiles').insert({
+        id: user.id,
+        email: user.email ?? null,
+        full_name: user.user_metadata?.full_name ?? null,
+        avatar_url: user.user_metadata?.avatar_url ?? null,
+        status: 'pending',
+      })
+    } catch { /* no-op on conflict */ }
     await supabase.auth.signOut()
     redirect('/login?error=no_profile')
   }
