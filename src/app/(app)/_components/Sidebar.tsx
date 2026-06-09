@@ -50,30 +50,41 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
     }
     fetchCount()
 
-    // Realtime: separate INSERT + UPDATE handlers, user-scoped channel name
-    const ch = supabase
-      .channel(`sidebar-pm-${currentUserId}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'private_messages' }, (payload) => {
-        console.log('[Sidebar] PM INSERT event', payload.new)
-        fetchCount()
-      })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'private_messages' }, (payload) => {
-        console.log('[Sidebar] PM UPDATE event', payload.new)
-        fetchCount()
-      })
-      .subscribe((status, err) => {
-        console.log('[Sidebar] PM channel status:', status, err ?? '')
-      })
+    let pmCh: ReturnType<typeof supabase.channel> | null = null
+    let pmReconnect: ReturnType<typeof setTimeout> | null = null
+    let cancelled = false
 
-    // Immediate decrement when ChatClient marks messages as read (same page)
+    function connectPm() {
+      if (cancelled) return
+      if (pmCh) supabase.removeChannel(pmCh)
+      pmCh = supabase
+        .channel(`sidebar-pm-${currentUserId}`)
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'private_messages' }, (payload) => {
+          console.log('[Sidebar] PM INSERT event', payload.new)
+          fetchCount()
+        })
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'private_messages' }, (payload) => {
+          console.log('[Sidebar] PM UPDATE event', payload.new)
+          fetchCount()
+        })
+        .subscribe((status, err) => {
+          console.log('[Sidebar] PM channel status:', status, err ?? '')
+          if (!cancelled && (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT')) {
+            console.log('[Sidebar] PM reconnecting in 5s...')
+            pmReconnect = setTimeout(connectPm, 5_000)
+          }
+        })
+    }
+    connectPm()
+
     const onRead = () => { console.log('[Sidebar] pm-read event → refetch'); fetchCount() }
     window.addEventListener('pm-read', onRead)
-
-    // Polling fallback in case realtime is unavailable
     const poll = setInterval(fetchCount, 30_000)
 
     return () => {
-      supabase.removeChannel(ch)
+      cancelled = true
+      if (pmReconnect) clearTimeout(pmReconnect)
+      if (pmCh) supabase.removeChannel(pmCh)
       window.removeEventListener('pm-read', onRead)
       clearInterval(poll)
     }
@@ -95,23 +106,43 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
       setForumUnreadCount(newCount)
     }
     fetchForumCount()
-    const ch = supabase
-      .channel(`sidebar-forum-${currentUserId}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, (payload) => {
-        console.log('[Sidebar] notifications INSERT event', payload.new)
-        const row = (payload.new) as any
-        if (row?.user_id === currentUserId) fetchForumCount()
-      })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'notifications' }, (payload) => {
-        console.log('[Sidebar] notifications UPDATE event', payload.new)
-        const row = (payload.new) as any
-        if (row?.user_id === currentUserId) fetchForumCount()
-      })
-      .subscribe((status, err) => {
-        console.log('[Sidebar] Forum channel status:', status, err ?? '')
-      })
+
+    let forumCh: ReturnType<typeof supabase.channel> | null = null
+    let forumReconnect: ReturnType<typeof setTimeout> | null = null
+    let cancelled = false
+
+    function connectForum() {
+      if (cancelled) return
+      if (forumCh) supabase.removeChannel(forumCh)
+      forumCh = supabase
+        .channel(`sidebar-forum-${currentUserId}`)
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, (payload) => {
+          console.log('[Sidebar] notifications INSERT event', payload.new)
+          const row = (payload.new) as any
+          if (row?.user_id === currentUserId) fetchForumCount()
+        })
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'notifications' }, (payload) => {
+          console.log('[Sidebar] notifications UPDATE event', payload.new)
+          const row = (payload.new) as any
+          if (row?.user_id === currentUserId) fetchForumCount()
+        })
+        .subscribe((status, err) => {
+          console.log('[Sidebar] Forum channel status:', status, err ?? '')
+          if (!cancelled && (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT')) {
+            console.log('[Sidebar] Forum reconnecting in 5s...')
+            forumReconnect = setTimeout(connectForum, 5_000)
+          }
+        })
+    }
+    connectForum()
+
     const poll = setInterval(fetchForumCount, 30_000)
-    return () => { supabase.removeChannel(ch); clearInterval(poll) }
+    return () => {
+      cancelled = true
+      if (forumReconnect) clearTimeout(forumReconnect)
+      if (forumCh) supabase.removeChannel(forumCh)
+      clearInterval(poll)
+    }
   }, [currentUserId, supabase])
 
   useEffect(() => {
