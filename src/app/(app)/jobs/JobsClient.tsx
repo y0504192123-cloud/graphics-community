@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, X, Briefcase, Clock, ChevronDown, Trash2, Calendar, MessageCircle } from 'lucide-react'
+import { useT } from '@/components/LanguageProvider'
 import type { Job, Profile } from '@/types'
 
 type Props = {
@@ -16,11 +17,6 @@ type Props = {
   deleteJob: (jobId: string) => Promise<void>
 }
 
-const statusConfig: Record<string, { label: string; color: string; bg: string; border: string; dot: string }> = {
-  open:        { label: 'פתוח',    color: 'text-emerald-700', bg: 'rgba(52,211,153,.12)',  border: 'rgba(52,211,153,.35)',  dot: '#059669' },
-  in_progress: { label: 'בתהליך', color: 'text-amber-700',   bg: 'rgba(251,191,36,.12)',  border: 'rgba(251,191,36,.35)',  dot: '#d97706' },
-  closed:      { label: 'נסגר',   color: 'text-red-600',     bg: 'rgba(248,113,113,.12)', border: 'rgba(248,113,113,.35)', dot: '#dc2626' },
-}
 
 const accentColor: Record<string, string> = {
   open:        'linear-gradient(to bottom, #34d399, #059669)',
@@ -58,12 +54,20 @@ export default function JobsClient({
   createJob, applyToJob, changeJobStatus, deleteJob,
 }: Props) {
   const router = useRouter()
+  const t = useT()
   const [showCreate, setShowCreate] = useState(false)
   const [applyingTo, setApplyingTo] = useState<string | null>(null)
-  const [filterCat, setFilterCat] = useState<string>('הכל')
+  const [filterCat, setFilterCat] = useState<string>('__all__')
   const [isPending, startTransition] = useTransition()
 
-  const filtered = filterCat === 'הכל' ? jobs : jobs.filter((j) => j.category === filterCat)
+  const filtered = filterCat === '__all__' ? jobs : jobs.filter((j) => j.category === filterCat)
+
+  // Dynamic statusConfig using translations
+  const statusConfig: Record<string, { label: string; color: string; bg: string; border: string; dot: string }> = {
+    open:        { label: t.jobs.status.open,        color: 'text-emerald-700', bg: 'rgba(52,211,153,.12)',  border: 'rgba(52,211,153,.35)',  dot: '#059669' },
+    in_progress: { label: t.jobs.status.in_progress, color: 'text-amber-700',   bg: 'rgba(251,191,36,.12)',  border: 'rgba(251,191,36,.35)',  dot: '#d97706' },
+    closed:      { label: t.jobs.status.closed,      color: 'text-red-600',     bg: 'rgba(248,113,113,.12)', border: 'rgba(248,113,113,.35)', dot: '#dc2626' },
+  }
   const openCount = jobs.filter((j) => j.status === 'open').length
 
   return (
@@ -95,7 +99,7 @@ export default function JobsClient({
               style={{ background: 'linear-gradient(135deg, #7c3aed, #6d28d9)', boxShadow: '0 4px 20px rgba(124,58,237,.4)' }}
             >
               <Plus size={16} />
-              פרסם עבודה
+              {t.jobs.postJob}
             </button>
           </div>
         </div>
@@ -176,7 +180,7 @@ export default function JobsClient({
 
         {/* Category filters */}
         <div className="mb-6 flex flex-wrap gap-2">
-          {['הכל', ...categories].map((cat) => (
+          {['__all__', ...categories].map((cat) => (
             <button
               key={cat}
               onClick={() => setFilterCat(cat)}
@@ -188,8 +192,8 @@ export default function JobsClient({
                 : { background: 'var(--inp)', border: '1px solid var(--bd)' }
               }
             >
-              {cat !== 'הכל' && <span>{categoryIcons[cat] ?? '•'}</span>}
-              {cat}
+              {cat !== '__all__' && <span>{categoryIcons[cat] ?? '•'}</span>}
+              {cat === '__all__' ? t.jobs.filterAll : cat}
             </button>
           ))}
         </div>

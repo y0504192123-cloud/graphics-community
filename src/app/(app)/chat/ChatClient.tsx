@@ -8,6 +8,7 @@ import {
   Bell, BellOff, Volume2,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { useT } from '@/components/LanguageProvider'
 import type { Message, Profile, PrivateMessage, UserBadge } from '@/types'
 import ReportButton from '@/components/ReportButton'
 import BadgeDisplay from '@/components/BadgeDisplay'
@@ -302,7 +303,7 @@ function InputBar({ value, onChange, onKeyDown, onSend, isSending, textRef, onAt
           onKeyDown={onKeyDown}
           onPaste={handlePasteInner}
           rows={1}
-          placeholder={placeholder ?? 'כתוב הודעה...'}
+          placeholder={placeholder ?? t.chat.typeMessage}
           className="flex-1 resize-none bg-transparent py-1.5 text-sm leading-relaxed outline-none placeholder:text-slate-400"
           style={{ color: 'var(--tx)', maxHeight: '140px', overflowY: 'auto' }}
         />
@@ -315,7 +316,7 @@ function InputBar({ value, onChange, onKeyDown, onSend, isSending, textRef, onAt
           <Send size={15} className={canSend ? 'text-white' : 'text-slate-400'} />
         </button>
       </div>
-      <p className="mt-1 text-center text-[10px]" style={{ color: 'var(--tx3)' }}>Enter לשליחה · Shift+Enter לשורה חדשה</p>
+      <p className="mt-1 text-center text-[10px]" style={{ color: 'var(--tx3)' }}>{t.chat.enterToSend}</p>
     </div>
   )
 }
@@ -454,9 +455,12 @@ export default function ChatClient({
   badgesMap = {},
 }: Props) {
 
+  const t = useT()
+
   // ── Layout ──
   const [mobileShowChat, setMobileShowChat] = useState(!!initialDmUserId)
   const [activeSide, setActiveSide] = useState<'community' | 'private'>(initialDmUserId ? 'private' : 'community')
+  const activeSideRef = useRef<'community' | 'private'>(initialDmUserId ? 'private' : 'community')
 
   // ── Community state ──
   const [communityMsgs, setCommunityMsgs] = useState<Message[]>([])
@@ -531,6 +535,28 @@ export default function ChatClient({
   const [rtStatus, setRtStatus] = useState<'connecting' | 'ok' | 'error'>('connecting')
   const [rtRetry, setRtRetry] = useState(0)
   const rtRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // keep activeSideRef in sync
+  useEffect(() => { activeSideRef.current = activeSide }, [activeSide])
+
+  // ── Desktop Notification permission ──
+  useEffect(() => {
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      Notification.requestPermission()
+    }
+  }, [])
+
+  function sendDesktopNotif(senderName: string, body: string) {
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
+    if (document.visibilityState === 'visible' && !document.hidden) return
+    try {
+      new Notification(`${t.chat.notifTitle} — ${senderName}`, {
+        body: body.slice(0, 100),
+        icon: '/icons/icon-192.svg',
+        tag: `chat-${senderName}`,
+      })
+    } catch {}
+  }
 
   useEffect(() => {
     // Restore mute
@@ -714,8 +740,13 @@ export default function ChatClient({
           if (deduped.some(x => String(x.id) === String(m.id))) return deduped
           return [...deduped, { ...m, profiles: prof as Profile | undefined ?? undefined }]
         })
-        if (m.user_id !== currentUserId && !isMutedRef.current) {
-          playSound(soundPrefsRef.current['community'] ?? 'message')
+        if (m.user_id !== currentUserId) {
+          if (!isMutedRef.current) playSound(soundPrefsRef.current['community'] ?? 'message')
+          if (activeSideRef.current !== 'community' || document.visibilityState !== 'visible') {
+            const senderName = (prof as any)?.full_name ?? (prof as any)?.username ?? '—'
+            const body = m.attachment_url ? '📎' : (m.content ?? '')
+            sendDesktopNotif(senderName, body)
+          }
         }
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages', filter: `channel_id=eq.${generalTopicId}` }, (payload) => {
@@ -799,8 +830,14 @@ export default function ChatClient({
           markReadRef.current(m.sender_id)
           setPrivateMsgs(prev => prev.map(x => x.sender_id === m.sender_id && x.receiver_id === currentUserId && !x.is_read ? { ...x, is_read: true } : x))
         }
-        if (m.sender_id !== currentUserId && m.receiver_id === currentUserId && !isMutedRef.current) {
-          playSound(soundPrefsRef.current[m.sender_id] ?? 'message')
+        if (m.sender_id !== currentUserId && m.receiver_id === currentUserId) {
+          if (!isMutedRef.current) playSound(soundPrefsRef.current[m.sender_id] ?? 'message')
+          // Desktop notification when not viewing that conversation
+          if (selectedPartnerRef.current !== m.sender_id || document.visibilityState !== 'visible') {
+            const senderName = (m as any).sender?.full_name ?? (m as any).sender?.username ?? '—'
+            const body = m.attachment_url ? '📎' : (m.content ?? '')
+            sendDesktopNotif(senderName, body)
+          }
         }
       })
       .subscribe((status, err) => {
@@ -1201,7 +1238,7 @@ export default function ChatClient({
           style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)' }}
         >
           {showNewChat ? <X size={13} /> : <UserPlus size={13} />}
-          {showNewChat ? 'ביטול' : 'צ׳אט חדש'}
+          {showNewChat ? t.chat.cancel : t.chat.newChat}
         </button>
       </div>
 
@@ -1211,13 +1248,13 @@ export default function ChatClient({
           <div className="px-3 py-2">
             <div className="flex items-center gap-2 rounded-xl px-2.5 py-1.5" style={{ background: 'var(--inp)', border: '1px solid var(--bd)' }}>
               <Search size={13} style={{ color: 'var(--tx3)' }} />
-              <input autoFocus value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder="חפש..." className="flex-1 bg-transparent text-xs outline-none placeholder:text-slate-400" style={{ color: 'var(--tx)' }} />
+              <input autoFocus value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder={t.chat.searchUser} className="flex-1 bg-transparent text-xs outline-none placeholder:text-slate-400" style={{ color: 'var(--tx)' }} />
               {userSearch && <button onClick={() => setUserSearch('')} style={{ color: 'var(--tx3)' }}><X size={12} /></button>}
             </div>
           </div>
           <div className="max-h-52 overflow-y-auto">
             {filteredUsers.length === 0
-              ? <p className="py-4 text-center text-xs" style={{ color: 'var(--tx3)' }}>לא נמצאו משתמשים</p>
+              ? <p className="py-4 text-center text-xs" style={{ color: 'var(--tx3)' }}>{t.chat.noUsers}</p>
               : filteredUsers.map(u => (
                 <button
                   key={u.id}
@@ -1229,7 +1266,7 @@ export default function ChatClient({
                     <p className="truncate text-xs font-semibold" style={{ color: 'var(--tx)' }}>{dName(u)}</p>
                     {u.specialization && <p className="truncate text-[10px]" style={{ color: 'var(--tx3)' }}>{u.specialization}</p>}
                   </div>
-                  {convos.some(c => c.partnerId === u.id) && <span className="shrink-0 text-[10px] text-purple-600">קיים</span>}
+                  {convos.some(c => c.partnerId === u.id) && <span className="shrink-0 text-[10px] text-purple-600">{t.chat.existing}</span>}
                 </button>
               ))
             }
@@ -1258,9 +1295,9 @@ export default function ChatClient({
             </div>
             <div className="min-w-0 flex-1">
               <p className="font-bold text-sm" style={{ color: activeSide === 'community' ? '#7c3aed' : 'var(--tx)' }}>
-                צ׳אט מרכזי
+                {t.chat.community}
               </p>
-              <p className="mt-0.5 text-[11px]" style={{ color: 'var(--tx3)' }}>צ׳אט כללי לכל חברי הקהילה</p>
+              <p className="mt-0.5 text-[11px]" style={{ color: 'var(--tx3)' }}>{t.chat.communityDesc}</p>
             </div>
           </button>
           <div className="shrink-0 px-1.5">
@@ -1338,7 +1375,7 @@ export default function ChatClient({
         {convos.length === 0 && (
           <div className="flex flex-col items-center gap-2 py-10 text-center px-4">
             <Lock size={20} className="text-slate-300" />
-            <p className="text-xs" style={{ color: 'var(--tx3)' }}>לחץ "צ׳אט חדש" לשיחה פרטית</p>
+            <p className="text-xs" style={{ color: 'var(--tx3)' }}>{t.chat.clickToStart}</p>
           </div>
         )}
       </div>
@@ -1355,8 +1392,8 @@ export default function ChatClient({
         <MessageSquare size={36} className="text-purple-400" />
       </div>
       <div>
-        <p className="text-lg font-bold" style={{ color: 'var(--tx)' }}>ברוך הבא לצ׳אטים</p>
-        <p className="mt-1 text-sm" style={{ color: 'var(--tx3)' }}>בחר שיחה מהרשימה כדי להתחיל</p>
+        <p className="text-lg font-bold" style={{ color: 'var(--tx)' }}>{t.chat.welcome}</p>
+        <p className="mt-1 text-sm" style={{ color: 'var(--tx3)' }}>{t.chat.welcomeDesc}</p>
       </div>
     </div>
   )
@@ -1375,24 +1412,24 @@ export default function ChatClient({
           <Users size={16} className="text-purple-600" />
         </div>
         <div className="min-w-0 flex-1">
-          <h2 className="truncate text-sm font-bold" style={{ color: 'var(--tx)' }}>צ׳אט מרכזי</h2>
-          <p className="text-[11px]" style={{ color: 'var(--tx3)' }}>צ׳אט כללי לכל חברי הקהילה</p>
+          <h2 className="truncate text-sm font-bold" style={{ color: 'var(--tx)' }}>{t.chat.community}</h2>
+          <p className="text-[11px]" style={{ color: 'var(--tx3)' }}>{t.chat.communityDesc}</p>
         </div>
         <button onClick={() => playSound(getSoundFor('community'))} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition hover:bg-slate-100" style={{ color: 'var(--tx3)' }} title="בדוק צליל">
           <Volume2 size={15} />
         </button>
-        <button onClick={toggleMute} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition hover:bg-slate-100" style={{ color: isMuted ? '#ef4444' : 'var(--tx3)' }} title={isMuted ? 'בטל השתקה' : 'השתק צלילים'}>
+        <button onClick={toggleMute} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition hover:bg-slate-100" style={{ color: isMuted ? '#ef4444' : 'var(--tx3)' }} title={isMuted ? t.chat.unmute : t.chat.mute}>
           {isMuted ? <BellOff size={15} /> : <Bell size={15} />}
         </button>
         {rtStatus === 'error' ? (
           <button
             onClick={() => setRtRetry(n => n + 1)}
-            title="חיבור ה-realtime נפסק — לחץ להתחברות מחדש"
+            title={t.chat.realtimeErr}
             className="flex items-center gap-1 rounded-lg px-2 py-0.5 text-[10px] font-bold text-red-400 transition hover:bg-red-50"
             style={{ border: '1px solid rgba(239,68,68,.25)' }}
           >
             <span className="h-1.5 w-1.5 rounded-full bg-red-400" />
-            התחבר מחדש
+            {t.chat.reconnect}
           </button>
         ) : (
           <div title={rtStatus === 'ok' ? 'realtime פעיל' : 'מתחבר...'}
@@ -1405,7 +1442,7 @@ export default function ChatClient({
         {communityMsgs.length === 0 && (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
             <MessageSquare size={28} className="text-slate-300" />
-            <p className="text-sm" style={{ color: 'var(--tx3)' }}>היה הראשון לכתוב בחדר הקהילה</p>
+            <p className="text-sm" style={{ color: 'var(--tx3)' }}>{t.chat.beFirst}</p>
           </div>
         )}
         {communityMsgs.map((msg, i) => {
@@ -1626,7 +1663,7 @@ export default function ChatClient({
         <button onClick={() => playSound(getSoundFor(selectedPartner!))} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition hover:bg-slate-100" style={{ color: 'var(--tx3)' }} title="בדוק צליל">
           <Volume2 size={15} />
         </button>
-        <button onClick={toggleMute} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition hover:bg-slate-100" style={{ color: isMuted ? '#ef4444' : 'var(--tx3)' }} title={isMuted ? 'בטל השתקה' : 'השתק צלילים'}>
+        <button onClick={toggleMute} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition hover:bg-slate-100" style={{ color: isMuted ? '#ef4444' : 'var(--tx3)' }} title={isMuted ? t.chat.unmute : t.chat.mute}>
           {isMuted ? <BellOff size={15} /> : <Bell size={15} />}
         </button>
         <Lock size={14} style={{ color: 'var(--tx3)' }} className="shrink-0" />

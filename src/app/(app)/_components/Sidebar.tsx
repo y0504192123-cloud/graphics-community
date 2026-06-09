@@ -5,27 +5,12 @@ import { usePathname, useRouter } from 'next/navigation'
 import { LayoutDashboard, Briefcase, MessageSquare, Library, Menu, X, ShieldCheck, Palette, Globe, MessagesSquare, ScanText, Info, Settings, Newspaper, Search } from 'lucide-react'
 import { useState, useEffect, useMemo } from 'react'
 import LogoutButton from './LogoutButton'
-import { useLanguage } from '@/components/LanguageProvider'
+import { useLanguage, useT } from '@/components/LanguageProvider'
 import { createClient } from '@/lib/supabase/client'
 import type { Profile } from '@/types'
 
 type NavItem = { href: string; label: string; icon: React.ReactNode }
 type Props = { profile: Profile | null; email: string; currentUserId?: string; logoUrl?: string | null }
-
-const labels = {
-  he: {
-    home: 'ראשי', jobs: 'לוח עבודות', chat: "צ'אטים", forum: 'פורום',
-    inspiration: 'ספריית השראה', assets: 'חומרים לשימוש', admin: 'פאנל ניהול',
-    designer: 'גרפיקאי', fontId: 'זיהוי פונט',
-    about: 'אודות', settings: 'הגדרות', news: 'חדשות',
-  },
-  en: {
-    home: 'Home', jobs: 'Job Board', chat: 'Chats', forum: 'Forum',
-    inspiration: 'Inspiration', assets: 'Resources', admin: 'Admin Panel',
-    designer: 'Designer', fontId: 'Font Identifier',
-    about: 'About', settings: 'Settings', news: 'News',
-  },
-}
 
 export default function Sidebar({ profile, email, currentUserId, logoUrl }: Props) {
   const pathname = usePathname()
@@ -33,8 +18,9 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
   const [open, setOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const { lang, toggleLang } = useLanguage()
-  const t = labels[lang]
+  const t = useT()
   const [unreadCount, setUnreadCount] = useState(0)
+  const [newsUnreadCount, setNewsUnreadCount] = useState(0)
   const [forumUnreadCount, setForumUnreadCount] = useState(0)
   const [totalMembers, setTotalMembers] = useState(0)
   const [onlineCount, setOnlineCount] = useState(0)
@@ -79,6 +65,23 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
 
   useEffect(() => {
     if (!currentUserId) return
+    const fetchNewsCount = async () => {
+      const since = localStorage.getItem('last_read_news_at') ?? '2000-01-01T00:00:00Z'
+      const { count } = await supabase
+        .from('news')
+        .select('id', { count: 'exact', head: true })
+        .gt('created_at', since)
+      setNewsUnreadCount(count ?? 0)
+    }
+    fetchNewsCount()
+    const ch = supabase.channel('sidebar-news-count')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'news' }, fetchNewsCount)
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  }, [currentUserId, supabase])
+
+  useEffect(() => {
+    if (!currentUserId) return
     const updateLastSeen = () => {
       supabase.from('profiles').update({ last_seen: new Date().toISOString() }).eq('id', currentUserId).then(() => {})
     }
@@ -104,14 +107,14 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
   }, [currentUserId, supabase])
 
   const navItems: NavItem[] = [
-    { href: '/dashboard',        label: t.home,        icon: <LayoutDashboard size={17} /> },
-    { href: '/jobs',             label: t.jobs,        icon: <Briefcase size={17} /> },
-    { href: '/chat',             label: t.chat,        icon: <MessageSquare size={17} /> },
-    { href: '/forum',            label: t.forum,       icon: <MessagesSquare size={17} /> },
-    { href: '/inspiration',      label: t.inspiration, icon: <Palette size={17} /> },
-    { href: '/assets',           label: t.assets,      icon: <Library size={17} /> },
-    { href: '/font-identifier',  label: t.fontId,      icon: <ScanText size={17} /> },
-    { href: '/news',             label: t.news,        icon: <Newspaper size={17} /> },
+    { href: '/dashboard',        label: t.nav.home,        icon: <LayoutDashboard size={17} /> },
+    { href: '/jobs',             label: t.nav.jobs,        icon: <Briefcase size={17} /> },
+    { href: '/chat',             label: t.nav.chat,        icon: <MessageSquare size={17} /> },
+    { href: '/forum',            label: t.nav.forum,       icon: <MessagesSquare size={17} /> },
+    { href: '/inspiration',      label: t.nav.inspiration, icon: <Palette size={17} /> },
+    { href: '/assets',           label: t.nav.assets,      icon: <Library size={17} /> },
+    { href: '/font-identifier',  label: t.nav.fontId,      icon: <ScanText size={17} /> },
+    { href: '/news',             label: t.nav.news,        icon: <Newspaper size={17} /> },
   ]
 
   const displayName = profile?.full_name ?? profile?.username ?? email.split('@')[0]
@@ -137,7 +140,7 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
             <input
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              placeholder={lang === 'he' ? 'חיפוש...' : 'Search...'}
+              placeholder={t.nav.search}
               className="w-full rounded-xl pe-3 ps-8 py-2 text-xs outline-none transition"
               style={{ background: 'var(--inp)', border: '1px solid var(--bd)', color: 'var(--tx)' }}
             />
@@ -148,11 +151,11 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
       {/* Member counter */}
       {totalMembers > 0 && (
         <div className="mx-3 mb-3 flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs" style={{ background: 'var(--s2)', border: '1px solid var(--bd)' }}>
-          <span style={{ color: 'var(--tx2)' }}>{totalMembers} חברים</span>
+          <span style={{ color: 'var(--tx2)' }}>{totalMembers} {t.sidebar.members}</span>
           <span style={{ color: 'var(--tx3)' }}>|</span>
           <span className="flex items-center gap-1" style={{ color: '#10b981' }}>
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-            {onlineCount} מחוברים עכשיו
+            {onlineCount} {t.sidebar.online}
           </span>
         </div>
       )}
@@ -163,7 +166,8 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
           const active = pathname === item.href || pathname.startsWith(item.href + '/')
           const isChat = item.href === '/chat'
           const isForum = item.href === '/forum'
-          const badge = isChat ? unreadCount : isForum ? forumUnreadCount : 0
+          const isNews = item.href === '/news'
+          const badge = isChat ? unreadCount : isForum ? forumUnreadCount : isNews ? newsUnreadCount : 0
           return (
             <Link
               key={item.href}
@@ -221,7 +225,7 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
             <span className="relative" style={{ color: pathname.startsWith('/admin') ? '#ec4899' : 'var(--tx3)' }}>
               <ShieldCheck size={17} />
             </span>
-            <span className="relative">{t.admin}</span>
+            <span className="relative">{t.nav.admin}</span>
           </Link>
         </div>
       )}
@@ -235,6 +239,7 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
         >
           <Globe size={15} className="shrink-0" style={{ color: '#3b82f6' }} />
           <span>{lang === 'he' ? 'English' : 'עברית'}</span>
+
           <span
             className="me-auto rounded-full px-2 py-0.5 text-[10px] font-bold"
             style={{ background: 'rgba(59,130,246,.1)', color: '#3b82f6' }}
@@ -265,7 +270,7 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
           </div>
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold" style={{ color: 'var(--tx)' }}>{displayName}</p>
-            <p className="truncate text-[11px]" style={{ color: 'var(--tx3)' }}>{profile?.specialization ?? t.designer}</p>
+            <p className="truncate text-[11px]" style={{ color: 'var(--tx3)' }}>{profile?.specialization ?? t.nav.designer}</p>
           </div>
         </Link>
         <div className="mt-1 flex gap-1">
@@ -276,7 +281,7 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
             style={{ color: 'var(--tx3)', border: '1px solid var(--bd)' }}
           >
             <Settings size={13} />
-            {t.settings}
+            {t.nav.settings}
           </Link>
           <Link
             href="/about"

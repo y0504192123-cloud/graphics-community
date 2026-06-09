@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { X, Clock, Archive, CalendarX } from 'lucide-react'
 import Link from 'next/link'
 import type { NewsItem, NewsCategory } from '@/types'
@@ -225,6 +225,10 @@ export default function NewsPageClient({
 }) {
   const [selected, setSelected] = useState<NewsItem | null>(null)
   const [hero, second, third, ...rest] = newsItems
+
+  useEffect(() => {
+    localStorage.setItem('last_read_news_at', new Date().toISOString())
+  }, [])
 
   return (
     <div className="min-h-full" style={{ background: 'var(--bg)' }}>

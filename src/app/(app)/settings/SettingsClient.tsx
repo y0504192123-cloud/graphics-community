@@ -2,6 +2,7 @@
 
 import { useState, useRef, useActionState } from 'react'
 import { User, Lock, Trash2, Camera, Save, CheckCircle2, AlertCircle, Globe, EyeOff } from 'lucide-react'
+import { useT } from '@/components/LanguageProvider'
 import type { Profile } from '@/types'
 
 type Tab = 'profile' | 'avatar' | 'password' | 'account'
@@ -24,6 +25,7 @@ function PublicBadge() {
     <span className="flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-semibold normal-case tracking-normal"
       style={{ background: 'rgba(16,185,129,.1)', color: '#059669', border: '1px solid rgba(16,185,129,.2)' }}>
       <Globe size={8} />
+      {/* public label — needs t, rendered inside component via PublicBadge call */}
       גלוי לכולם
     </span>
   )
@@ -39,14 +41,9 @@ function PrivateBadge() {
   )
 }
 
-const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
-  { id: 'profile',  label: 'פרטים אישיים', icon: <User size={15} /> },
-  { id: 'avatar',   label: 'תמונת פרופיל', icon: <Camera size={15} /> },
-  { id: 'password', label: 'שינוי סיסמה',   icon: <Lock size={15} /> },
-  { id: 'account',  label: 'ניהול חשבון',   icon: <Trash2 size={15} /> },
-]
+// tabs defined inside component to access t — see below
 
-function Result({ result }: { result: { error?: string } | null }) {
+function Result({ result, successMsg }: { result: { error?: string } | null; successMsg?: string }) {
   if (!result) return null
   if (result.error) return (
     <div className="flex items-center gap-2 rounded-xl border border-red-500/20 bg-red-500/[0.08] px-4 py-3 text-sm text-red-400">
@@ -57,7 +54,7 @@ function Result({ result }: { result: { error?: string } | null }) {
   return (
     <div className="flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.08] px-4 py-3 text-sm text-emerald-400">
       <CheckCircle2 size={15} className="shrink-0" />
-      הפרטים עודכנו בהצלחה
+      {successMsg ?? '✓'}
     </div>
   )
 }
@@ -66,6 +63,13 @@ export default function SettingsClient({
   profile, email,
   updateProfile, changePassword, getAvatarUploadUrl, saveAvatarUrl, deleteAccount,
 }: Props) {
+  const t = useT()
+  const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
+    { id: 'profile',  label: t.settings.tabs.profile,  icon: <User size={15} /> },
+    { id: 'avatar',   label: t.settings.tabs.avatar,   icon: <Camera size={15} /> },
+    { id: 'password', label: t.settings.tabs.password, icon: <Lock size={15} /> },
+    { id: 'account',  label: t.settings.tabs.account,  icon: <Trash2 size={15} /> },
+  ]
   const [activeTab, setActiveTab] = useState<Tab>('profile')
 
   const [profileResult, profileAction, profilePending] = useActionState(
@@ -214,7 +218,7 @@ export default function SettingsClient({
                 />
               </div>
 
-              {profileResult !== undefined && <Result result={profileResult} />}
+              {profileResult !== undefined && <Result result={profileResult} successMsg={t.settings.saved} />}
 
               <button
                 type="submit"
