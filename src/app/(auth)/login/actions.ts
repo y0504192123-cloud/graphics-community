@@ -87,6 +87,24 @@ export async function signUp(prevState: AuthState, formData: FormData): Promise<
   return { message: 'pending' }
 }
 
+export async function sendPasswordReset(prevState: AuthState, formData: FormData): Promise<AuthState> {
+  const email = (formData.get('email') as string)?.trim()
+  if (!email) return { error: 'נא להזין כתובת אימייל' }
+
+  const headersList = await headers()
+  const host = headersList.get('host') ?? 'localhost:3000'
+  const proto = headersList.get('x-forwarded-proto') ?? (process.env.NODE_ENV === 'production' ? 'https' : 'http')
+  const origin = `${proto}://${host}`
+
+  const supabase = await createClient()
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${origin}/api/auth/callback?next=/reset-password`,
+  })
+
+  if (error) return { error: error.message }
+  return { message: 'reset_sent' }
+}
+
 export async function signInWithGoogle(): Promise<AuthState> {
   const headersList = await headers()
   const host = headersList.get('host') ?? 'localhost:3000'

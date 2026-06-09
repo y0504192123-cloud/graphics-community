@@ -24,6 +24,11 @@ export async function GET(request: Request) {
 
     const { error } = await supabase.auth.exchangeCodeForSession(code)
     if (!error) {
+      // Password-reset flow: skip all status checks so recovery users reach /reset-password
+      if (next === '/reset-password') {
+        return NextResponse.redirect(`${origin}${next}`)
+      }
+
       const { data: { user } } = await supabase.auth.getUser()
 
       if (user) {

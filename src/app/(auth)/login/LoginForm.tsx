@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useActionState } from 'react'
-import { signIn, signUp } from './actions'
+import { signIn, signUp, sendPasswordReset } from './actions'
 import type { AuthState } from './actions'
 
 type Props = {
@@ -30,9 +30,11 @@ const labelCls = 'mb-1.5 block text-xs font-semibold uppercase tracking-widest t
 
 export default function LoginForm({ urlError, urlMessage, logoUrl }: Props) {
   const [mode, setMode] = useState<'login' | 'signup'>('login')
+  const [showForgot, setShowForgot] = useState(false)
 
   const [signInState, signInAction, signInPending] = useActionState<AuthState, FormData>(signIn, null)
   const [signUpState, signUpAction, signUpPending] = useActionState<AuthState, FormData>(signUp, null)
+  const [forgotState, forgotAction, forgotPending] = useActionState<AuthState, FormData>(sendPasswordReset, null)
 
   const isPending = mode === 'login' ? signInPending : signUpPending
   const formAction = mode === 'login' ? signInAction : signUpAction
@@ -248,12 +250,69 @@ export default function LoginForm({ urlError, urlMessage, logoUrl }: Props) {
       </form>
 
       {mode === 'login' && (
-        <p className="mt-5 text-center text-xs text-slate-600">
-          בהתחברות אתה מסכים ל
-          <a href="/terms" target="_blank" rel="noopener noreferrer" className="mx-0.5 text-slate-500 hover:text-slate-300 transition">תנאי השימוש</a>
-          ולמדיניות
-          <a href="/privacy" target="_blank" rel="noopener noreferrer" className="mx-0.5 text-slate-500 hover:text-slate-300 transition">הפרטיות</a>
-        </p>
+        <>
+          {/* Forgot password */}
+          <div className="mt-4">
+            {!showForgot ? (
+              <button
+                type="button"
+                onClick={() => setShowForgot(true)}
+                className="w-full text-center text-xs text-slate-500 hover:text-slate-300 transition"
+              >
+                שכחתי סיסמה
+              </button>
+            ) : forgotState?.message === 'reset_sent' ? (
+              <div className="animate-fade-up rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.08] p-4 text-center">
+                <div className="mb-1 text-xl">📧</div>
+                <p className="text-sm font-bold text-emerald-300">מייל לאיפוס נשלח!</p>
+                <p className="mt-1 text-xs text-emerald-400/80">בדוק את תיבת הדואר שלך ולחץ על הקישור</p>
+              </div>
+            ) : (
+              <form action={forgotAction} className="animate-fade-up space-y-3 rounded-2xl border border-white/[0.07] bg-white/[0.03] p-4">
+                <p className="text-xs font-semibold text-slate-400">הזן את כתובת האימייל שלך ונשלח קישור לאיפוס הסיסמה</p>
+                {forgotState?.error && (
+                  <div className="flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/[0.08] px-3 py-2 text-xs text-red-300">
+                    <span>⚠</span>
+                    {forgotState.error}
+                  </div>
+                )}
+                <input
+                  name="email"
+                  type="email"
+                  required
+                  autoComplete="email"
+                  placeholder="your@email.com"
+                  className={fieldCls}
+                  dir="ltr"
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowForgot(false)}
+                    className="flex-1 rounded-xl border border-white/[0.07] py-2 text-xs text-slate-500 transition hover:text-slate-300"
+                  >
+                    ביטול
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={forgotPending}
+                    className="flex-1 rounded-xl py-2 text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-50"
+                    style={{ background: 'linear-gradient(135deg, #7c3aed, #6d28d9)' }}
+                  >
+                    {forgotPending ? 'שולח...' : 'שלח קישור'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+
+          <p className="mt-4 text-center text-xs text-slate-600">
+            בהתחברות אתה מסכים ל
+            <a href="/terms" target="_blank" rel="noopener noreferrer" className="mx-0.5 text-slate-500 hover:text-slate-300 transition">תנאי השימוש</a>
+            ולמדיניות
+            <a href="/privacy" target="_blank" rel="noopener noreferrer" className="mx-0.5 text-slate-500 hover:text-slate-300 transition">הפרטיות</a>
+          </p>
+        </>
       )}
     </div>
   )
