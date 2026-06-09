@@ -10,6 +10,7 @@ export default async function MembersPage() {
     supabase
       .from('profiles')
       .select('id, full_name, username, avatar_url, city, specialization, created_at, last_seen')
+      .eq('status', 'active')
       .order('created_at', { ascending: false })
       .limit(300),
     supabase.from('specializations').select('id, name'),

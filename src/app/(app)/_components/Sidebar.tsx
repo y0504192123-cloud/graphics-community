@@ -98,8 +98,8 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
     const fetchMemberCounts = async () => {
       const fifteenMinsAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString()
       const [totalRes, onlineRes] = await Promise.all([
-        supabase.from('profiles').select('id', { count: 'exact', head: true }),
-        supabase.from('profiles').select('id', { count: 'exact', head: true }).gte('last_seen', fifteenMinsAgo),
+        supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('status', 'active'),
+        supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('status', 'active').gte('last_seen', fifteenMinsAgo),
       ])
       setTotalMembers(totalRes.count ?? 0)
       if (!onlineRes.error) setOnlineCount(onlineRes.count ?? 0)

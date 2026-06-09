@@ -45,16 +45,40 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  if (user && pathname.startsWith('/login')) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/dashboard'
-    return NextResponse.redirect(url)
-  }
+  if (user) {
+    // Always verify profile status — prevents pending/rejected users from accessing any page
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('status, role')
+      .eq('id', user.id)
+      .single()
 
-  if (user && pathname === '/') {
-    const url = request.nextUrl.clone()
-    url.pathname = '/dashboard'
-    return NextResponse.redirect(url)
+    // Allow if: no profile yet (layout handles creation), admin, or active
+    const isAllowed = !profile || profile.role === 'admin' || profile.status === 'active'
+
+    if (!isAllowed && !isPublicRoute) {
+      const message = profile?.status === 'rejected' ? 'rejected' : 'pending'
+      const url = request.nextUrl.clone()
+      url.pathname = '/login'
+      url.searchParams.set('message', message)
+      return NextResponse.redirect(url)
+    }
+
+    if (pathname.startsWith('/login')) {
+      // Only redirect to dashboard when user is actually allowed in
+      if (isAllowed) {
+        const url = request.nextUrl.clone()
+        url.pathname = '/dashboard'
+        return NextResponse.redirect(url)
+      }
+      return supabaseResponse
+    }
+
+    if (pathname === '/') {
+      const url = request.nextUrl.clone()
+      url.pathname = '/dashboard'
+      return NextResponse.redirect(url)
+    }
   }
 
   return supabaseResponse
