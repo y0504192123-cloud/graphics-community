@@ -58,7 +58,10 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
     fetchForumCount()
     const ch = supabase
       .channel(`sidebar-forum-${currentUserId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${currentUserId}` }, fetchForumCount)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, (payload) => {
+        const row = (payload.new ?? payload.old) as any
+        if (row?.user_id === currentUserId) fetchForumCount()
+      })
       .subscribe()
     return () => { supabase.removeChannel(ch) }
   }, [currentUserId, supabase])

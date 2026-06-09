@@ -1,16 +1,18 @@
+import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import MembersClient from './MembersClient'
 
 export default async function MembersPage() {
+  const supabase = await createClient()
   const admin = createAdminClient()
 
   const [profilesRes, specsRes, profileSpecsRes] = await Promise.all([
-    admin
+    supabase
       .from('profiles')
       .select('id, full_name, username, avatar_url, avatar_color, city, specialization, created_at, last_seen')
-      .order('last_seen', { ascending: false, nullsFirst: false })
+      .order('created_at', { ascending: false })
       .limit(300),
-    admin.from('specializations').select('id, name'),
+    supabase.from('specializations').select('id, name'),
     admin.from('profile_specializations').select('profile_id, specialization_id'),
   ])
 

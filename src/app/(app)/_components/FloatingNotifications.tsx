@@ -71,28 +71,21 @@ export default function FloatingNotifications({ currentUserId }: { currentUserId
   }, [])
 
   useEffect(() => {
-    console.log('[FloatingNotifications] mounting for user', currentUserId)
 
-    // Private messages — server-side filter so Supabase only delivers relevant rows
+    // Private messages — rely on RLS for delivery, filter receiver client-side
     const pmCh = supabase.channel(`float-pm-${currentUserId}`)
       .on(
         'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'private_messages',
-          filter: `receiver_id=eq.${currentUserId}`,
-        },
+        { event: 'INSERT', schema: 'public', table: 'private_messages' },
         async (payload) => {
-          console.log('[FloatingNotifications] private_message received', payload.new)
           const m = payload.new as { id: string; sender_id: string; receiver_id: string; content: string | null }
+          if (!m?.id) return
+          // Only show notification for messages received by current user
+          if (m.receiver_id !== currentUserId) return
 
           // Suppress if already viewing this exact DM conversation
           const path = window.location.pathname + window.location.search
-          if (path.includes('/chat') && path.includes(m.sender_id)) {
-            console.log('[FloatingNotifications] suppressed — already on DM page')
-            return
-          }
+          if (path.includes('/chat') && path.includes(m.sender_id)) return
 
           const { data: prof } = await supabase
             .from('profiles')
@@ -111,23 +104,17 @@ export default function FloatingNotifications({ currentUserId }: { currentUserId
           })
         }
       )
-      .subscribe((status) => {
-        console.log('[FloatingNotifications] PM channel status:', status)
-      })
+      .subscribe()
 
-    // Forum notifications
+    // Forum notifications — rely on RLS, filter client-side
     const forumCh = supabase.channel(`float-forum-${currentUserId}`)
       .on(
         'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'notifications',
-          filter: `user_id=eq.${currentUserId}`,
-        },
+        { event: 'INSERT', schema: 'public', table: 'notifications' },
         (payload) => {
-          console.log('[FloatingNotifications] notification received', payload.new)
-          const n = payload.new as { id: string; type: string; content: string; link: string | null }
+          const n = payload.new as { id: string; user_id: string; type: string; content: string; link: string | null }
+          if (!n?.id) return
+          if (n.user_id !== currentUserId) return
           if (n.type !== 'forum_reply') return
           addNotif({
             id: `forum-${n.id}`,
@@ -139,9 +126,7 @@ export default function FloatingNotifications({ currentUserId }: { currentUserId
           })
         }
       )
-      .subscribe((status) => {
-        console.log('[FloatingNotifications] Forum channel status:', status)
-      })
+      .subscribe()
 
     return () => {
       supabase.removeChannel(pmCh)
@@ -153,7 +138,7 @@ export default function FloatingNotifications({ currentUserId }: { currentUserId
   if (notifs.length === 0) return null
 
   return (
-    <div className="fixed z-50 flex flex-col-reverse gap-2" style={{ bottom: 20, left: 20 }}>
+    <div className="fixed z-[200] flex flex-col-reverse gap-2" style={{ bottom: 20, left: 20 }}>
       {notifs.map((n) => (
         <div
           key={n.id}
