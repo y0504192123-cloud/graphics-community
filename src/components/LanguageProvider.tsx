@@ -27,7 +27,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
     })
   }
 
-  return <Ctx.Provider value={{ lang, toggleLang, t: translations[lang] }}>{children}</Ctx.Provider>
+  return <Ctx.Provider value={{ lang, toggleLang, t: translations[lang] as T }}>{children}</Ctx.Provider>
 }
 
 export function useLanguage() { return useContext(Ctx) }

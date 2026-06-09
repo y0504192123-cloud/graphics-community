@@ -218,6 +218,7 @@ type InputBarProps = {
 }
 
 function InputBar({ value, onChange, onKeyDown, onSend, isSending, textRef, onAttachClick, attachments = [], onRemoveAttachment, onImagePaste, isUploading, placeholder, replyTo, onCancelReply, mentionUsers, onMentionSelect }: InputBarProps) {
+  const t = useT()
   const handleInput = (e: React.FormEvent<HTMLTextAreaElement>) => {
     const el = e.currentTarget
     el.style.height = 'auto'
