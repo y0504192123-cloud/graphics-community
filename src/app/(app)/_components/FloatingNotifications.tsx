@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { playPing } from '@/lib/sound'
 import type { Profile } from '@/types'
 
 type NotifItem = {
@@ -12,23 +13,6 @@ type NotifItem = {
   preview: string
   source: 'chat' | 'forum'
   link: string
-}
-
-function playPing() {
-  try {
-    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
-    const osc = ctx.createOscillator()
-    const gain = ctx.createGain()
-    osc.connect(gain)
-    gain.connect(ctx.destination)
-    osc.frequency.setValueAtTime(800, ctx.currentTime)
-    osc.frequency.exponentialRampToValueAtTime(400, ctx.currentTime + 0.1)
-    gain.gain.setValueAtTime(0.3, ctx.currentTime)
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3)
-    osc.start(ctx.currentTime)
-    osc.stop(ctx.currentTime + 0.3)
-    osc.onended = () => ctx.close()
-  } catch {}
 }
 
 function Avatar({ name, url }: { name: string; url: string | null }) {
@@ -71,7 +55,7 @@ export default function FloatingNotifications({ currentUserId }: { currentUserId
   }, [])
 
   useEffect(() => {
-    console.log('[FloatingNotif] mounting, userId:', currentUserId)
+    console.log('[FloatingNotifications] mounted, userId:', currentUserId)
 
     // Private messages — rely on RLS for delivery, filter receiver client-side
     const pmCh = supabase.channel(`float-pm-${currentUserId}`)

@@ -3,10 +3,11 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { LayoutDashboard, Briefcase, MessageSquare, Library, Menu, X, ShieldCheck, Palette, Globe, MessagesSquare, ScanText, Info, Settings, Newspaper, Search, Users } from 'lucide-react'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import LogoutButton from './LogoutButton'
 import { useLanguage, useT } from '@/components/LanguageProvider'
 import { createClient } from '@/lib/supabase/client'
+import { playPing } from '@/lib/sound'
 import type { Profile } from '@/types'
 
 type NavItem = { href: string; label: string; icon: React.ReactNode }
@@ -25,6 +26,9 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
   const [totalMembers, setTotalMembers] = useState(0)
   const [onlineCount, setOnlineCount] = useState(0)
   const supabase = useMemo(() => createClient(), [])
+  // null = not yet initialized (skip sound on first load)
+  const prevPmRef = useRef<number | null>(null)
+  const prevForumRef = useRef<number | null>(null)
 
   useEffect(() => {
     if (!currentUserId) return
@@ -35,7 +39,10 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
         .eq('receiver_id', currentUserId)
         .eq('is_read', false)
       console.log('[Sidebar] PM count:', count, error?.message ?? '')
-      setUnreadCount(count ?? 0)
+      const newCount = count ?? 0
+      if (prevPmRef.current !== null && newCount > prevPmRef.current) playPing()
+      prevPmRef.current = newCount
+      setUnreadCount(newCount)
     }
     fetchCount()
 
@@ -78,7 +85,10 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
         .eq('type', 'forum_reply')
         .eq('is_read', false)
       console.log('[Sidebar] Forum count:', count, error?.message ?? '')
-      setForumUnreadCount(count ?? 0)
+      const newCount = count ?? 0
+      if (prevForumRef.current !== null && newCount > prevForumRef.current) playPing()
+      prevForumRef.current = newCount
+      setForumUnreadCount(newCount)
     }
     fetchForumCount()
     const ch = supabase
