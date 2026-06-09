@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useActionState } from 'react'
-import { User, Lock, Trash2, Camera, Save, CheckCircle2, AlertCircle } from 'lucide-react'
+import { User, Lock, Trash2, Camera, Save, CheckCircle2, AlertCircle, Globe, EyeOff } from 'lucide-react'
 import type { Profile } from '@/types'
 
 type Tab = 'profile' | 'avatar' | 'password' | 'account'
@@ -17,7 +17,27 @@ type Props = {
 }
 
 const inputCls = 'w-full rounded-xl border px-4 py-2.5 text-sm outline-none transition-all focus:ring-2'
-const labelCls = 'mb-1.5 block text-xs font-semibold uppercase tracking-widest'
+const labelCls = 'mb-1.5 flex items-center gap-2 text-xs font-semibold uppercase tracking-widest'
+
+function PublicBadge() {
+  return (
+    <span className="flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-semibold normal-case tracking-normal"
+      style={{ background: 'rgba(16,185,129,.1)', color: '#059669', border: '1px solid rgba(16,185,129,.2)' }}>
+      <Globe size={8} />
+      גלוי לכולם
+    </span>
+  )
+}
+
+function PrivateBadge() {
+  return (
+    <span className="flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-semibold normal-case tracking-normal"
+      style={{ background: 'rgba(100,116,139,.08)', color: 'var(--tx3)', border: '1px solid var(--bd)' }}>
+      <EyeOff size={8} />
+      פרטי
+    </span>
+  )
+}
 
 const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'profile',  label: 'פרטים אישיים', icon: <User size={15} /> },
@@ -128,7 +148,7 @@ export default function SettingsClient({
 
             <form action={profileAction} className="space-y-4">
               <div>
-                <label className={labelCls} style={{ color: 'var(--tx3)' }}>שם מלא</label>
+                <label className={labelCls} style={{ color: 'var(--tx3)' }}>שם מלא <PublicBadge /></label>
                 <input
                   name="full_name"
                   className={inputCls}
@@ -137,7 +157,7 @@ export default function SettingsClient({
                 />
               </div>
               <div>
-                <label className={labelCls} style={{ color: 'var(--tx3)' }}>ביוגרפיה קצרה</label>
+                <label className={labelCls} style={{ color: 'var(--tx3)' }}>ביוגרפיה קצרה <PublicBadge /></label>
                 <textarea
                   name="bio"
                   rows={3}
@@ -148,7 +168,7 @@ export default function SettingsClient({
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <label className={labelCls} style={{ color: 'var(--tx3)' }}>עיר</label>
+                  <label className={labelCls} style={{ color: 'var(--tx3)' }}>עיר <PublicBadge /></label>
                   <input
                     name="city"
                     className={inputCls}
@@ -157,7 +177,7 @@ export default function SettingsClient({
                   />
                 </div>
                 <div>
-                  <label className={labelCls} style={{ color: 'var(--tx3)' }}>שנות ניסיון</label>
+                  <label className={labelCls} style={{ color: 'var(--tx3)' }}>שנות ניסיון <PublicBadge /></label>
                   <input
                     name="years_experience"
                     type="number"
@@ -172,7 +192,7 @@ export default function SettingsClient({
                 </div>
               </div>
               <div>
-                <label className={labelCls} style={{ color: 'var(--tx3)' }}>טלפון</label>
+                <label className={labelCls} style={{ color: 'var(--tx3)' }}>טלפון <PrivateBadge /></label>
                 <input
                   name="phone"
                   type="tel"
@@ -183,7 +203,7 @@ export default function SettingsClient({
                 />
               </div>
               <div>
-                <label className={labelCls} style={{ color: 'var(--tx3)' }}>קישור לתיק עבודות</label>
+                <label className={labelCls} style={{ color: 'var(--tx3)' }}>קישור לתיק עבודות <PublicBadge /></label>
                 <input
                   name="portfolio_url"
                   type="url"
@@ -215,7 +235,10 @@ export default function SettingsClient({
         {/* ── Avatar Tab ── */}
         {activeTab === 'avatar' && (
           <div className="rounded-2xl p-6" style={{ background: 'var(--s2)', border: '1px solid var(--bd)' }}>
-            <h2 className="mb-5 text-base font-bold" style={{ color: 'var(--tx)' }}>תמונת פרופיל</h2>
+            <div className="mb-5 flex items-center gap-3">
+              <h2 className="text-base font-bold" style={{ color: 'var(--tx)' }}>תמונת פרופיל</h2>
+              <PublicBadge />
+            </div>
 
             <div className="mb-6 flex flex-col items-center gap-5">
               <div
@@ -349,7 +372,10 @@ export default function SettingsClient({
         {activeTab === 'account' && (
           <div className="space-y-5">
             <div className="rounded-2xl p-6" style={{ background: 'var(--s2)', border: '1px solid var(--bd)' }}>
-              <p className="mb-1 text-sm font-semibold" style={{ color: 'var(--tx)' }}>אימייל</p>
+              <div className="mb-1 flex items-center gap-2">
+                <p className="text-sm font-semibold" style={{ color: 'var(--tx)' }}>אימייל</p>
+                <PrivateBadge />
+              </div>
               <p className="text-sm" style={{ color: 'var(--tx3)' }} dir="ltr">{email}</p>
             </div>
 

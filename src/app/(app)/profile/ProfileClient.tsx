@@ -230,56 +230,59 @@ export default function ProfileClient({
         <div className="-mt-14 mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div className="flex items-end gap-5">
             {/* Avatar */}
-            <div className="group/av relative shrink-0">
-              {/* Circle button — upload on click */}
-              <button
-                type="button"
-                onClick={() => avatarInputRef.current?.click()}
-                disabled={avatarUploading}
-                className="group relative flex h-28 w-28 items-center justify-center rounded-full text-2xl font-bold overflow-hidden"
-                style={{
-                  background: avatarColor,
-                  border: '4px solid #ffffff',
-                  boxShadow: `0 8px 32px ${avatarColor}55`,
-                  color: 'white',
-                }}
-                title="לחץ לשינוי תמונת פרופיל"
-              >
-                {avatarUploading ? (
-                  <div className="h-7 w-7 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                ) : avatarUrl ? (
-                  <img src={avatarUrl} alt={displayName} className="h-full w-full object-cover" />
-                ) : (
-                  <span style={{ color: 'white' }}>{initials}</span>
-                )}
-                <span className="absolute inset-0 flex items-center justify-center rounded-full opacity-0 transition-opacity duration-200 group-hover:opacity-100"
-                  style={{ background: 'rgba(0,0,0,.45)' }}>
-                  <Camera size={22} style={{ color: 'white' }} />
-                </span>
-              </button>
-
-              {/* Delete X — visible on avatar area hover, only when image exists */}
-              {avatarUrl && !avatarUploading && (
+            <div className="group/av shrink-0">
+              {/* Wrapper scopes absolute children to the avatar circle only */}
+              <div className="relative inline-flex">
+                {/* Circle button — upload on click */}
                 <button
                   type="button"
-                  onClick={handleDeleteAvatar}
-                  className="absolute -top-1 -end-1 z-10 flex h-6 w-6 items-center justify-center rounded-full opacity-0 transition-opacity duration-200 group-hover/av:opacity-100"
-                  style={{ background: '#ef4444', border: '2px solid white', color: 'white' }}
-                  title="מחק תמונת פרופיל"
+                  onClick={() => avatarInputRef.current?.click()}
+                  disabled={avatarUploading}
+                  className="group relative flex h-28 w-28 items-center justify-center rounded-full text-2xl font-bold overflow-hidden"
+                  style={{
+                    background: avatarColor,
+                    border: '4px solid #ffffff',
+                    boxShadow: `0 8px 32px ${avatarColor}55`,
+                    color: 'white',
+                  }}
+                  title="לחץ לשינוי תמונת פרופיל"
                 >
-                  <X size={11} />
+                  {avatarUploading ? (
+                    <div className="h-7 w-7 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  ) : avatarUrl ? (
+                    <img src={avatarUrl} alt={displayName} className="h-full w-full object-cover" />
+                  ) : (
+                    <span style={{ color: 'white' }}>{initials}</span>
+                  )}
+                  <span className="absolute inset-0 flex items-center justify-center rounded-full opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+                    style={{ background: 'rgba(0,0,0,.45)' }}>
+                    <Camera size={22} style={{ color: 'white' }} />
+                  </span>
                 </button>
-              )}
 
-              {/* Online dot */}
-              {!avatarUploading && (
-                <span
-                  className="absolute bottom-1 end-1 h-4 w-4 rounded-full bg-emerald-400"
-                  style={{ border: '2px solid white', boxShadow: '0 0 0 1px rgba(52,211,153,.3)' }}
-                />
-              )}
+                {/* Delete X — visible on avatar area hover, only when image exists */}
+                {avatarUrl && !avatarUploading && (
+                  <button
+                    type="button"
+                    onClick={handleDeleteAvatar}
+                    className="absolute -top-1 -end-1 z-10 flex h-6 w-6 items-center justify-center rounded-full opacity-0 transition-opacity duration-200 group-hover/av:opacity-100"
+                    style={{ background: '#ef4444', border: '2px solid white', color: 'white' }}
+                    title="מחק תמונת פרופיל"
+                  >
+                    <X size={11} />
+                  </button>
+                )}
 
-              {/* Color picker swatches */}
+                {/* Online dot — positioned on the avatar circle, not the swatches */}
+                {!avatarUploading && (
+                  <span
+                    className="absolute bottom-1 end-1 h-4 w-4 rounded-full bg-emerald-400"
+                    style={{ border: '2px solid white', boxShadow: '0 0 0 1px rgba(52,211,153,.3)' }}
+                  />
+                )}
+              </div>
+
+              {/* Color picker swatches — outside the relative wrapper */}
               <div className="mt-2 flex flex-wrap justify-center gap-1.5">
                 {AVATAR_COLORS.map((color) => (
                   <button

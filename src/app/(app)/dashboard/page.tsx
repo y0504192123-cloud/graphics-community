@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { Briefcase, Image as ImageIcon, MessageSquare, ArrowLeft, MessagesSquare, Users, ChevronLeft, Sparkles } from 'lucide-react'
+import { Briefcase, Image as ImageIcon, MessageSquare, ArrowLeft, MessagesSquare, ChevronLeft, Sparkles, TrendingUp } from 'lucide-react'
 import Link from 'next/link'
 import type { Profile } from '@/types'
 
@@ -22,6 +22,7 @@ export default async function DashboardPage() {
   const { data: { user } } = await supabase.auth.getUser()
 
   const fifteenMinsAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString()
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
 
   const [
     profileRes,
@@ -30,7 +31,7 @@ export default async function DashboardPage() {
     unreadMsgRes,
     recentForumRes,
     recentInspirationRes,
-    newMembersRes,
+    weeklyThreadsRes,
     openJobsRes,
     onlineDesignersRes,
   ] = await Promise.all([
@@ -40,10 +41,29 @@ export default async function DashboardPage() {
     supabase.from('private_messages').select('id', { count: 'exact', head: true }).eq('receiver_id', user!.id).eq('is_read', false),
     admin.from('forum_threads').select('id, title, category_id, created_at, profiles(full_name, username, avatar_url)').order('created_at', { ascending: false }).limit(5),
     admin.from('inspiration_posts').select('id, title, image_url, created_at, profiles(full_name, username)').order('created_at', { ascending: false }).limit(4),
-    admin.from('profiles').select('id, full_name, username, avatar_url, specialization').order('created_at', { ascending: false }).limit(3),
+    admin.from('forum_threads').select('id, title, category_id, created_at, profiles(full_name, username)').gte('created_at', weekAgo).limit(20),
     admin.from('jobs').select('id, title, budget_min, budget_max, category, created_at').eq('status', 'open').order('created_at', { ascending: false }).limit(3),
     admin.from('profiles').select('id, full_name, username, avatar_url, specialization').gte('last_seen', fifteenMinsAgo).neq('id', user!.id).limit(6),
   ])
+
+  // Popular this week: sort weekly threads by reply count
+  const weeklyThreads = (weeklyThreadsRes.data ?? []) as any[]
+  const weeklyThreadIds = weeklyThreads.map((t) => t.id)
+  let popularThreads: any[] = []
+  if (weeklyThreadIds.length > 0) {
+    const { data: repliesData } = await admin
+      .from('forum_replies')
+      .select('thread_id')
+      .in('thread_id', weeklyThreadIds)
+    const replyMap: Record<string, number> = {}
+    for (const r of repliesData ?? []) {
+      replyMap[r.thread_id] = (replyMap[r.thread_id] ?? 0) + 1
+    }
+    popularThreads = [...weeklyThreads]
+      .sort((a, b) => (replyMap[b.id] ?? 0) - (replyMap[a.id] ?? 0))
+      .slice(0, 3)
+      .map((t) => ({ ...t, replyCount: replyMap[t.id] ?? 0 }))
+  }
 
   const profile = profileRes.data as Profile | null
   const userForumPosts = userForumRes.count ?? 0
@@ -51,14 +71,12 @@ export default async function DashboardPage() {
   const unreadMessages = unreadMsgRes.count ?? 0
   const recentForum = (recentForumRes.data ?? []) as any[]
   const recentInspiration = (recentInspirationRes.data ?? []) as any[]
-  const newMembers = (newMembersRes.data ?? []) as any[]
   const openJobs = (openJobsRes.data ?? []) as any[]
   const onlineDesigners = (onlineDesignersRes.data ?? []) as any[]
 
   const displayName = profile?.full_name ?? profile?.username ?? user?.email?.split('@')[0] ?? 'גרפיקאי'
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'בוקר טוב' : hour < 17 ? 'צהריים טובים' : 'ערב טוב'
-  const profileIncomplete = !profile?.avatar_url || !profile?.bio
 
   return (
     <div className="min-h-full" style={{ background: 'var(--bg)' }}>
@@ -227,38 +245,48 @@ export default async function DashboardPage() {
               )}
             </section>
 
-            {/* New members */}
+            {/* Popular this week */}
             <section>
-              <div className="mb-4 flex items-center gap-2">
-                <Users size={16} className="text-purple-400" />
-                <h2 className="text-sm font-bold" style={{ color: 'var(--tx)' }}>גרפיקאים חדשים שהצטרפו</h2>
+              <div className="mb-4 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <TrendingUp size={16} className="text-purple-400" />
+                  <h2 className="text-sm font-bold" style={{ color: 'var(--tx)' }}>פוסטים פופולריים השבוע</h2>
+                </div>
+                <Link href="/forum" className="text-xs font-semibold text-purple-500 hover:text-purple-600 transition-colors">
+                  לפורום →
+                </Link>
               </div>
-              <div className="grid gap-3 sm:grid-cols-3">
-                {newMembers.map((member: any) => (
+              <div className="overflow-hidden rounded-2xl" style={{ background: 'var(--s2)', border: '1px solid var(--bd)' }}>
+                {popularThreads.length === 0 ? (
+                  <div className="flex flex-col items-center gap-2 py-8 text-center">
+                    <TrendingUp size={24} style={{ color: 'var(--tx3)' }} />
+                    <p className="text-sm" style={{ color: 'var(--tx3)' }}>עדיין אין דיונים השבוע</p>
+                  </div>
+                ) : popularThreads.map((thread: any, i: number) => (
                   <Link
-                    key={member.id}
-                    href={`/profile/${member.id}`}
-                    className="group flex items-center gap-3 rounded-2xl p-3.5 transition-all duration-200 hover:scale-[1.02]"
-                    style={{ background: 'var(--s2)', border: '1px solid var(--bd)', boxShadow: '0 2px 8px rgba(0,0,0,.1)' }}
+                    key={thread.id}
+                    href={`/forum/${thread.category_id}/${thread.id}`}
+                    className="group flex items-center gap-3.5 px-5 py-3.5 transition hover:bg-purple-50/30"
+                    style={{ borderTop: i > 0 ? '1px solid var(--bd)' : undefined }}
                   >
-                    <div
-                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold overflow-hidden"
-                      style={{ background: 'linear-gradient(135deg, #7c3aed, #a855f7)', color: 'white' }}
+                    <span
+                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl text-sm font-bold"
+                      style={{ background: i < 3 ? 'rgba(124,58,237,.08)' : 'var(--inp)', color: i < 3 ? '#7c3aed' : 'var(--tx3)', border: '1px solid var(--bd)' }}
                     >
-                      {member.avatar_url ? (
-                        <img src={member.avatar_url} alt="" className="h-10 w-10 rounded-full object-cover" />
-                      ) : (
-                        <span style={{ color: 'white' }}>{(member.full_name ?? member.username ?? '?').charAt(0).toUpperCase()}</span>
-                      )}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold" style={{ color: 'var(--tx)' }}>
-                        {member.full_name ?? member.username ?? 'גרפיקאי'}
+                      {['🥇', '🥈', '🥉'][i] ?? i + 1}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold transition-colors group-hover:text-purple-600" style={{ color: 'var(--tx)' }}>
+                        {thread.title}
                       </p>
-                      <p className="truncate text-[11px]" style={{ color: 'var(--tx3)' }}>
-                        {member.specialization ?? 'גרפיקאי'}
+                      <p className="mt-0.5 text-[11px]" style={{ color: 'var(--tx3)' }}>
+                        {thread.profiles?.full_name ?? thread.profiles?.username ?? 'משתמש'} · {fmtDate(thread.created_at)}
                       </p>
                     </div>
+                    <span className="flex shrink-0 items-center gap-1 text-xs font-bold text-purple-600">
+                      <MessagesSquare size={11} />
+                      {thread.replyCount}
+                    </span>
                   </Link>
                 ))}
               </div>
@@ -352,30 +380,7 @@ export default async function DashboardPage() {
               </div>
             </div>
 
-            {/* Profile completion */}
-            {profileIncomplete && (
-              <div
-                className="rounded-2xl p-4"
-                style={{ background: 'rgba(234,179,8,.08)', border: '1px solid rgba(234,179,8,.25)' }}
-              >
-                <p className="text-sm font-semibold text-amber-700">השלם את הפרופיל שלך</p>
-                <p className="mt-1 text-xs" style={{ color: 'var(--tx3)' }}>
-                  {!profile?.avatar_url && !profile?.bio
-                    ? 'חסרה תמונת פרופיל ו-bio'
-                    : !profile?.avatar_url
-                    ? 'חסרה תמונת פרופיל'
-                    : 'חסר bio'}
-                </p>
-                <Link
-                  href="/profile"
-                  className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-amber-700 transition hover:text-amber-800"
-                >
-                  עדכן עכשיו <ArrowLeft size={11} />
-                </Link>
-              </div>
-            )}
           </div>
-
         </div>
       </div>
     </div>

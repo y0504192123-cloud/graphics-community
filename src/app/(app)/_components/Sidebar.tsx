@@ -111,7 +111,6 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
     { href: '/assets',           label: t.assets,      icon: <Library size={17} /> },
     { href: '/font-identifier',  label: t.fontId,      icon: <ScanText size={17} /> },
     { href: '/news',             label: t.news,        icon: <Newspaper size={17} /> },
-    { href: '/about',            label: t.about,       icon: <Info size={17} /> },
   ]
 
   const displayName = profile?.full_name ?? profile?.username ?? email.split('@')[0]
@@ -261,6 +260,14 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
           >
             <Settings size={13} />
             {t.settings}
+          </Link>
+          <Link
+            href="/about"
+            onClick={() => setOpen(false)}
+            className="flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium transition hover:bg-slate-100"
+            style={{ color: 'var(--tx3)', border: '1px solid var(--bd)' }}
+          >
+            <Info size={13} />
           </Link>
           <LogoutButton compact />
         </div>
