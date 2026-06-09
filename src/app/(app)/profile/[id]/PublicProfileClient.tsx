@@ -24,7 +24,7 @@ export default function PublicProfileClient({ profile, specs, userBadges, forumT
   return (
     <div className="min-h-full" style={{ background: 'var(--bg)' }}>
 
-      {/* Cover */}
+      {/* Cover banner */}
       <div className="relative h-44 overflow-hidden sm:h-52"
         style={{ background: 'linear-gradient(135deg, #6b21a8 0%, #7c3aed 40%, #a855f7 70%, #6366f1 100%)' }}>
         <div className="grid-pattern absolute inset-0 opacity-20" />
@@ -32,10 +32,10 @@ export default function PublicProfileClient({ profile, specs, userBadges, forumT
           style={{ background: 'radial-gradient(circle, rgba(255,255,255,.4) 0%, transparent 70%)', filter: 'blur(30px)' }} />
       </div>
 
-      <div className="mx-auto max-w-4xl px-4 pb-12 sm:px-6">
+      <div className="mx-auto max-w-4xl px-4 sm:px-6">
 
-        {/* Profile header */}
-        <div className="-mt-14 mb-5 flex flex-wrap items-end gap-4">
+        {/* Avatar — overlaps the banner */}
+        <div className="-mt-14 mb-3 flex items-end justify-between gap-4">
           <div
             className="relative flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-full text-xl font-bold sm:h-28 sm:w-28"
             style={{
@@ -52,64 +52,75 @@ export default function PublicProfileClient({ profile, specs, userBadges, forumT
             )}
           </div>
 
-          <div className="flex-1 pb-1">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h1 className="text-xl font-bold sm:text-2xl" style={{ color: 'var(--tx)' }}>{displayName}</h1>
-                {profile.username && (
-                  <p className="text-sm" style={{ color: 'var(--tx3)' }} dir="ltr">@{profile.username}</p>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                {!isOwnProfile && currentUserId && (
-                  <Link
-                    href={`/chat?dm=${profile.id}`}
-                    className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold text-white transition hover:opacity-90 hover:scale-[1.02] shrink-0"
-                    style={{ background: 'linear-gradient(135deg, #7c3aed, #6d28d9)', boxShadow: '0 4px 16px rgba(124,58,237,.35)' }}
-                  >
-                    <MessageSquare size={14} />
-                    {t.profile.sendMessage}
-                  </Link>
-                )}
-                {isOwnProfile && (
-                  <Link
-                    href="/settings"
-                    className="flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold transition hover:opacity-80 shrink-0"
-                    style={{ borderColor: 'var(--bd)', color: 'var(--tx2)' }}
-                  >
-                    {t.profile.editProfile}
-                  </Link>
-                )}
-              </div>
-            </div>
-
-            {userBadges.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {userBadges.map((b) => (
-                  <span key={b.id} title={b.description ?? b.name}
-                    className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-bold"
-                    style={{ background: `${b.color}18`, color: b.color, border: `1px solid ${b.color}30` }}>
-                    <span className="text-sm">{b.icon}</span>
-                    {b.name}
-                  </span>
-                ))}
-              </div>
+          {/* Action button — inside the same row as avatar so it aligns to bottom */}
+          <div className="pb-1">
+            {!isOwnProfile && currentUserId && (
+              <Link
+                href={`/chat?dm=${profile.id}`}
+                className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold text-white transition hover:opacity-90 hover:scale-[1.02]"
+                style={{ background: 'linear-gradient(135deg, #7c3aed, #6d28d9)', boxShadow: '0 4px 16px rgba(124,58,237,.35)' }}
+              >
+                <MessageSquare size={14} />
+                {t.profile.sendMessage}
+              </Link>
             )}
-
-            {specs.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-2">
-                {specs.map((spec) => (
-                  <span key={spec.id}
-                    className="flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold"
-                    style={{ background: 'rgba(124,58,237,.1)', color: '#7c3aed', border: '1px solid rgba(124,58,237,.2)' }}>
-                    <Star size={9} />
-                    {spec.name}
-                  </span>
-                ))}
-              </div>
+            {isOwnProfile && (
+              <Link
+                href="/settings"
+                className="flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold transition hover:opacity-80"
+                style={{ borderColor: 'var(--bd)', color: 'var(--tx2)' }}
+              >
+                {t.profile.editProfile}
+              </Link>
             )}
           </div>
         </div>
+
+        {/* Name + username — fully below banner */}
+        <div className="mb-3">
+          <h1 className="text-xl font-bold sm:text-2xl" style={{ color: 'var(--tx)' }}>{displayName}</h1>
+          {profile.username && (
+            <p className="text-sm" style={{ color: 'var(--tx3)' }} dir="ltr">@{profile.username}</p>
+          )}
+        </div>
+
+        {/* Badges */}
+        {userBadges.length > 0 && (
+          <div className="mb-3 flex flex-wrap gap-1.5">
+            {userBadges.map((b) => (
+              <span key={b.id} title={b.description ?? b.name}
+                className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-bold"
+                style={{ background: `${b.color}18`, color: b.color, border: `1px solid ${b.color}30` }}>
+                <span className="text-sm">{b.icon}</span>
+                {b.name}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Specializations */}
+        {specs.length > 0 && (
+          <div className="mb-4 flex flex-wrap gap-2">
+            {specs.map((spec) => (
+              <span key={spec.id}
+                className="flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold"
+                style={{ background: 'rgba(124,58,237,.1)', color: '#7c3aed', border: '1px solid rgba(124,58,237,.2)' }}>
+                <Star size={9} />
+                {spec.name}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Specialization text field fallback */}
+        {profile.specialization && specs.length === 0 && (
+          <div className="mb-4">
+            <span className="rounded-full px-3 py-1 text-sm font-semibold"
+              style={{ background: 'rgba(124,58,237,.1)', color: '#7c3aed', border: '1px solid rgba(124,58,237,.2)' }}>
+              {profile.specialization}
+            </span>
+          </div>
+        )}
 
         {/* Stats row */}
         <div className="mb-5 flex flex-wrap gap-4">
@@ -146,16 +157,6 @@ export default function PublicProfileClient({ profile, specs, userBadges, forumT
           )}
         </div>
 
-        {/* Specialization text field */}
-        {profile.specialization && specs.length === 0 && (
-          <div className="mb-4 flex items-center gap-2">
-            <span className="rounded-full px-3 py-1 text-sm font-semibold"
-              style={{ background: 'rgba(124,58,237,.1)', color: '#7c3aed', border: '1px solid rgba(124,58,237,.2)' }}>
-              {profile.specialization}
-            </span>
-          </div>
-        )}
-
         {/* Bio */}
         {profile.bio && (
           <p className="mb-6 max-w-2xl rounded-2xl px-5 py-4 text-sm leading-relaxed"
@@ -164,6 +165,7 @@ export default function PublicProfileClient({ profile, specs, userBadges, forumT
           </p>
         )}
 
+        <div className="pb-12" />
       </div>
     </div>
   )

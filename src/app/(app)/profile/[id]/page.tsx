@@ -18,20 +18,15 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 
 export default async function UserProfilePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const admin = createAdminClient()
   const supabase = await createClient()
+  const admin = createAdminClient()
 
-  const [
-    profileRes, specsRes, selectedSpecsRes,
-    currentUserRes, threadsRes, repliesRes, pbRes,
-  ] = await Promise.all([
-    admin.from('profiles').select('*').eq('id', id).single(),
-    admin.from('specializations').select('*'),
-    admin.from('profile_specializations').select('specialization_id').eq('profile_id', id),
+  // Use supabase (user-auth) for data any logged-in user can read
+  const [currentUserRes, profileRes, specsRes, selectedSpecsRes] = await Promise.all([
     supabase.auth.getUser(),
-    admin.from('forum_threads').select('id', { count: 'exact', head: true }).eq('user_id', id),
-    admin.from('forum_replies').select('id', { count: 'exact', head: true }).eq('user_id', id),
-    admin.from('profile_badges').select('badge_id').eq('user_id', id),
+    supabase.from('profiles').select('*').eq('id', id).single(),
+    supabase.from('specializations').select('*').order('name', { ascending: true }),
+    supabase.from('profile_specializations').select('specialization_id').eq('profile_id', id),
   ])
 
   if (!profileRes.data) notFound()
@@ -41,8 +36,16 @@ export default async function UserProfilePage({ params }: { params: Promise<{ id
   const selectedSpecIds = (selectedSpecsRes.data ?? []).map((r) => r.specialization_id as string)
   const specs = allSpecs.filter((s) => selectedSpecIds.includes(s.id))
   const currentUserId = currentUserRes.data.user?.id
-  const forumTotal = (threadsRes.count ?? 0) + (repliesRes.count ?? 0)
   const isOwnProfile = currentUserId === id
+
+  // Forum & badge counts — use admin for cross-user access
+  const [threadsRes, repliesRes, pbRes] = await Promise.all([
+    admin.from('forum_threads').select('id', { count: 'exact', head: true }).eq('user_id', id),
+    admin.from('forum_replies').select('id', { count: 'exact', head: true }).eq('user_id', id),
+    admin.from('profile_badges').select('badge_id').eq('user_id', id),
+  ])
+
+  const forumTotal = (threadsRes.count ?? 0) + (repliesRes.count ?? 0)
 
   const pbBadgeIds = (pbRes.data ?? []).map((r: any) => r.badge_id as string)
   let userBadges: UserBadge[] = []
