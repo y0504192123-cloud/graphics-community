@@ -7,8 +7,9 @@ import {
   ImageIcon, X, Bold, Italic, List, Quote, ZoomIn, ChevronRight,
   AlertCircle, Bell, BellRing, Link2, Check, Tag, Volume2,
 } from 'lucide-react'
-import type { ForumThread, ForumReply, Profile } from '@/types'
+import type { ForumThread, ForumReply, Profile, UserBadge } from '@/types'
 import ReportButton from '@/components/ReportButton'
+import BadgeDisplay from '@/components/BadgeDisplay'
 import {
   createReply, editReply, deleteReply, deleteThread,
   toggleLike, markBestAnswer, getForumImageUploadUrl,
@@ -489,6 +490,7 @@ type Props = {
   isAdmin: boolean
   categoryId: string
   isThreadAuthor: boolean
+  badgesMap?: Record<string, UserBadge[]>
 }
 
 const REPLIES_PER_PAGE = 20
@@ -498,6 +500,7 @@ const REPLY_DRAFT_KEY_PREFIX = 'replyDraft_'
 
 export default function ThreadClient({
   thread, replies: initialReplies, currentUserId, currentProfile, isAdmin, categoryId, isThreadAuthor,
+  badgesMap = {},
 }: Props) {
   const router = useRouter()
   const [, startTransition] = useTransition()
@@ -806,6 +809,7 @@ export default function ThreadClient({
                 {(thread.profiles as any)?.role === 'admin' && (
                   <span className="rounded-md px-1.5 py-0.5 text-[10px] font-bold" style={{ background: 'rgba(236,72,153,.12)', color: '#db2777' }}>מנהל</span>
                 )}
+                {badgesMap[thread.user_id] && <BadgeDisplay badges={badgesMap[thread.user_id]} max={2} />}
                 <span className="text-xs" style={{ color: 'var(--tx3)' }}>{fmtDate(thread.created_at)}</span>
               </div>
 
@@ -989,6 +993,7 @@ export default function ThreadClient({
                         {(reply.profiles as any)?.role === 'admin' && (
                           <span className="rounded-md px-1.5 py-0.5 text-[10px] font-bold" style={{ background: 'rgba(236,72,153,.12)', color: '#db2777' }}>מנהל</span>
                         )}
+                        {badgesMap[reply.user_id] && <BadgeDisplay badges={badgesMap[reply.user_id]} max={2} />}
                         {reply.is_best_answer && (
                           <span className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold" style={{ background: 'rgba(16,185,129,.12)', color: '#059669' }}>
                             <CheckCircle2 size={9} /> הכי טוב

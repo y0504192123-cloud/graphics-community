@@ -16,7 +16,7 @@ export default async function AdminPage() {
   if (profileData?.role !== 'admin') redirect('/dashboard')
 
   const admin = createAdminClient()
-  const [pendingRes, activeRes, newsRes, newsCatRes, catRes, specsRes, inspCatsRes, jobCatsRes, assetCatsRes, logoRes, forumCatsRes, fontsRes, fontWeightsRes, reportsRes, termsRes, privacyRes] = await Promise.all([
+  const [pendingRes, activeRes, newsRes, newsCatRes, catRes, specsRes, inspCatsRes, jobCatsRes, assetCatsRes, logoRes, forumCatsRes, fontsRes, fontWeightsRes, reportsRes, termsRes, privacyRes, badgesRes, profileBadgesRes, dotWRes] = await Promise.all([
     admin.from('profiles').select('*').eq('status', 'pending').order('created_at', { ascending: false }),
     admin.from('profiles').select('*').eq('status', 'active').order('created_at', { ascending: false }),
     admin.from('news').select('*, profiles(*), news_categories(*)').order('created_at', { ascending: false }),
@@ -33,6 +33,9 @@ export default async function AdminPage() {
     admin.from('content_reports').select('*, reporter:profiles!reporter_id(id, full_name, username)').order('created_at', { ascending: false }).limit(200),
     admin.from('site_settings').select('value').eq('key', 'terms_of_service').single(),
     admin.from('site_settings').select('value').eq('key', 'privacy_policy').single(),
+    admin.from('user_badges').select('*').order('created_at', { ascending: true }),
+    admin.from('profile_badges').select('*, user_badges(*)').order('assigned_at', { ascending: false }),
+    admin.from('site_settings').select('value').eq('key', 'designer_of_week').single(),
   ])
 
   // Auto-archive expired news on every admin page load
@@ -54,6 +57,25 @@ export default async function AdminPage() {
   const reports               = (reportsRes.data     ?? []) as any[]
   const termsContent          = termsRes.data?.value   ?? ''
   const privacyContent        = privacyRes.data?.value ?? ''
+  const allBadges             = (badgesRes.data        ?? []) as any[]
+  const allProfileBadges      = (profileBadgesRes.data ?? []) as any[]
+  const dotWRaw               = dotWRes.data?.value ?? null
+
+  // Build map: userId → badges[]
+  const userBadgesMap: Record<string, any[]> = {}
+  for (const pb of allProfileBadges) {
+    const uid = pb.user_id
+    if (!userBadgesMap[uid]) userBadgesMap[uid] = []
+    if (pb.user_badges) userBadgesMap[uid].push(pb.user_badges)
+  }
+
+  let designerOfWeek: { userId: string; name: string } | null = null
+  if (dotWRaw) {
+    try {
+      const parsed = typeof dotWRaw === 'string' ? JSON.parse(dotWRaw) : dotWRaw
+      if (parsed?.userId) designerOfWeek = parsed
+    } catch {}
+  }
 
   /* ── Server Actions ── */
 
@@ -834,6 +856,52 @@ export default async function AdminPage() {
     revalidatePath('/admin')
   }
 
+  async function createBadge(name: string, description: string, color: string, icon: string): Promise<{ error?: string }> {
+    'use server'
+    const { error } = await createAdminClient().from('user_badges').insert({ name, description: description || null, color, icon, is_auto: false })
+    if (error) return { error: error.message }
+    revalidatePath('/admin')
+    return {}
+  }
+
+  async function deleteBadge(id: string): Promise<void> {
+    'use server'
+    await createAdminClient().from('user_badges').delete().eq('id', id)
+    revalidatePath('/admin')
+  }
+
+  async function assignBadge(userId: string, badgeId: string): Promise<{ error?: string }> {
+    'use server'
+    const supabaseServer = await createClient()
+    const { data: { user: adminUser } } = await supabaseServer.auth.getUser()
+    const { error } = await createAdminClient().from('profile_badges').insert({ user_id: userId, badge_id: badgeId, assigned_by: adminUser?.id ?? null })
+    if (error) return { error: error.message }
+    revalidatePath('/admin')
+    return {}
+  }
+
+  async function revokeBadge(userId: string, badgeId: string): Promise<void> {
+    'use server'
+    await createAdminClient().from('profile_badges').delete().eq('user_id', userId).eq('badge_id', badgeId)
+    revalidatePath('/admin')
+  }
+
+  async function setDesignerOfWeek(userId: string): Promise<void> {
+    'use server'
+    const { data: profile } = await createAdminClient().from('profiles').select('full_name, username').eq('id', userId).single()
+    const name = profile?.full_name ?? profile?.username ?? 'גרפיקאי'
+    await createAdminClient().from('site_settings').upsert({ key: 'designer_of_week', value: JSON.stringify({ userId, name }) }, { onConflict: 'key' })
+    revalidatePath('/admin')
+    revalidatePath('/dashboard')
+  }
+
+  async function clearDesignerOfWeek(): Promise<void> {
+    'use server'
+    await createAdminClient().from('site_settings').upsert({ key: 'designer_of_week', value: '{}' }, { onConflict: 'key' })
+    revalidatePath('/admin')
+    revalidatePath('/dashboard')
+  }
+
   async function deleteReportedContent(reportId: string, contentType: string, contentId: string) {
     'use server'
     const a = createAdminClient()
@@ -908,6 +976,15 @@ export default async function AdminPage() {
       privacyContent={privacyContent}
       saveTerms={saveTerms}
       savePrivacy={savePrivacy}
+      badges={allBadges}
+      userBadgesMap={userBadgesMap}
+      designerOfWeek={designerOfWeek}
+      createBadge={createBadge}
+      deleteBadge={deleteBadge}
+      assignBadge={assignBadge}
+      revokeBadge={revokeBadge}
+      setDesignerOfWeek={setDesignerOfWeek}
+      clearDesignerOfWeek={clearDesignerOfWeek}
     />
   )
 }

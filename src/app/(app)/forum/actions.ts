@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { sendForumReplyEmail } from '@/lib/email'
 
 export async function createThread(categoryId: string, title: string, content: string, imageUrls?: string[], tags?: string[]): Promise<{ threadId?: string; error?: string }> {
   const supabase = await createClient()
@@ -31,7 +32,7 @@ export async function createReply(threadId: string, categoryId: string, content:
     console.error('[createReply] reply insert error:', replyError)
     return { error: 'שגיאה בשמירת התגובה — נסה שוב' }
   }
-  const { data: thread } = await admin.from('forum_threads').select('title, followers').eq('id', threadId).single()
+  const { data: thread } = await admin.from('forum_threads').select('title, followers, user_id').eq('id', threadId).single()
   await admin.from('forum_threads').update({ updated_at: new Date().toISOString() }).eq('id', threadId)
   try {
     const followerIds: string[] = ((thread?.followers ?? []) as string[]).filter((id: string) => id !== user.id)
@@ -44,6 +45,23 @@ export async function createReply(threadId: string, categoryId: string, content:
         }))
       )
       if (notifError) console.error('[createReply] notification insert error:', notifError)
+
+      // Send email notifications in background
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
+      const threadUrl = `${appUrl}/forum/${categoryId}/${threadId}`
+      const [replierRes, followersRes, logoRes] = await Promise.all([
+        admin.from('profiles').select('full_name, username').eq('id', user.id).single(),
+        admin.from('profiles').select('id, email, full_name').in('id', followerIds),
+        admin.from('site_settings').select('value').eq('key', 'logo_url').single(),
+      ])
+      const replierName = replierRes.data?.full_name ?? replierRes.data?.username ?? null
+      const logoUrl = logoRes.data?.value ?? null
+      for (const fp of (followersRes.data ?? [])) {
+        if (fp.email) {
+          sendForumReplyEmail(fp.email, fp.full_name, replierName, thread?.title ?? '', threadUrl, logoUrl)
+            .catch(() => {})
+        }
+      }
     }
   } catch (e) { console.error('[createReply] notification error:', e) }
   revalidatePath(`/forum/${categoryId}/${threadId}`)

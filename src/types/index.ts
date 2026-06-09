@@ -280,3 +280,22 @@ export type ForumReply = {
   like_count?: number
   user_liked?: boolean
 }
+
+export type UserBadge = {
+  id: string
+  name: string
+  description: string | null
+  color: string
+  icon: string
+  is_auto: boolean
+  created_at: string
+}
+
+export type ProfileBadge = {
+  id: string
+  user_id: string
+  badge_id: string
+  assigned_at: string
+  assigned_by: string | null
+  user_badges?: UserBadge
+}

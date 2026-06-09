@@ -34,6 +34,7 @@ export default async function DashboardPage() {
     weeklyThreadsRes,
     openJobsRes,
     onlineDesignersRes,
+    dotWRes,
   ] = await Promise.all([
     supabase.from('profiles').select('*').eq('id', user!.id).single(),
     supabase.from('forum_threads').select('id', { count: 'exact', head: true }).eq('user_id', user!.id),
@@ -44,6 +45,7 @@ export default async function DashboardPage() {
     admin.from('forum_threads').select('id, title, category_id, created_at, profiles(full_name, username)').gte('created_at', weekAgo).limit(20),
     admin.from('jobs').select('id, title, budget_min, budget_max, category, created_at').eq('status', 'open').order('created_at', { ascending: false }).limit(3),
     admin.from('profiles').select('id, full_name, username, avatar_url, specialization').gte('last_seen', fifteenMinsAgo).neq('id', user!.id).limit(6),
+    admin.from('site_settings').select('value').eq('key', 'designer_of_week').single(),
   ])
 
   // Popular this week: sort weekly threads by reply count
@@ -73,6 +75,18 @@ export default async function DashboardPage() {
   const recentInspiration = (recentInspirationRes.data ?? []) as any[]
   const openJobs = (openJobsRes.data ?? []) as any[]
   const onlineDesigners = (onlineDesignersRes.data ?? []) as any[]
+
+  let designerOfWeek: { userId: string; name: string; profile?: any } | null = null
+  const dotWRaw = dotWRes.data?.value
+  if (dotWRaw) {
+    try {
+      const parsed = typeof dotWRaw === 'string' ? JSON.parse(dotWRaw) : dotWRaw
+      if (parsed?.userId) {
+        const { data: dotWProfile } = await admin.from('profiles').select('id, full_name, username, avatar_url, avatar_color, specialization').eq('id', parsed.userId).single()
+        designerOfWeek = { ...parsed, profile: dotWProfile }
+      }
+    } catch {}
+  }
 
   const displayName = profile?.full_name ?? profile?.username ?? user?.email?.split('@')[0] ?? 'גרפיקאי'
   const hour = new Date().getHours()
@@ -293,8 +307,38 @@ export default async function DashboardPage() {
             </section>
           </div>
 
-          {/* Sidebar: open jobs + online designers */}
+          {/* Sidebar: designer of week + open jobs + online designers */}
           <div className="space-y-6">
+
+            {/* Designer of the Week */}
+            {designerOfWeek?.profile && (
+              <div>
+                <div className="mb-3 flex items-center gap-2">
+                  <span className="text-amber-500">🏆</span>
+                  <h3 className="text-sm font-bold" style={{ color: 'var(--tx)' }}>גרפיקאי השבוע</h3>
+                </div>
+                <Link
+                  href={`/profile/${designerOfWeek.userId}`}
+                  className="flex items-center gap-3 rounded-2xl p-4 transition-all hover:opacity-90"
+                  style={{ background: 'linear-gradient(135deg, rgba(251,191,36,.12), rgba(245,158,11,.08))', border: '1px solid rgba(251,191,36,.3)' }}
+                >
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full font-bold text-sm"
+                    style={{ background: designerOfWeek.profile.avatar_color ?? 'linear-gradient(135deg,#7c3aed,#a855f7)', color: 'white' }}>
+                    {designerOfWeek.profile.avatar_url
+                      ? <img src={designerOfWeek.profile.avatar_url} alt="" className="h-12 w-12 rounded-full object-cover" />
+                      : (designerOfWeek.profile.full_name ?? designerOfWeek.profile.username ?? '?').split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()
+                    }
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-bold text-sm" style={{ color: 'var(--tx)' }}>{designerOfWeek.profile.full_name ?? designerOfWeek.profile.username}</p>
+                    {designerOfWeek.profile.specialization && (
+                      <p className="truncate text-xs" style={{ color: 'var(--tx3)' }}>{designerOfWeek.profile.specialization}</p>
+                    )}
+                  </div>
+                  <span className="ms-auto text-xl">🌟</span>
+                </Link>
+              </div>
+            )}
 
             {/* Open jobs */}
             <div>

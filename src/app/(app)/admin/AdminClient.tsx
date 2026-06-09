@@ -5,10 +5,11 @@ import {
   ShieldCheck, Users, Clock, CheckCircle2, XCircle, Newspaper,
   Hash, Plus, Trash2, ExternalLink, Phone, MapPin, Briefcase, Star, X, Palette, FolderOpen, ImageIcon, MessagesSquare, ScanText, Flag, FileText, Save,
 } from 'lucide-react'
-import type { Profile, NewsItem, NewsCategory, ChatCategory, Specialization, InspirationCategory, JobCategory, AssetCategory, ForumCategory, Font, FontWeight, ContentReport } from '@/types'
+import type { Profile, NewsItem, NewsCategory, ChatCategory, Specialization, InspirationCategory, JobCategory, AssetCategory, ForumCategory, Font, FontWeight, ContentReport, UserBadge } from '@/types'
 import FontsTab from './FontsTab'
+import BadgesTab from './BadgesTab'
 
-type Tab = 'pending' | 'users' | 'news' | 'categories' | 'specializations' | 'insp_cats' | 'job_cats' | 'asset_cats' | 'branding' | 'forum_cats' | 'fonts' | 'reports' | 'terms'
+type Tab = 'pending' | 'users' | 'news' | 'categories' | 'specializations' | 'insp_cats' | 'job_cats' | 'asset_cats' | 'branding' | 'forum_cats' | 'fonts' | 'reports' | 'terms' | 'badges'
 
 type Props = {
   pendingUsers:    Profile[]
@@ -67,6 +68,15 @@ type Props = {
   privacyContent:              string
   saveTerms:                   (content: string) => Promise<{ error?: string }>
   savePrivacy:                 (content: string) => Promise<{ error?: string }>
+  badges:                      UserBadge[]
+  userBadgesMap:               Record<string, UserBadge[]>
+  designerOfWeek:              { userId: string; name: string } | null
+  createBadge:                 (name: string, description: string, color: string, icon: string) => Promise<{ error?: string }>
+  deleteBadge:                 (id: string) => Promise<void>
+  assignBadge:                 (userId: string, badgeId: string) => Promise<{ error?: string }>
+  revokeBadge:                 (userId: string, badgeId: string) => Promise<void>
+  setDesignerOfWeek:           (userId: string) => Promise<void>
+  clearDesignerOfWeek:         () => Promise<void>
 }
 
 const inputCls = 'w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none transition-all placeholder:text-slate-400 hover:border-slate-300 focus:border-purple-400 focus:ring-2 focus:ring-purple-100'
@@ -84,6 +94,7 @@ const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'forum_cats',      label: 'קטגוריות פורום',     icon: <MessagesSquare size={15} /> },
   { id: 'fonts',           label: 'מאגר פונטים',        icon: <ScanText size={15} /> },
   { id: 'branding',        label: 'מיתוג',              icon: <ImageIcon size={15} /> },
+  { id: 'badges',          label: 'תגים וגרפיקאי השבוע', icon: <Star size={15} /> },
   { id: 'reports',         label: 'דיווחים',             icon: <Flag size={15} /> },
   { id: 'terms',           label: 'תנאים ומדיניות',     icon: <FileText size={15} /> },
 ]
@@ -107,6 +118,8 @@ export default function AdminClient({
   recomputeHashBatch, rebuildPreviewsBatch, computeEmbeddingBatch, buildLetterEmbeddingsBatch,
   reports, updateReportStatus, deleteReportedContent,
   termsContent: initialTerms, privacyContent: initialPrivacy, saveTerms, savePrivacy,
+  badges, userBadgesMap, designerOfWeek,
+  createBadge, deleteBadge, assignBadge, revokeBadge, setDesignerOfWeek, clearDesignerOfWeek,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('pending')
   const [isPending, startTransition] = useTransition()
@@ -1085,6 +1098,22 @@ export default function AdminClient({
             </div>
           )
         })()}
+
+        {/* ── Badges & Designer of Week ── */}
+        {activeTab === 'badges' && (
+          <BadgesTab
+            badges={badges}
+            activeUsers={activeUsers}
+            userBadgesMap={userBadgesMap}
+            designerOfWeek={designerOfWeek}
+            createBadge={createBadge}
+            deleteBadge={deleteBadge}
+            assignBadge={assignBadge}
+            revokeBadge={revokeBadge}
+            setDesignerOfWeek={setDesignerOfWeek}
+            clearDesignerOfWeek={clearDesignerOfWeek}
+          />
+        )}
 
         {/* ── Terms & Privacy ── */}
         {activeTab === 'terms' && (

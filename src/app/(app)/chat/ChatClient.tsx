@@ -8,8 +8,9 @@ import {
   Bell, BellOff, Volume2,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import type { Message, Profile, PrivateMessage } from '@/types'
+import type { Message, Profile, PrivateMessage, UserBadge } from '@/types'
 import ReportButton from '@/components/ReportButton'
+import BadgeDisplay from '@/components/BadgeDisplay'
 
 // ─────────────────────────────────────────────────────────
 // Types
@@ -38,6 +39,7 @@ type Props = {
   initialDmUserId: string | null
   initialDmProfile: Profile | null
   initialJobQuote: string | null
+  badgesMap?: Record<string, UserBadge[]>
 }
 
 type Convo = {
@@ -435,6 +437,7 @@ export default function ChatClient({
   sendPrivateMessage, deletePrivateMessage, editPrivateMessage, toggleReaction,
   markMessagesRead, getChatUploadUrl,
   initialDmUserId, initialDmProfile, initialJobQuote,
+  badgesMap = {},
 }: Props) {
 
   // ── Layout ──
@@ -1377,6 +1380,7 @@ export default function ChatClient({
                   {!sameUser && (
                     <div className={`flex items-center gap-2 px-1 ${isOwn ? 'flex-row-reverse' : ''}`}>
                       <span className="text-xs font-semibold" style={{ color: 'var(--tx2)' }}>{isOwn ? 'אתה' : name}</span>
+                      {!isOwn && badgesMap[msg.user_id] && <BadgeDisplay badges={badgesMap[msg.user_id]} max={1} />}
                       <span className="text-[10px]" style={{ color: 'var(--tx3)' }} suppressHydrationWarning>{fmtTime(msg.created_at)}</span>
                     </div>
                   )}

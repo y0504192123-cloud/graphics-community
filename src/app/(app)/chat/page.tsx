@@ -93,6 +93,15 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
   const pmProfilesMap = Object.fromEntries(((pmProfilesRes.data ?? []) as Profile[]).map(p => [p.id, p]))
   const replyMap = Object.fromEntries(((replyMsgsRes.data ?? []) as { id: string; content: string | null; sender_id: string }[]).map(r => [r.id, r]))
 
+  // Fetch badges for all participants
+  const allChatUserIds = Array.from(new Set([...pmUserIds, user.id]))
+  const { data: chatBadgesData } = await admin.from('profile_badges').select('user_id, user_badges(*)').in('user_id', allChatUserIds)
+  const chatBadgesMap: Record<string, any[]> = {}
+  for (const pb of (chatBadgesData ?? []) as any[]) {
+    if (!chatBadgesMap[pb.user_id]) chatBadgesMap[pb.user_id] = []
+    if (pb.user_badges) chatBadgesMap[pb.user_id].push(pb.user_badges)
+  }
+
   const privateMessages = msgsRaw.map(m => ({
     ...m,
     sender: pmProfilesMap[m.sender_id],
@@ -136,6 +145,7 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
       getChatUploadUrl={getChatUploadUrl}
       editPrivateMessage={editPrivateMessage}
       toggleReaction={toggleReaction}
+      badgesMap={chatBadgesMap}
     />
   )
 }

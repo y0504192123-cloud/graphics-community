@@ -37,8 +37,19 @@ export default async function ThreadPage({ params }: Props) {
   // Fetch all author profiles in one query
   const repliesRaw = (repliesRes.data ?? []) as ForumReply[]
   const userIds = Array.from(new Set([threadRes.data!.user_id, ...repliesRaw.map(r => r.user_id)]))
-  const { data: profilesData } = await admin.from('profiles').select('id, full_name, username, avatar_url, role').in('id', userIds)
+  const [profilesRes2, badgesRes] = await Promise.all([
+    admin.from('profiles').select('id, full_name, username, avatar_url, role').in('id', userIds),
+    admin.from('profile_badges').select('user_id, user_badges(*)').in('user_id', userIds),
+  ])
+  const profilesData = profilesRes2.data
   const profilesMap = Object.fromEntries((profilesData ?? []).map((p) => [p.id, p as unknown as Profile]))
+
+  // Build badgesMap: userId → UserBadge[]
+  const badgesMap: Record<string, any[]> = {}
+  for (const pb of (badgesRes.data ?? []) as any[]) {
+    if (!badgesMap[pb.user_id]) badgesMap[pb.user_id] = []
+    if (pb.user_badges) badgesMap[pb.user_id].push(pb.user_badges)
+  }
 
   const thread = { ...threadRes.data, profiles: profilesMap[threadRes.data!.user_id] ?? null } as ForumThread & { profiles?: Profile }
 
@@ -99,6 +110,7 @@ export default async function ThreadPage({ params }: Props) {
         isAdmin={isAdmin}
         categoryId={categoryId}
         isThreadAuthor={isThreadAuthor}
+        badgesMap={badgesMap}
       />
     </div>
   )

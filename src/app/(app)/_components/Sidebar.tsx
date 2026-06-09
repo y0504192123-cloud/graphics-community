@@ -1,8 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Briefcase, MessageSquare, Library, Menu, X, ShieldCheck, Palette, Globe, MessagesSquare, ScanText, LayoutGrid, Info, Settings, Newspaper } from 'lucide-react'
+import { usePathname, useRouter } from 'next/navigation'
+import { LayoutDashboard, Briefcase, MessageSquare, Library, Menu, X, ShieldCheck, Palette, Globe, MessagesSquare, ScanText, LayoutGrid, Info, Settings, Newspaper, Search } from 'lucide-react'
 import { useState, useEffect, useMemo } from 'react'
 import LogoutButton from './LogoutButton'
 import { useLanguage } from '@/components/LanguageProvider'
@@ -29,7 +29,9 @@ const labels = {
 
 export default function Sidebar({ profile, email, currentUserId, logoUrl }: Props) {
   const pathname = usePathname()
+  const router = useRouter()
   const [open, setOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
   const { lang, toggleLang } = useLanguage()
   const t = labels[lang]
   const [unreadCount, setUnreadCount] = useState(0)
@@ -127,6 +129,22 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
       )}
 
       <div className="mx-4 mb-3 h-px" style={{ background: 'var(--bd)' }} />
+
+      {/* Search */}
+      <div className="mx-3 mb-2">
+        <form onSubmit={e => { e.preventDefault(); if (searchQuery.trim()) { router.push(`/search?q=${encodeURIComponent(searchQuery.trim())}`); setOpen(false) } }}>
+          <div className="relative">
+            <Search size={13} className="absolute end-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--tx3)' }} />
+            <input
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder={lang === 'he' ? 'חיפוש...' : 'Search...'}
+              className="w-full rounded-xl pe-3 ps-8 py-2 text-xs outline-none transition"
+              style={{ background: 'var(--inp)', border: '1px solid var(--bd)', color: 'var(--tx)' }}
+            />
+          </div>
+        </form>
+      </div>
 
       {/* Member counter */}
       {totalMembers > 0 && (
