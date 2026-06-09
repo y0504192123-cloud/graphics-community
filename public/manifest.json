@@ -26,13 +26,17 @@
   "shortcuts": [
     {
       "name": "פורום",
+      "short_name": "פורום",
       "url": "/forum",
-      "description": "פתח את הפורום"
+      "description": "פתח את הפורום",
+      "icons": [{ "src": "/icons/icon-192.svg", "sizes": "192x192" }]
     },
     {
-      "name": "צ'אט",
+      "name": "צאט",
+      "short_name": "צאט",
       "url": "/chat",
-      "description": "פתח את הצ'אט"
+      "description": "פתח את הצאט",
+      "icons": [{ "src": "/icons/icon-192.svg", "sizes": "192x192" }]
     }
   ]
 }

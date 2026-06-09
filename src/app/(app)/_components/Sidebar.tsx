@@ -7,7 +7,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import LogoutButton from './LogoutButton'
 import { useLanguage, useT } from '@/components/LanguageProvider'
 import { createClient } from '@/lib/supabase/client'
-import { playPing } from '@/lib/sound'
+import { playPing, resumeAudio } from '@/lib/sound'
 import type { Profile } from '@/types'
 
 type NavItem = { href: string; label: string; icon: React.ReactNode }
@@ -26,9 +26,13 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
   const [totalMembers, setTotalMembers] = useState(0)
   const [onlineCount, setOnlineCount] = useState(0)
   const supabase = useMemo(() => createClient(), [])
-  // null = not yet initialized (skip sound on first load)
   const prevPmRef = useRef<number | null>(null)
   const prevForumRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    document.addEventListener('click', resumeAudio)
+    return () => document.removeEventListener('click', resumeAudio)
+  }, [])
 
   useEffect(() => {
     if (!currentUserId) return

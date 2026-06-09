@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { playPing } from '@/lib/sound'
+import { playPing, resumeAudio } from '@/lib/sound'
 import type { Profile } from '@/types'
 
 type NotifItem = {
@@ -55,6 +55,11 @@ export default function FloatingNotifications({ currentUserId }: { currentUserId
   }, [])
 
   useEffect(() => {
+    document.addEventListener('click', resumeAudio)
+    return () => document.removeEventListener('click', resumeAudio)
+  }, [])
+
+  useEffect(() => {
     console.log('[FloatingNotifications] mounted, userId:', currentUserId)
 
     // Private messages — rely on RLS for delivery, filter receiver client-side
@@ -63,6 +68,7 @@ export default function FloatingNotifications({ currentUserId }: { currentUserId
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'private_messages' },
         async (payload) => {
+          console.log('[FloatingNotif] new message received')
           console.log('[FloatingNotif] PM INSERT raw event:', payload.new)
           const m = payload.new as { id: string; sender_id: string; receiver_id: string; content: string | null }
           if (!m?.id) return

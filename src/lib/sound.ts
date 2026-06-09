@@ -1,6 +1,22 @@
+let _ctx: AudioContext | null = null
+
+function getCtx(): AudioContext {
+  const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+  if (!_ctx) _ctx = new Ctor()
+  return _ctx
+}
+
+export function resumeAudio() {
+  try {
+    const ctx = getCtx()
+    if (ctx.state === 'suspended') ctx.resume()
+  } catch {}
+}
+
 export function playPing() {
   try {
-    const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)()
+    const ctx = getCtx()
+    if (ctx.state === 'suspended') return
     const osc = ctx.createOscillator()
     const gain = ctx.createGain()
     osc.connect(gain)
@@ -11,6 +27,5 @@ export function playPing() {
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3)
     osc.start(ctx.currentTime)
     osc.stop(ctx.currentTime + 0.3)
-    osc.onended = () => ctx.close()
   } catch {}
 }
