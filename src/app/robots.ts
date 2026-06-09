@@ -10,7 +10,7 @@ export default function robots(): MetadataRoute.Robots {
         allow: ['/', '/about', '/terms', '/privacy'],
         disallow: [
           '/dashboard', '/chat', '/forum', '/admin', '/settings',
-          '/profile', '/jobs', '/inspiration', '/portfolio',
+          '/profile', '/jobs', '/inspiration',
           '/assets', '/font-identifier', '/news',
         ],
       },

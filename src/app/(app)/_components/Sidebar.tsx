@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { LayoutDashboard, Briefcase, MessageSquare, Library, Menu, X, ShieldCheck, Palette, Globe, MessagesSquare, ScanText, LayoutGrid, Info, Settings, Newspaper, Search } from 'lucide-react'
+import { LayoutDashboard, Briefcase, MessageSquare, Library, Menu, X, ShieldCheck, Palette, Globe, MessagesSquare, ScanText, Info, Settings, Newspaper, Search } from 'lucide-react'
 import { useState, useEffect, useMemo } from 'react'
 import LogoutButton from './LogoutButton'
 import { useLanguage } from '@/components/LanguageProvider'
@@ -16,13 +16,13 @@ const labels = {
   he: {
     home: 'ראשי', jobs: 'לוח עבודות', chat: "צ'אטים", forum: 'פורום',
     inspiration: 'ספריית השראה', assets: 'חומרים לשימוש', admin: 'פאנל ניהול',
-    designer: 'גרפיקאי', fontId: 'זיהוי פונט', portfolio: 'גלריית עבודות',
+    designer: 'גרפיקאי', fontId: 'זיהוי פונט',
     about: 'אודות', settings: 'הגדרות', news: 'חדשות',
   },
   en: {
     home: 'Home', jobs: 'Job Board', chat: 'Chats', forum: 'Forum',
     inspiration: 'Inspiration', assets: 'Resources', admin: 'Admin Panel',
-    designer: 'Designer', fontId: 'Font Identifier', portfolio: 'Portfolio',
+    designer: 'Designer', fontId: 'Font Identifier',
     about: 'About', settings: 'Settings', news: 'News',
   },
 }
@@ -109,7 +109,6 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
     { href: '/chat',             label: t.chat,        icon: <MessageSquare size={17} /> },
     { href: '/forum',            label: t.forum,       icon: <MessagesSquare size={17} /> },
     { href: '/inspiration',      label: t.inspiration, icon: <Palette size={17} /> },
-    { href: '/portfolio',        label: t.portfolio,   icon: <LayoutGrid size={17} /> },
     { href: '/assets',           label: t.assets,      icon: <Library size={17} /> },
     { href: '/font-identifier',  label: t.fontId,      icon: <ScanText size={17} /> },
     { href: '/news',             label: t.news,        icon: <Newspaper size={17} /> },

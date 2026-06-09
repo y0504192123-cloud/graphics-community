@@ -3,7 +3,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import ProfileClient from './ProfileClient'
-import type { Profile, PortfolioItem, Specialization } from '@/types'
+import type { Profile, Specialization } from '@/types'
 
 export default async function ProfilePage() {
   const supabase = await createClient()
@@ -13,9 +13,8 @@ export default async function ProfilePage() {
 
   if (!user) redirect('/login')
 
-  const [profileRes, portfolioRes, specsRes, selectedSpecsRes] = await Promise.all([
+  const [profileRes, specsRes, selectedSpecsRes] = await Promise.all([
     supabase.from('profiles').select('*').eq('id', user.id).single(),
-    supabase.from('portfolio_items').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
     supabase.from('specializations').select('*').order('name', { ascending: true }),
     supabase.from('profile_specializations').select('specialization_id').eq('profile_id', user.id),
   ])
@@ -46,46 +45,6 @@ export default async function ProfilePage() {
       )
     }
 
-    revalidatePath('/profile')
-  }
-
-  async function addPortfolioItem(formData: FormData) {
-    'use server'
-    const supabase = await createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    if (!user) redirect('/login')
-
-    await supabase.from('portfolio_items').insert({
-      user_id: user.id,
-      title: (formData.get('title') as string)?.trim() || '',
-      description: (formData.get('description') as string)?.trim() || null,
-      image_url: (formData.get('image_url') as string)?.trim() || null,
-    })
-
-    revalidatePath('/profile')
-  }
-
-  async function getPortfolioItemUploadUrl(): Promise<{ signedUrl?: string; publicUrl?: string; error?: string }> {
-    'use server'
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return { error: 'לא מחובר' }
-    const admin = createAdminClient()
-    const path = `${user.id}/${Date.now()}.jpg`
-    const { data, error } = await admin.storage.from('portfolio').createSignedUploadUrl(path)
-    if (error) return { error: error.message }
-    const { data: { publicUrl } } = admin.storage.from('portfolio').getPublicUrl(path)
-    return { signedUrl: data.signedUrl, publicUrl }
-  }
-
-  async function deletePortfolioItem(id: string) {
-    'use server'
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) redirect('/login')
-    await supabase.from('portfolio_items').delete().eq('id', id).eq('user_id', user.id)
     revalidatePath('/profile')
   }
 
@@ -152,17 +111,13 @@ export default async function ProfilePage() {
   return (
     <ProfileClient
       profile={profile}
-      portfolioItems={(portfolioRes.data ?? []) as PortfolioItem[]}
       allSpecializations={allSpecializations}
       selectedSpecializationIds={selectedSpecializationIds}
       updateProfile={updateProfile}
-      addPortfolioItem={addPortfolioItem}
-      deletePortfolioItem={deletePortfolioItem}
       getAvatarUploadUrl={getAvatarUploadUrl}
       updateAvatarUrl={updateAvatarUrl}
       deleteAvatar={deleteAvatar}
       updateAvatarColor={updateAvatarColor}
-      getPortfolioItemUploadUrl={getPortfolioItemUploadUrl}
     />
   )
 }

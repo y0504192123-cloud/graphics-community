@@ -4,15 +4,9 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { Star, MapPin, Briefcase, MessageSquare, FileText } from 'lucide-react'
-import type { Profile, PortfolioItem, Specialization, UserBadge } from '@/types'
+import type { Profile, Specialization, UserBadge } from '@/types'
 import type { Metadata } from 'next'
 
-const placeholderGradients = [
-  'from-violet-100 via-purple-200 to-indigo-200',
-  'from-pink-100 via-rose-200 to-purple-200',
-  'from-blue-100 via-indigo-200 to-violet-200',
-  'from-emerald-100 via-teal-200 to-cyan-200',
-]
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params
@@ -31,11 +25,10 @@ export default async function UserProfilePage({ params }: { params: Promise<{ id
   const supabase = await createClient()
 
   const [
-    profileRes, portfolioRes, specsRes, selectedSpecsRes,
+    profileRes, specsRes, selectedSpecsRes,
     currentUserRes, threadsRes, repliesRes, pbRes,
   ] = await Promise.all([
     admin.from('profiles').select('*').eq('id', id).single(),
-    admin.from('portfolio_items').select('*').eq('user_id', id).order('created_at', { ascending: false }),
     admin.from('specializations').select('*'),
     admin.from('profile_specializations').select('specialization_id').eq('profile_id', id),
     supabase.auth.getUser(),
@@ -47,7 +40,6 @@ export default async function UserProfilePage({ params }: { params: Promise<{ id
   if (!profileRes.data) notFound()
 
   const profile = profileRes.data as Profile
-  const portfolioItems = (portfolioRes.data ?? []) as PortfolioItem[]
   const allSpecs = (specsRes.data ?? []) as Specialization[]
   const selectedSpecIds = (selectedSpecsRes.data ?? []).map((r) => r.specialization_id as string)
   const specs = allSpecs.filter((s) => selectedSpecIds.includes(s.id))
@@ -202,64 +194,6 @@ export default async function UserProfilePage({ params }: { params: Promise<{ id
           </p>
         )}
 
-        {/* Portfolio */}
-        <div className="pb-12">
-          <h2 className="mb-5 text-lg font-bold" style={{ color: 'var(--tx)' }}>
-            עבודות
-            <span className="ms-2 text-sm font-normal" style={{ color: 'var(--tx3)' }}>
-              {portfolioItems.length}
-            </span>
-          </h2>
-
-          {portfolioItems.length === 0 ? (
-            <div
-              className="flex flex-col items-center gap-4 rounded-3xl py-16 text-center"
-              style={{ border: '2px dashed var(--bd)', background: 'var(--s1)' }}
-            >
-              <span className="text-4xl">🎨</span>
-              <p className="text-sm" style={{ color: 'var(--tx3)' }}>אין עבודות עדיין</p>
-            </div>
-          ) : (
-            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {portfolioItems.map((item, i) => (
-                <div
-                  key={item.id}
-                  className="overflow-hidden rounded-2xl"
-                  style={{ background: 'var(--s2)', border: '1px solid var(--bd)', boxShadow: '0 2px 8px rgba(0,0,0,.06)' }}
-                >
-                  <div className="relative aspect-[4/3] w-full overflow-hidden">
-                    {item.image_url ? (
-                      <Image
-                        src={item.image_url}
-                        alt={item.title || 'עבודה'}
-                        fill
-                        className="object-cover transition-transform duration-300 hover:scale-105"
-                        sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-                        loading="lazy"
-                      />
-                    ) : (
-                      <div className={`h-full w-full bg-gradient-to-br ${placeholderGradients[i % placeholderGradients.length]} flex items-center justify-center`}>
-                        <span className="text-4xl opacity-40">🖼️</span>
-                      </div>
-                    )}
-                  </div>
-                  {(item.title || item.description) && (
-                    <div className="p-4" style={{ borderTop: '1px solid var(--bd)' }}>
-                      {item.title && (
-                        <p className="font-semibold" style={{ color: 'var(--tx)' }}>{item.title}</p>
-                      )}
-                      {item.description && (
-                        <p className="mt-1 text-xs leading-relaxed line-clamp-2" style={{ color: 'var(--tx3)' }}>
-                          {item.description}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
 
       </div>
     </div>

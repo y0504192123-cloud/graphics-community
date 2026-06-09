@@ -35,7 +35,7 @@ export default async function SearchPage({ searchParams }: Props) {
         .eq('status', 'active')
         .or(`full_name.ilike.%${query}%,username.ilike.%${query}%,specialization.ilike.%${query}%`)
         .limit(8),
-      admin.from('portfolio_items')
+      admin.from('inspiration_posts')
         .select('id, title, image_url, user_id, profiles:profiles(full_name, username)')
         .ilike('title', `%${query}%`)
         .order('created_at', { ascending: false })
@@ -69,7 +69,7 @@ export default async function SearchPage({ searchParams }: Props) {
                 name="q"
                 defaultValue={query}
                 autoFocus
-                placeholder="חפש פוסטים, גרפיקאים, עבודות..."
+                placeholder="חפש פוסטים, גרפיקאים, השראה..."
                 className="w-full rounded-2xl pe-4 ps-10 py-3 text-sm outline-none"
                 style={{ background: 'var(--inp)', border: '2px solid var(--bd)', color: 'var(--tx)' }}
               />
@@ -136,15 +136,15 @@ export default async function SearchPage({ searchParams }: Props) {
           </section>
         )}
 
-        {/* Inspiration / Portfolio results */}
+        {/* Inspiration results */}
         {inspirationResults.length > 0 && (
           <section>
             <h2 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--tx3)' }}>
-              <ImageIcon size={13} /> עבודות ({inspirationResults.length})
+              <ImageIcon size={13} /> השראה ({inspirationResults.length})
             </h2>
             <div className="grid grid-cols-2 gap-2">
               {inspirationResults.map((item: any) => (
-                <Link key={item.id} href={`/portfolio/${item.user_id}`}
+                <Link key={item.id} href="/inspiration"
                   className="overflow-hidden rounded-xl transition hover:opacity-80"
                   style={{ background: 'var(--s1)', border: '1px solid var(--bd)' }}>
                   {item.image_url && (

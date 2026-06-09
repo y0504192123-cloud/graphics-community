@@ -1,22 +1,19 @@
 'use client'
 
 import { useState, useTransition, useRef } from 'react'
-import { Edit2, Save, X, Plus, Trash2, Star, MapPin, User, FileText, Tag, Camera } from 'lucide-react'
-import type { Profile, PortfolioItem, Specialization } from '@/types'
+import { Edit2, Save, X, Star, MapPin, User, Tag, Camera, FileText } from 'lucide-react'
+import Link from 'next/link'
+import type { Profile, Specialization } from '@/types'
 
 type Props = {
   profile: Profile
-  portfolioItems: PortfolioItem[]
   allSpecializations: Specialization[]
   selectedSpecializationIds: string[]
   updateProfile: (formData: FormData) => Promise<void>
-  addPortfolioItem: (formData: FormData) => Promise<void>
-  deletePortfolioItem: (id: string) => Promise<void>
   getAvatarUploadUrl: () => Promise<{ signedUrl?: string; publicUrl?: string; error?: string }>
   updateAvatarUrl: (url: string) => Promise<void>
   deleteAvatar: () => Promise<void>
   updateAvatarColor: (color: string) => Promise<void>
-  getPortfolioItemUploadUrl: () => Promise<{ signedUrl?: string; publicUrl?: string; error?: string }>
 }
 
 async function compressImage(file: File, maxMB = 3.5): Promise<File> {
@@ -92,10 +89,8 @@ function FieldGroup({ label, icon, children }: { label: string; icon: React.Reac
 }
 
 export default function ProfileClient({
-  profile, portfolioItems, allSpecializations, selectedSpecializationIds,
-  updateProfile, addPortfolioItem, deletePortfolioItem,
-  getAvatarUploadUrl, updateAvatarUrl, deleteAvatar, updateAvatarColor,
-  getPortfolioItemUploadUrl,
+  profile, allSpecializations, selectedSpecializationIds,
+  updateProfile, getAvatarUploadUrl, updateAvatarUrl, deleteAvatar, updateAvatarColor,
 }: Props) {
   const [editing, setEditing]               = useState(false)
   const [isPending, startTransition]         = useTransition()
@@ -105,12 +100,6 @@ export default function ProfileClient({
   const [avatarUploading, setAvatarUploading] = useState(false)
   const [avatarError, setAvatarError]        = useState<string | null>(null)
   const avatarInputRef = useRef<HTMLInputElement>(null)
-
-  const [portfolioFile, setPortfolioFile]       = useState<File | null>(null)
-  const [portfolioPreview, setPortfolioPreview] = useState<string | null>(null)
-  const [portfolioUploading, setPortfolioUploading] = useState(false)
-  const [portfolioError, setPortfolioError]     = useState<string | null>(null)
-  const portfolioFileRef = useRef<HTMLInputElement>(null)
 
   const selectedSpecs = allSpecializations.filter((s) => selectedIds.includes(s.id))
 
@@ -151,55 +140,6 @@ export default function ProfileClient({
   function handleColorChange(color: string) {
     setAvatarColor(color)
     startTransition(async () => { await updateAvatarColor(color) })
-  }
-
-  function handlePortfolioFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setPortfolioFile(file)
-    setPortfolioError(null)
-    const reader = new FileReader()
-    reader.onload = (ev) => setPortfolioPreview(ev.target?.result as string)
-    reader.readAsDataURL(file)
-    e.target.value = ''
-  }
-
-  async function handlePortfolioFormSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault()
-    if (!portfolioFile) return
-    setPortfolioUploading(true)
-    setPortfolioError(null)
-
-    let compressed = portfolioFile
-    try { compressed = await compressImage(portfolioFile) } catch {}
-
-    const urlResult = await getPortfolioItemUploadUrl()
-    if (urlResult.error || !urlResult.signedUrl) {
-      setPortfolioError(urlResult.error ?? 'שגיאה בהכנת ה-URL')
-      setPortfolioUploading(false)
-      return
-    }
-
-    const res = await fetch(urlResult.signedUrl, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'image/jpeg' },
-      body: compressed,
-    })
-    if (!res.ok) {
-      setPortfolioError('שגיאה בהעלאת התמונה')
-      setPortfolioUploading(false)
-      return
-    }
-
-    const fd = new FormData(e.currentTarget)
-    fd.set('image_url', urlResult.publicUrl!)
-
-    startTransition(async () => {
-      await addPortfolioItem(fd)
-      setPortfolioFile(null)
-      setPortfolioPreview(null)
-      setPortfolioUploading(false)
-    })
   }
 
   function toggleSpec(id: string) {
@@ -472,138 +412,30 @@ export default function ProfileClient({
           </div>
         )}
 
-        {/* ── Portfolio ── */}
+        {/* ── Inspiration link ── */}
         <div className="pb-10">
-          <div className="mb-5 flex items-center justify-between">
+          <div
+            className="flex flex-col items-center gap-4 rounded-3xl py-14 text-center"
+            style={{ border: '2px dashed var(--bd)', background: 'var(--s1)' }}
+          >
+            <div
+              className="flex h-16 w-16 items-center justify-center rounded-2xl text-3xl"
+              style={{ background: 'rgba(124,58,237,.08)', border: '1px solid rgba(124,58,237,.15)' }}
+            >
+              🎨
+            </div>
             <div>
-              <h2 className="text-lg font-bold" style={{ color: 'var(--tx)' }}>העבודות שלי</h2>
-              <p className="mt-0.5 text-xs" style={{ color: 'var(--tx3)' }}>{portfolioItems.length} עבודות</p>
+              <p className="font-semibold" style={{ color: 'var(--tx2)' }}>שתף את העבודות שלך</p>
+              <p className="mt-1 text-sm" style={{ color: 'var(--tx3)' }}>העלה עבודות לספריית ההשראה ותתחיל לבנות נוכחות</p>
             </div>
-            <button
-              onClick={() => portfolioFileRef.current?.click()}
-              disabled={portfolioUploading}
-              className="flex h-10 w-10 items-center justify-center rounded-xl text-white transition-all hover:opacity-90 hover:scale-[1.05] disabled:opacity-50"
+            <Link
+              href="/inspiration"
+              className="flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold text-white transition hover:opacity-90"
               style={{ background: 'linear-gradient(135deg, #7c3aed, #6b21a8)', boxShadow: '0 4px 16px rgba(107,33,168,.3)' }}
-              title="הוסף עבודה"
             >
-              <Plus size={18} style={{ color: 'white' }} />
-            </button>
-            <input ref={portfolioFileRef} type="file" accept="image/*" className="hidden" onChange={handlePortfolioFileChange} />
+              עבור לספריית ההשראה
+            </Link>
           </div>
-
-          {/* Upload form — appears after file is selected */}
-          {portfolioFile && (
-            <div
-              className="mb-6 animate-fade-up rounded-2xl p-5"
-              style={{ background: 'var(--s1)', border: '1px solid var(--bd)', boxShadow: '0 4px 24px rgba(0,0,0,.06)' }}
-            >
-              <div className="mb-4 flex items-center justify-between">
-                <h3 className="text-sm font-bold" style={{ color: 'var(--tx)' }}>העלאת עבודה</h3>
-                <button
-                  type="button"
-                  onClick={() => { setPortfolioFile(null); setPortfolioPreview(null); setPortfolioError(null) }}
-                  className="flex h-7 w-7 items-center justify-center rounded-lg transition hover:bg-slate-100"
-                  style={{ color: 'var(--tx3)' }}
-                >
-                  <X size={15} />
-                </button>
-              </div>
-              {portfolioPreview && (
-                <div className="mb-4 overflow-hidden rounded-xl" style={{ maxHeight: 200 }}>
-                  <img src={portfolioPreview} alt="תצוגה מקדימה" className="w-full object-cover" style={{ maxHeight: 200 }} />
-                </div>
-              )}
-              {portfolioError && (
-                <p className="mb-3 rounded-lg px-3 py-2 text-xs text-red-500" style={{ background: 'rgba(239,68,68,.08)' }}>{portfolioError}</p>
-              )}
-              <form onSubmit={handlePortfolioFormSubmit}>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div>
-                    <label className={labelCls}><FileText size={11} />כותרת (אופציונלי)</label>
-                    <input name="title" className={inputCls} style={{ color: 'var(--tx)' }} placeholder="שם הפרויקט" />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className={labelCls}><FileText size={11} />תיאור (אופציונלי)</label>
-                    <textarea name="description" rows={2} className={`${inputCls} resize-none`} style={{ color: 'var(--tx)' }} placeholder="תאר את הפרויקט..." />
-                  </div>
-                </div>
-                <div className="mt-4 flex items-center gap-3">
-                  <button
-                    type="submit"
-                    disabled={portfolioUploading || isPending}
-                    className="flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold transition hover:opacity-90 disabled:opacity-50"
-                    style={{ background: 'linear-gradient(135deg, #7c3aed, #6b21a8)', color: 'white', boxShadow: '0 4px 16px rgba(107,33,168,.3)' }}
-                  >
-                    <span style={{ color: 'white' }}>{portfolioUploading || isPending ? 'מעלה...' : 'העלה'}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setPortfolioFile(null); setPortfolioPreview(null); setPortfolioError(null) }}
-                    className="rounded-xl px-4 py-2.5 text-sm font-medium transition hover:bg-slate-100"
-                    style={{ border: '1px solid var(--bd)', color: 'var(--tx2)' }}
-                  >
-                    ביטול
-                  </button>
-                </div>
-              </form>
-            </div>
-          )}
-
-          {/* Empty state */}
-          {portfolioItems.length === 0 ? (
-            <div
-              className="flex flex-col items-center justify-center gap-5 rounded-3xl py-20 text-center"
-              style={{ border: '2px dashed var(--bd)', background: 'white' }}
-            >
-              <div
-                className="flex h-16 w-16 items-center justify-center rounded-2xl text-3xl"
-                style={{ background: 'rgba(124,58,237,.08)', border: '1px solid rgba(124,58,237,.15)' }}
-              >
-                🎨
-              </div>
-              <div>
-                <p className="font-semibold" style={{ color: 'var(--tx2)' }}>אין עבודות עדיין</p>
-                <p className="mt-1 text-sm" style={{ color: 'var(--tx3)' }}>הוסף את העבודות הראשונות שלך ותתחיל לבנות נוכחות</p>
-              </div>
-            </div>
-          ) : (
-            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {portfolioItems.map((item, i) => (
-                <div
-                  key={item.id}
-                  className="group relative overflow-hidden rounded-2xl transition-all duration-300 hover:scale-[1.02] hover:-translate-y-1"
-                  style={{ background: 'white', border: '1px solid var(--bd)', boxShadow: '0 2px 8px rgba(0,0,0,.06), 0 8px 24px rgba(107,33,168,.04)' }}
-                >
-                  <div className="aspect-[4/3] w-full overflow-hidden">
-                    {item.image_url ? (
-                      <img
-                        src={item.image_url}
-                        alt={item.title}
-                        className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                      />
-                    ) : (
-                      <div className={`h-full w-full bg-gradient-to-br ${itemPlaceholders[i % itemPlaceholders.length]} flex items-center justify-center`}>
-                        <span className="text-4xl opacity-40">🖼️</span>
-                      </div>
-                    )}
-                  </div>
-                  <div className="p-4" style={{ borderTop: '1px solid var(--bd)' }}>
-                    <p className="font-semibold" style={{ color: 'var(--tx)' }}>{item.title}</p>
-                    {item.description && (
-                      <p className="mt-1 text-xs leading-relaxed line-clamp-2" style={{ color: 'var(--tx3)' }}>{item.description}</p>
-                    )}
-                  </div>
-                  <button
-                    onClick={() => startTransition(async () => { await deletePortfolioItem(item.id) })}
-                    className="absolute end-2 top-2 flex h-8 w-8 items-center justify-center rounded-xl opacity-0 backdrop-blur-sm transition-all duration-200 group-hover:opacity-100 hover:scale-110"
-                    style={{ background: 'rgba(255,255,255,.9)', color: '#ef4444', border: '1px solid rgba(239,68,68,.2)', boxShadow: '0 2px 8px rgba(0,0,0,.1)' }}
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       </div>
     </div>
