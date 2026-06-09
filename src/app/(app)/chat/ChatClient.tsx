@@ -1267,7 +1267,10 @@ export default function ChatClient({
                 <AvatarBubble profile={convo.profile} uid={convo.partnerId} size={10} online={isOnline} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-1">
-                    <span className="truncate text-sm font-semibold" style={{ color: hasUnread ? '#6b21a8' : 'var(--tx)' }}>{name}</span>
+                    <span className="flex items-center gap-1 truncate text-sm font-semibold" style={{ color: hasUnread ? '#6b21a8' : 'var(--tx)' }}>
+                      {name}
+                      {badgesMap[convo.partnerId] && <BadgeDisplay badges={badgesMap[convo.partnerId]} max={1} />}
+                    </span>
                     <span className="shrink-0 text-[10px]" style={{ color: 'var(--tx3)' }} suppressHydrationWarning>{fmtTime(convo.lastMsg.created_at)}</span>
                   </div>
                   <div className="mt-0.5 flex items-center justify-between gap-1">
@@ -1630,6 +1633,7 @@ export default function ChatClient({
                   {!sameUser && (
                     <div className={`flex items-center gap-2 px-1 ${isOwn ? 'flex-row-reverse' : ''}`}>
                       <span className="text-xs font-semibold" style={{ color: 'var(--tx2)' }}>{isOwn ? 'אתה' : dName(partnerProfile)}</span>
+                      {!isOwn && selectedPartner && badgesMap[selectedPartner] && <BadgeDisplay badges={badgesMap[selectedPartner]} max={1} />}
                       <span className="text-[10px]" style={{ color: 'var(--tx3)' }} suppressHydrationWarning>{fmtTime(msg.created_at)}</span>
                     </div>
                   )}

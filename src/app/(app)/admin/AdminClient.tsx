@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 import type { Profile, NewsItem, NewsCategory, ChatCategory, Specialization, InspirationCategory, JobCategory, AssetCategory, ForumCategory, Font, FontWeight, ContentReport, UserBadge } from '@/types'
 import FontsTab from './FontsTab'
-import BadgesTab from './BadgesTab'
+import BadgesTab, { type UserStats } from './BadgesTab'
 
 type Tab = 'pending' | 'users' | 'news' | 'categories' | 'specializations' | 'insp_cats' | 'job_cats' | 'asset_cats' | 'branding' | 'forum_cats' | 'fonts' | 'reports' | 'terms' | 'badges'
 
@@ -70,6 +70,7 @@ type Props = {
   savePrivacy:                 (content: string) => Promise<{ error?: string }>
   badges:                      UserBadge[]
   userBadgesMap:               Record<string, UserBadge[]>
+  userStatsMap:                Record<string, UserStats>
   designerOfWeek:              { userId: string; name: string } | null
   createBadge:                 (name: string, description: string, color: string, icon: string) => Promise<{ error?: string }>
   deleteBadge:                 (id: string) => Promise<void>
@@ -119,7 +120,7 @@ export default function AdminClient({
   recomputeHashBatch, rebuildPreviewsBatch, computeEmbeddingBatch, buildLetterEmbeddingsBatch,
   reports, updateReportStatus, deleteReportedContent,
   termsContent: initialTerms, privacyContent: initialPrivacy, saveTerms, savePrivacy,
-  badges, userBadgesMap, designerOfWeek,
+  badges, userBadgesMap, userStatsMap, designerOfWeek,
   createBadge, deleteBadge, assignBadge, revokeBadge, assignBadgeToAll, setDesignerOfWeek, clearDesignerOfWeek,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('pending')
@@ -1106,6 +1107,7 @@ export default function AdminClient({
             badges={badges}
             activeUsers={activeUsers}
             userBadgesMap={userBadgesMap}
+            userStatsMap={userStatsMap}
             designerOfWeek={designerOfWeek}
             createBadge={createBadge}
             deleteBadge={deleteBadge}

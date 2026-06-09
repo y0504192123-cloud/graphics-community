@@ -16,7 +16,7 @@ export default async function AdminPage() {
   if (profileData?.role !== 'admin') redirect('/dashboard')
 
   const admin = createAdminClient()
-  const [pendingRes, activeRes, newsRes, newsCatRes, catRes, specsRes, inspCatsRes, jobCatsRes, assetCatsRes, logoRes, forumCatsRes, fontsRes, fontWeightsRes, reportsRes, termsRes, privacyRes, badgesRes, profileBadgesRes, dotWRes] = await Promise.all([
+  const [pendingRes, activeRes, newsRes, newsCatRes, catRes, specsRes, inspCatsRes, jobCatsRes, assetCatsRes, logoRes, forumCatsRes, fontsRes, fontWeightsRes, reportsRes, termsRes, privacyRes, badgesRes, profileBadgesRes, dotWRes, forumThreadsRes, forumRepliesRes, inspPostsRes, chatMsgsRes] = await Promise.all([
     admin.from('profiles').select('*').eq('status', 'pending').order('created_at', { ascending: false }),
     admin.from('profiles').select('*').eq('status', 'active').order('created_at', { ascending: false }),
     admin.from('news').select('*, profiles(*), news_categories(*)').order('created_at', { ascending: false }),
@@ -36,6 +36,10 @@ export default async function AdminPage() {
     admin.from('user_badges').select('*').order('created_at', { ascending: true }),
     admin.from('profile_badges').select('user_id, badge_id, assigned_at').order('assigned_at', { ascending: false }),
     admin.from('site_settings').select('value').eq('key', 'designer_of_week').single(),
+    admin.from('forum_threads').select('user_id'),
+    admin.from('forum_replies').select('user_id'),
+    admin.from('inspiration_posts').select('user_id'),
+    admin.from('messages').select('user_id'),
   ])
 
   // Auto-archive expired news on every admin page load
@@ -72,6 +76,19 @@ export default async function AdminPage() {
       if (b) userBadgesMap[pb.user_id].push(b)
     }
   }
+
+  // Build user activity stats map
+  const userStatsMap: Record<string, { forumPosts: number; forumReplies: number; inspPosts: number; chatMsgs: number }> = {}
+  const countInto = (rows: { user_id: string }[] | null, key: 'forumPosts' | 'forumReplies' | 'inspPosts' | 'chatMsgs') => {
+    for (const r of rows ?? []) {
+      if (!userStatsMap[r.user_id]) userStatsMap[r.user_id] = { forumPosts: 0, forumReplies: 0, inspPosts: 0, chatMsgs: 0 }
+      userStatsMap[r.user_id][key]++
+    }
+  }
+  countInto(forumThreadsRes.data as any, 'forumPosts')
+  countInto(forumRepliesRes.data as any, 'forumReplies')
+  countInto(inspPostsRes.data as any, 'inspPosts')
+  countInto(chatMsgsRes.data as any, 'chatMsgs')
 
   let designerOfWeek: { userId: string; name: string } | null = null
   if (dotWRaw) {
@@ -1000,6 +1017,7 @@ export default async function AdminPage() {
       savePrivacy={savePrivacy}
       badges={allBadges}
       userBadgesMap={userBadgesMap}
+      userStatsMap={userStatsMap}
       designerOfWeek={designerOfWeek}
       createBadge={createBadge}
       deleteBadge={deleteBadge}
