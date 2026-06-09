@@ -28,7 +28,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="he" dir="rtl" className={`${rubik.variable} h-full`} data-theme="light">
+    <html lang="he" dir="rtl" className={`${rubik.variable} h-full`} data-theme="light" suppressHydrationWarning>
       <head>
         <meta name="theme-color" content="#6b21a8" />
         <link rel="apple-touch-icon" href="/icons/icon-192.svg" />

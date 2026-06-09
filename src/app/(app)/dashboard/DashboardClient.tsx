@@ -36,9 +36,12 @@ export default function DashboardClient({
   const [unreadMessages, setUnreadMessages] = useState(initialUnreadMessages)
   const [recentForum, setRecentForum] = useState<any[]>(initialRecentForum)
   const [openJobs, setOpenJobs] = useState<any[]>(initialOpenJobs)
+  const [greeting, setGreeting] = useState('')
 
-  const hour = new Date().getHours()
-  const greeting = hour < 12 ? t.dashboard.greetingMorning : hour < 17 ? t.dashboard.greetingAfternoon : t.dashboard.greetingEvening
+  useEffect(() => {
+    const h = new Date().getHours()
+    setGreeting(h < 12 ? t.dashboard.greetingMorning : h < 17 ? t.dashboard.greetingAfternoon : t.dashboard.greetingEvening)
+  }, [t.dashboard.greetingMorning, t.dashboard.greetingAfternoon, t.dashboard.greetingEvening])
 
   function fmtDate(iso: string) {
     const diffMs = Date.now() - new Date(iso).getTime()
@@ -114,7 +117,7 @@ export default function DashboardClient({
 
         <div className="relative mx-auto max-w-6xl">
           <div className="animate-fade-up">
-            <p className="mb-1 text-sm font-medium text-purple-600">{greeting} ☀️</p>
+            <p className="mb-1 text-sm font-medium text-purple-600" suppressHydrationWarning>{greeting && `${greeting} ☀️`}</p>
             <h1 className="text-3xl font-bold lg:text-4xl" style={{ color: 'var(--tx)' }}>
               {t.dashboard.hello},{' '}
               <Link href="/profile" className="gradient-text hover:opacity-80 transition-opacity">
@@ -203,7 +206,7 @@ export default function DashboardClient({
                       <p className="truncate text-sm font-semibold transition-colors group-hover:text-purple-600" style={{ color: 'var(--tx)' }}>
                         {thread.title}
                       </p>
-                      <p className="mt-0.5 text-[11px]" style={{ color: 'var(--tx3)' }}>
+                      <p className="mt-0.5 text-[11px]" style={{ color: 'var(--tx3)' }} suppressHydrationWarning>
                         {thread.profiles?.full_name ?? thread.profiles?.username ?? t.dashboard.user} · {fmtDate(thread.created_at)}
                       </p>
                     </div>
@@ -284,7 +287,7 @@ export default function DashboardClient({
                       <p className="truncate text-sm font-semibold transition-colors group-hover:text-purple-600" style={{ color: 'var(--tx)' }}>
                         {thread.title}
                       </p>
-                      <p className="mt-0.5 text-[11px]" style={{ color: 'var(--tx3)' }}>
+                      <p className="mt-0.5 text-[11px]" style={{ color: 'var(--tx3)' }} suppressHydrationWarning>
                         {thread.profiles?.full_name ?? thread.profiles?.username ?? t.dashboard.user} · {fmtDate(thread.created_at)}
                       </p>
                     </div>

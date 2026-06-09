@@ -85,7 +85,7 @@ export default function FloatingNotifications({ currentUserId }: { currentUserId
           { event: 'INSERT', schema: 'public', table: 'private_messages' },
           async (payload) => {
             console.log('[FloatingNotif] new message received')
-            console.log('[FloatingNotif] PM INSERT raw event:', payload.new)
+            console.log('[FloatingNotif] RAW event:', payload)
             const m = payload.new as { id: string; sender_id: string; receiver_id: string; content: string | null }
             if (!m?.id) return
             if (m.receiver_id !== currentUserId) return
