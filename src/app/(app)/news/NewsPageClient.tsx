@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { X, Clock, Archive, CalendarX } from 'lucide-react'
 import Link from 'next/link'
+import { useT } from '@/components/LanguageProvider'
 import type { NewsItem, NewsCategory } from '@/types'
 
 function CategoryBadge({ cat }: { cat?: NewsCategory | null }) {
@@ -20,12 +21,13 @@ function fmtDate(d: string) {
 }
 
 function ExpiryBadge({ expiresAt }: { expiresAt: string }) {
+  const t = useT()
   const soon = new Date(expiresAt).getTime() - Date.now() < 3 * 24 * 60 * 60 * 1000
   return (
     <span className="flex items-center gap-1 text-[11px] font-medium"
       style={{ color: soon ? '#f59e0b' : '#ef4444' }}>
       <CalendarX size={10} />
-      בתוקף עד {fmtDate(expiresAt)}
+      {t.news.validUntil} {fmtDate(expiresAt)}
     </span>
   )
 }
@@ -35,6 +37,7 @@ function ExpiryBadge({ expiresAt }: { expiresAt: string }) {
 // Mobile flex-col: order-1 = top (image), order-2 = bottom (text)
 
 function HeroCard({ item, onClick }: { item: NewsItem; onClick: () => void }) {
+  const t = useT()
   return (
     <article
       onClick={onClick}
@@ -56,7 +59,7 @@ function HeroCard({ item, onClick }: { item: NewsItem; onClick: () => void }) {
           </span>
           {item.show_expiry && item.expires_at && <ExpiryBadge expiresAt={item.expires_at} />}
         </div>
-        <p className="mt-4 text-sm font-black" style={{ color: '#7c3aed' }}>קרא עוד ←</p>
+        <p className="mt-4 text-sm font-black" style={{ color: '#7c3aed' }}>{t.news.readMore}</p>
       </div>
       {/* Image — left side on desktop, no overflow-hidden, full natural height */}
       <div className="order-1 shrink-0 lg:order-2 lg:w-[55%]">
@@ -223,6 +226,7 @@ export default function NewsPageClient({
   newsItems: NewsItem[]
   archiveCount?: number
 }) {
+  const t = useT()
   const [selected, setSelected] = useState<NewsItem | null>(null)
   const [hero, second, third, ...rest] = newsItems
 
@@ -238,18 +242,18 @@ export default function NewsPageClient({
         <div className="mb-7 flex items-center justify-between">
           <div>
             <div className="mb-1 flex items-center gap-2 text-sm">
-              <Link href="/dashboard" className="transition hover:opacity-70" style={{ color: 'var(--tx3)' }}>דף הבית</Link>
+              <Link href="/dashboard" className="transition hover:opacity-70" style={{ color: 'var(--tx3)' }}>{t.news.home}</Link>
               <span style={{ color: 'var(--tx3)' }}>/</span>
-              <span className="font-semibold" style={{ color: 'var(--tx)' }}>חדשות</span>
+              <span className="font-semibold" style={{ color: 'var(--tx)' }}>{t.news.section}</span>
             </div>
-            <h1 className="text-2xl font-black" style={{ color: 'var(--tx)' }}>חדשות מעולם הגרפיקה</h1>
+            <h1 className="text-2xl font-black" style={{ color: 'var(--tx)' }}>{t.news.title}</h1>
           </div>
           {archiveCount > 0 && (
             <Link href="/news/archive"
               className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold transition hover:opacity-80"
               style={{ background: 'var(--s1)', border: '1px solid var(--bd)', color: 'var(--tx2)' }}>
               <Archive size={13} />
-              ארכיון ({archiveCount})
+              {t.news.archive} ({archiveCount})
             </Link>
           )}
         </div>
@@ -258,11 +262,11 @@ export default function NewsPageClient({
           <div className="flex flex-col items-center gap-4 rounded-3xl py-24 text-center"
             style={{ border: '2px dashed var(--bd)', background: 'var(--inp)' }}>
             <span className="text-5xl">📰</span>
-            <p className="font-semibold" style={{ color: 'var(--tx2)' }}>אין חדשות פעילות כרגע</p>
+            <p className="font-semibold" style={{ color: 'var(--tx2)' }}>{t.news.empty}</p>
             {archiveCount > 0 && (
               <Link href="/news/archive" className="text-sm font-bold transition hover:opacity-80"
                 style={{ color: '#7c3aed' }}>
-                לארכיון החדשות →
+                {t.news.archiveLink}
               </Link>
             )}
           </div>

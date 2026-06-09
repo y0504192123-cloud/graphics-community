@@ -3,6 +3,7 @@
 import { useState, useTransition, useRef } from 'react'
 import { Edit2, Save, X, Star, MapPin, User, Tag, Camera, FileText } from 'lucide-react'
 import Link from 'next/link'
+import { useT } from '@/components/LanguageProvider'
 import type { Profile, Specialization } from '@/types'
 
 type Props = {
@@ -92,6 +93,7 @@ export default function ProfileClient({
   profile, allSpecializations, selectedSpecializationIds,
   updateProfile, getAvatarUploadUrl, updateAvatarUrl, deleteAvatar, updateAvatarColor,
 }: Props) {
+  const t = useT()
   const [editing, setEditing]               = useState(false)
   const [isPending, startTransition]         = useTransition()
   const [selectedIds, setSelectedIds]        = useState<string[]>(selectedSpecializationIds)
@@ -185,7 +187,7 @@ export default function ProfileClient({
                     boxShadow: `0 8px 32px ${avatarColor}55`,
                     color: 'white',
                   }}
-                  title="לחץ לשינוי תמונת פרופיל"
+                  title={t.profile.clickToChangeAvatar}
                 >
                   {avatarUploading ? (
                     <div className="h-7 w-7 animate-spin rounded-full border-2 border-white border-t-transparent" />
@@ -207,7 +209,7 @@ export default function ProfileClient({
                     onClick={handleDeleteAvatar}
                     className="absolute -top-1 -end-1 z-10 flex h-6 w-6 items-center justify-center rounded-full opacity-0 transition-opacity duration-200 group-hover/av:opacity-100"
                     style={{ background: '#ef4444', border: '2px solid white', color: 'white' }}
-                    title="מחק תמונת פרופיל"
+                    title={t.profile.deleteAvatar}
                   >
                     <X size={11} />
                   </button>
@@ -285,7 +287,7 @@ export default function ProfileClient({
           >
             {editing ? <X size={14} /> : <Edit2 size={14} />}
             <span style={{ color: editing ? 'var(--tx2)' : 'white' }}>
-              {editing ? 'ביטול' : 'ערוך פרופיל'}
+              {editing ? t.profile.cancel : t.profile.editProfile}
             </span>
           </button>
         </div>
@@ -311,7 +313,7 @@ export default function ProfileClient({
             className="mb-8 animate-fade-up rounded-2xl p-6"
             style={{ background: 'var(--s1)', border: '1px solid var(--bd)', boxShadow: '0 4px 24px rgba(0,0,0,.06)' }}
           >
-            <h3 className="mb-6 text-base font-bold" style={{ color: 'var(--tx)' }}>ערוך פרופיל</h3>
+            <h3 className="mb-6 text-base font-bold" style={{ color: 'var(--tx)' }}>{t.profile.editProfile}</h3>
 
             <form
               action={(formData) => {
@@ -322,17 +324,17 @@ export default function ProfileClient({
               }}
             >
               <div className="grid gap-5 sm:grid-cols-2">
-                <FieldGroup label="שם מלא" icon={<User size={11} />}>
+                <FieldGroup label={t.profile.fullName} icon={<User size={11} />}>
                   <input
                     name="full_name"
                     defaultValue={profile.full_name ?? ''}
                     className={inputCls}
                     style={{ color: 'var(--tx)' }}
-                    placeholder="השם שלך"
+                    placeholder={t.profile.fullName}
                   />
                 </FieldGroup>
 
-                <FieldGroup label="שם משתמש" icon={<User size={11} />}>
+                <FieldGroup label={t.profile.username} icon={<User size={11} />}>
                   <input
                     name="username"
                     defaultValue={profile.username ?? ''}
@@ -344,7 +346,7 @@ export default function ProfileClient({
                 </FieldGroup>
 
                 <div className="sm:col-span-2">
-                  <FieldGroup label="תחומי התמחות" icon={<Tag size={11} />}>
+                  <FieldGroup label={t.profile.specializations} icon={<Tag size={11} />}>
                     {selectedIds.map((id) => (
                       <input key={id} type="hidden" name="specialization_ids" value={id} />
                     ))}
@@ -372,14 +374,14 @@ export default function ProfileClient({
                 </div>
 
                 <div className="sm:col-span-2">
-                  <FieldGroup label="אודות" icon={<FileText size={11} />}>
+                  <FieldGroup label={t.profile.bio} icon={<FileText size={11} />}>
                     <textarea
                       name="bio"
                       defaultValue={profile.bio ?? ''}
                       rows={4}
                       className={`${inputCls} resize-none`}
                       style={{ color: 'var(--tx)' }}
-                      placeholder="ספר על עצמך..."
+                      placeholder={t.profile.bioPlaceholder}
                     />
                   </FieldGroup>
                 </div>
@@ -397,7 +399,7 @@ export default function ProfileClient({
                   }}
                 >
                   <Save size={14} style={{ color: 'white' }} />
-                  <span style={{ color: 'white' }}>{isPending ? 'שומר...' : 'שמור שינויים'}</span>
+                  <span style={{ color: 'white' }}>{isPending ? t.profile.saving : t.profile.saveChanges}</span>
                 </button>
                 <button
                   type="button"
@@ -405,7 +407,7 @@ export default function ProfileClient({
                   className="rounded-xl px-4 py-2.5 text-sm font-medium transition hover:bg-slate-100"
                   style={{ border: '1px solid var(--bd)', color: 'var(--tx2)' }}
                 >
-                  ביטול
+                  {t.profile.cancel}
                 </button>
               </div>
             </form>
@@ -425,15 +427,15 @@ export default function ProfileClient({
               🎨
             </div>
             <div>
-              <p className="font-semibold" style={{ color: 'var(--tx2)' }}>שתף את העבודות שלך</p>
-              <p className="mt-1 text-sm" style={{ color: 'var(--tx3)' }}>העלה עבודות לספריית ההשראה ותתחיל לבנות נוכחות</p>
+              <p className="font-semibold" style={{ color: 'var(--tx2)' }}>{t.profile.shareWorks}</p>
+              <p className="mt-1 text-sm" style={{ color: 'var(--tx3)' }}>{t.profile.shareWorksDesc}</p>
             </div>
             <Link
               href="/inspiration"
               className="flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold text-white transition hover:opacity-90"
               style={{ background: 'linear-gradient(135deg, #7c3aed, #6b21a8)', boxShadow: '0 4px 16px rgba(107,33,168,.3)' }}
             >
-              עבור לספריית ההשראה
+              {t.profile.goToInspiration}
             </Link>
           </div>
         </div>
