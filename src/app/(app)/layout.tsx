@@ -36,7 +36,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // Admins always get in regardless of status
   if (profileData.role !== 'admin') {
     const status = profileData.status
-    if (status === 'pending' || status === null) {
+    if (status === 'pending') {
       await supabase.auth.signOut()
       redirect('/login?message=pending')
     }

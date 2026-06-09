@@ -527,8 +527,10 @@ export default function ChatClient({
     chatErrorTimerRef.current = setTimeout(() => setChatError(null), 5000)
   }
 
-  // ── Realtime connection status ──
+  // ── Realtime connection status + retry ──
   const [rtStatus, setRtStatus] = useState<'connecting' | 'ok' | 'error'>('connecting')
+  const [rtRetry, setRtRetry] = useState(0)
+  const rtRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     // Restore mute
@@ -702,7 +704,8 @@ export default function ChatClient({
   // ── Realtime: community messages ──
   useEffect(() => {
     if (!generalTopicId) return
-    const ch = supabase.channel(`rt-msgs-${generalTopicId}`)
+    setRtStatus('connecting')
+    const ch = supabase.channel(`rt-msgs-${generalTopicId}-${rtRetry}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `channel_id=eq.${generalTopicId}` }, async (payload) => {
         const m = payload.new as Message
         const { data: prof } = await supabase.from('profiles').select('id,full_name,username,avatar_url').eq('id', m.user_id).single()
@@ -715,17 +718,34 @@ export default function ChatClient({
           playSound(soundPrefsRef.current['community'] ?? 'message')
         }
       })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages', filter: `channel_id=eq.${generalTopicId}` }, (payload) => {
+        const u = payload.new as Message
+        setCommunityMsgs(prev => prev.map(m => m.id === u.id ? { ...m, content: u.content, edited_at: u.edited_at } : m))
+      })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages', filter: `channel_id=eq.${generalTopicId}` }, (payload) => {
         const old = payload.old as { id: string }
         setCommunityMsgs(prev => prev.filter(m => m.id !== old.id))
       })
       .subscribe((status, err) => {
         console.log('[rt-community] status:', status, err ?? '')
-        if (status === 'SUBSCRIBED') setRtStatus('ok')
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') setRtStatus('error')
+        if (status === 'SUBSCRIBED') {
+          setRtStatus('ok')
+          if (rtRetryTimerRef.current) { clearTimeout(rtRetryTimerRef.current); rtRetryTimerRef.current = null }
+        }
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          setRtStatus('error')
+          // Auto-reconnect with 4-second delay; capped at 10 retries to avoid thundering herd
+          if (rtRetryTimerRef.current) clearTimeout(rtRetryTimerRef.current)
+          rtRetryTimerRef.current = setTimeout(() => {
+            setRtRetry(n => (n < 10 ? n + 1 : n))
+          }, 4000)
+        }
       })
-    return () => { supabase.removeChannel(ch) }
-  }, [generalTopicId, supabase])
+    return () => {
+      if (rtRetryTimerRef.current) { clearTimeout(rtRetryTimerRef.current); rtRetryTimerRef.current = null }
+      supabase.removeChannel(ch)
+    }
+  }, [generalTopicId, supabase, rtRetry]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Realtime: community reactions ──
   useEffect(() => {
@@ -1364,9 +1384,21 @@ export default function ChatClient({
         <button onClick={toggleMute} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition hover:bg-slate-100" style={{ color: isMuted ? '#ef4444' : 'var(--tx3)' }} title={isMuted ? 'בטל השתקה' : 'השתק צלילים'}>
           {isMuted ? <BellOff size={15} /> : <Bell size={15} />}
         </button>
-        <div title={rtStatus === 'ok' ? 'realtime פעיל' : rtStatus === 'error' ? 'שגיאת realtime' : 'מתחבר...'}
-          className="h-2 w-2 shrink-0 rounded-full"
-          style={{ background: rtStatus === 'ok' ? '#22c55e' : rtStatus === 'error' ? '#ef4444' : '#f59e0b' }} />
+        {rtStatus === 'error' ? (
+          <button
+            onClick={() => setRtRetry(n => n + 1)}
+            title="חיבור ה-realtime נפסק — לחץ להתחברות מחדש"
+            className="flex items-center gap-1 rounded-lg px-2 py-0.5 text-[10px] font-bold text-red-400 transition hover:bg-red-50"
+            style={{ border: '1px solid rgba(239,68,68,.25)' }}
+          >
+            <span className="h-1.5 w-1.5 rounded-full bg-red-400" />
+            התחבר מחדש
+          </button>
+        ) : (
+          <div title={rtStatus === 'ok' ? 'realtime פעיל' : 'מתחבר...'}
+            className="h-2 w-2 shrink-0 rounded-full"
+            style={{ background: rtStatus === 'ok' ? '#22c55e' : '#f59e0b' }} />
+        )}
       </div>
 
       <div ref={communityScrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-0.5" onClick={() => setCommunityEmojiPickerFor(null)}>
