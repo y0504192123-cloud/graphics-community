@@ -43,6 +43,7 @@ export default function FloatingNotifications({ currentUserId }: { currentUserId
   }, [])
 
   const addNotif = useCallback((item: NotifItem) => {
+    console.log('[FloatingNotif] addNotif called', item)
     setNotifs(prev => {
       if (prev.some(n => n.id === item.id)) return prev
       return [item, ...prev].slice(0, 3)
@@ -62,16 +63,32 @@ export default function FloatingNotifications({ currentUserId }: { currentUserId
   useEffect(() => {
     console.log('[FloatingNotifications] mounted, userId:', currentUserId)
 
-    // Receive PM events relayed from Sidebar (avoids duplicate subscription)
+    // Receive PM + community events relayed from Sidebar / ChatClient
     const handleNewPm = async (e: Event) => {
       const m = (e as CustomEvent).detail as {
         id: string; sender_id: string; receiver_id: string; content: string | null
+        is_community?: boolean; sender_name?: string
       }
-      console.log('[FloatingNotif] new-pm event received:', m)
+      console.log('[FloatingNotif] new-pm event received, receiver_id:', m?.receiver_id, 'currentUserId:', currentUserId)
       if (!m?.id || m.receiver_id !== currentUserId) return
 
-      // Suppress if already viewing this exact conversation
       const path = window.location.pathname + window.location.search
+
+      if (m.is_community) {
+        // Suppress when user is actively viewing community chat
+        if (path.includes('/chat') && !path.includes('dm=')) return
+        addNotif({
+          id: `community-${m.id}`,
+          senderName: m.sender_name ?? 'קהילה',
+          senderAvatar: null,
+          preview: m.content?.slice(0, 70) ?? '📎 קובץ',
+          source: 'chat',
+          link: '/chat',
+        })
+        return
+      }
+
+      // Suppress DM notification if user is viewing that exact conversation
       if (path.includes('/chat') && path.includes(m.sender_id)) return
 
       const { data: prof } = await supabase

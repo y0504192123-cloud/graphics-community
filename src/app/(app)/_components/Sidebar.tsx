@@ -21,6 +21,7 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
   const { lang, toggleLang } = useLanguage()
   const t = useT()
   const [unreadCount, setUnreadCount] = useState(0)
+  const [communityUnreadCount, setCommunityUnreadCount] = useState(0)
   const [newsUnreadCount, setNewsUnreadCount] = useState(0)
   const [forumUnreadCount, setForumUnreadCount] = useState(0)
   const [totalMembers, setTotalMembers] = useState(0)
@@ -33,6 +34,19 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
     document.addEventListener('click', resumeAudio)
     return () => document.removeEventListener('click', resumeAudio)
   }, [])
+
+  // Community chat unread badge — driven by custom events from ChatClient
+  useEffect(() => {
+    if (!currentUserId) return
+    const onMsg = () => setCommunityUnreadCount(prev => prev + 1)
+    const onOpened = () => setCommunityUnreadCount(0)
+    window.addEventListener('new-community-msg', onMsg)
+    window.addEventListener('community-opened', onOpened)
+    return () => {
+      window.removeEventListener('new-community-msg', onMsg)
+      window.removeEventListener('community-opened', onOpened)
+    }
+  }, [currentUserId])
 
   useEffect(() => {
     if (!currentUserId) return
@@ -254,7 +268,7 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
           const isChat = item.href === '/chat'
           const isForum = item.href === '/forum'
           const isNews = item.href === '/news'
-          const numBadge = isChat ? unreadCount : isNews ? newsUnreadCount : 0
+          const numBadge = isChat ? (unreadCount + communityUnreadCount) : isNews ? newsUnreadCount : isForum ? forumUnreadCount : 0
           return (
             <Link
               key={item.href}
@@ -284,9 +298,6 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
                 <span className="relative ms-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">
                   {numBadge > 9 ? '9+' : numBadge}
                 </span>
-              )}
-              {isForum && forumUnreadCount > 0 && numBadge === 0 && (
-                <span className="relative ms-auto h-2 w-2 rounded-full bg-red-500" />
               )}
             </Link>
           )
@@ -421,9 +432,9 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
             style={{ color: 'var(--tx2)' }}
           >
             {open ? <X size={20} /> : <Menu size={20} />}
-            {!open && (unreadCount + forumUnreadCount) > 0 && (
+            {!open && (unreadCount + communityUnreadCount + forumUnreadCount) > 0 && (
               <span className="absolute -end-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[8px] font-bold" style={{ color: 'white' }}>
-                {(unreadCount + forumUnreadCount) > 9 ? '9+' : unreadCount + forumUnreadCount}
+                {(unreadCount + communityUnreadCount + forumUnreadCount) > 9 ? '9+' : unreadCount + communityUnreadCount + forumUnreadCount}
               </span>
             )}
           </button>

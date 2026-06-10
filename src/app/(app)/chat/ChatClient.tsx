@@ -743,9 +743,15 @@ export default function ChatClient({
         })
         if (m.user_id !== currentUserId) {
           if (!isMutedRef.current) playSound(soundPrefsRef.current['community'] ?? 'message')
+          const senderName = (prof as any)?.full_name ?? (prof as any)?.username ?? '—'
+          const body = m.attachment_url ? '📎' : (m.content ?? '')
+          // Relay to FloatingNotifications + Sidebar badge counter
+          window.dispatchEvent(new CustomEvent('new-pm', { detail: {
+            id: m.id, sender_id: m.user_id, receiver_id: currentUserId,
+            content: body, is_community: true, sender_name: senderName,
+          }}))
+          window.dispatchEvent(new CustomEvent('new-community-msg'))
           if (activeSideRef.current !== 'community' || document.visibilityState !== 'visible') {
-            const senderName = (prof as any)?.full_name ?? (prof as any)?.username ?? '—'
-            const body = m.attachment_url ? '📎' : (m.content ?? '')
             sendDesktopNotif(senderName, body)
           }
         }
@@ -909,6 +915,7 @@ export default function ChatClient({
     setActiveSide('community')
     setSelectedPartner(null)
     setMobileShowChat(true)
+    window.dispatchEvent(new CustomEvent('community-opened'))
   }
 
   const openConversation = async (partnerId: string) => {
