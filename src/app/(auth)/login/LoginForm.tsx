@@ -15,6 +15,7 @@ const supabaseErrors: Record<string, string> = {
   'Invalid_login_credentials': 'אימייל או סיסמה שגויים.',
   'Email not confirmed': 'נא לאשר את כתובת האימייל שלך.',
   'User already registered': 'כתובת אימייל זו כבר רשומה.',
+  'Password should be at least 6 characters': 'הסיסמה חייבת להכיל לפחות 6 תווים.',
   auth_failed: 'האימות נכשל. נסה שוב.',
   no_profile: 'לא ניתן לטעון את פרטי המשתמש. פנה למנהל.',
 }
@@ -31,6 +32,7 @@ const labelCls = 'mb-1.5 block text-xs font-semibold uppercase tracking-widest t
 export default function LoginForm({ urlError, urlMessage, logoUrl }: Props) {
   const [mode, setMode] = useState<'login' | 'signup'>('login')
   const [showForgot, setShowForgot] = useState(false)
+  const [passwordError, setPasswordError] = useState<string | null>(null)
 
   const [signInState, signInAction, signInPending] = useActionState<AuthState, FormData>(signIn, null)
   const [signUpState, signUpAction, signUpPending] = useActionState<AuthState, FormData>(signUp, null)
@@ -47,6 +49,18 @@ export default function LoginForm({ urlError, urlMessage, logoUrl }: Props) {
   const displayError = isPendingError || isRejected || showSignUpSuccess
     ? null
     : resolveError(rawError) ?? resolveError(urlError)
+
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    if (mode === 'signup') {
+      const pw = (e.currentTarget.elements.namedItem('password') as HTMLInputElement)?.value ?? ''
+      if (pw.length < 6) {
+        e.preventDefault()
+        setPasswordError('הסיסמה חייבת להכיל לפחות 6 תווים')
+        return
+      }
+    }
+    setPasswordError(null)
+  }
 
   return (
     <div
@@ -124,7 +138,7 @@ export default function LoginForm({ urlError, urlMessage, logoUrl }: Props) {
       )}
 
       {/* Main form */}
-      <form action={formAction} className="space-y-3.5">
+      <form action={formAction} onSubmit={handleSubmit} className="space-y-3.5">
         <div>
           <label className={labelCls}>כתובת אימייל</label>
           <input
@@ -148,7 +162,13 @@ export default function LoginForm({ urlError, urlMessage, logoUrl }: Props) {
             placeholder=""
             className={fieldCls}
             dir="ltr"
+            onChange={() => { if (passwordError) setPasswordError(null) }}
           />
+          {passwordError && (
+            <p className="mt-1.5 flex items-center gap-1.5 text-xs text-red-400">
+              <span>⚠</span>{passwordError}
+            </p>
+          )}
         </div>
 
         {/* Signup-only extra fields */}
