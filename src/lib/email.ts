@@ -52,21 +52,26 @@ export function buildChallengeEmailHtml(opts: {
           <td style="padding:36px 40px;">
             <h2 style="color:#1e293b;font-size:18px;margin:0 0 14px;font-weight:700;">שלום, ${displayName}!</h2>
             <p style="color:#475569;font-size:15px;line-height:1.7;margin:0 0 4px;">
-              אתגר עיצוב שבועי חדש עלה לפורום!<br/>
-              בוא תצתף, תנחש ותוכיח מי הגרפיקאי הכי חד בקהילה 🔥
+              אתגר עיצוב שבועי חדש עלה לפורום Grafi!
+            </p>
+            <p style="color:#475569;font-size:15px;line-height:1.7;margin:12px 0 4px;">
+              בוא תנתח את העיצוב, תשתף את הדעה שלך ותוכיח מי הגרפיקאי הכי מקצועי בקהילה 🎯
             </p>
             ${imageHtml}
             <div style="margin:24px 0;padding:20px 24px;background:linear-gradient(135deg,#fef3c7,#fde68a);border-radius:14px;border-right:5px solid #d97706;">
               <p style="margin:0 0 5px;font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:0.5px;">האתגר הוא:</p>
               <p style="margin:0;font-size:17px;font-weight:800;color:#1e293b;">${threadTitle}</p>
             </div>
-            <div style="text-align:center;margin:32px 0;">
+            <p style="color:#475569;font-size:15px;line-height:1.7;margin:0 0 24px;text-align:center;">
+              לחץ על הכפתור למטה כדי להצטרף לדיון:
+            </p>
+            <div style="text-align:center;margin:0 0 32px;">
               <a href="${threadUrl}"
                  style="display:inline-block;background:linear-gradient(135deg,#d97706,#b45309);color:#fff;text-decoration:none;padding:15px 44px;border-radius:14px;font-size:16px;font-weight:800;box-shadow:0 6px 20px rgba(180,83,9,.35);">
                 השתתף עכשיו &larr;
               </a>
             </div>
-            <p style="color:#94a3b8;font-size:13px;text-align:center;margin:0;">פגשנו אותך בקהילה — בוא נראה מה אתה שווה! 💪</p>
+            <p style="color:#94a3b8;font-size:13px;text-align:center;margin:0;">בהצלחה,<br/>צוות Grafi</p>
           </td>
         </tr>
         <tr>
