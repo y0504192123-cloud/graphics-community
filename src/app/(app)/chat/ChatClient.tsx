@@ -748,10 +748,6 @@ export default function ChatClient({
           }
           if (m.sender_id !== currentUserId && m.receiver_id === currentUserId) {
             if (!isMutedRef.current) playSound(soundPrefsRef.current[m.sender_id] ?? 'message')
-            console.log('[ChatClient] dispatching new-pm private event', m.id, '→ receiver:', m.receiver_id)
-            window.dispatchEvent(new CustomEvent('new-pm', { detail: {
-              id: m.id, sender_id: m.sender_id, receiver_id: m.receiver_id, content: m.content,
-            }}))
             if (selectedPartnerRef.current !== m.sender_id || document.visibilityState !== 'visible') {
               const senderName = (m as any).sender?.full_name ?? (m as any).sender?.username ?? '—'
               const body = m.attachment_url ? '📎' : (m.content ?? '')

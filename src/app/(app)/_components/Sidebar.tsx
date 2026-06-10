@@ -64,11 +64,38 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
     }
     fetchCount()
 
+    let ch: ReturnType<typeof supabase.channel> | null = null
+    let timer: ReturnType<typeof setTimeout> | null = null
+    let cancelled = false
+
+    const connect = () => {
+      if (cancelled) return
+      if (ch) supabase.removeChannel(ch)
+      ch = supabase.channel(`sidebar-pm-${currentUserId}`)
+        .on('postgres_changes', {
+          event: 'INSERT', schema: 'public', table: 'private_messages',
+          filter: `receiver_id=eq.${currentUserId}`,
+        }, (payload) => {
+          window.dispatchEvent(new CustomEvent('new-pm', { detail: payload.new }))
+          fetchCount()
+        })
+        .subscribe((status) => {
+          if (!cancelled && (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT')) {
+            if (timer) clearTimeout(timer)
+            timer = setTimeout(connect, 5_000)
+          }
+        })
+    }
+    connect()
+
     const onRead = () => fetchCount()
     window.addEventListener('pm-read', onRead)
     const poll = setInterval(fetchCount, 30_000)
 
     return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+      if (ch) supabase.removeChannel(ch)
       window.removeEventListener('pm-read', onRead)
       clearInterval(poll)
     }
