@@ -125,58 +125,124 @@ export default async function ForumPage() {
             <p className="text-sm font-semibold" style={{ color: 'var(--tx2)' }}>עדיין אין קטגוריות</p>
             <p className="text-xs" style={{ color: 'var(--tx3)' }}>מנהל יכול להוסיף קטגוריות מפאנל הניהול</p>
           </div>
-        ) : (
-          <section>
-            <h2 className="mb-4 text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--tx3)' }}>קטגוריות</h2>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {categories.map((cat, ci) => {
-                const cardGrads = [
-                  'linear-gradient(135deg,#6B21A8,#4F46E5)',
-                  'linear-gradient(135deg,#7c3aed,#2563eb)',
-                  'linear-gradient(135deg,#9333ea,#0891b2)',
-                  'linear-gradient(135deg,#7c3aed,#db2777)',
-                ]
-                const cardGrad = cardGrads[ci % cardGrads.length]
-                return (
-                  <Link
-                    key={cat.id}
-                    href={`/forum/${cat.id}`}
-                    className="group relative overflow-hidden rounded-2xl p-5 transition-all duration-200 hover:-translate-y-1"
-                    style={{ background: cardGrad, boxShadow: '0 4px 16px rgba(107,33,168,.25)', color: 'white' }}
-                  >
-                    <div className="pointer-events-none absolute -end-6 -top-6 h-28 w-28 rounded-full opacity-15" style={{ background: 'white' }} />
-                    <div className="pointer-events-none absolute -bottom-4 -start-4 h-20 w-20 rounded-full opacity-10" style={{ background: 'white' }} />
-                    <div className="relative flex items-start gap-4">
-                      <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl text-4xl transition-transform duration-200 group-hover:scale-110"
-                        style={{ background: 'rgba(255,255,255,.18)', backdropFilter: 'blur(4px)' }}>
-                        {cat.icon ?? '💬'}
+        ) : (() => {
+          const adminCats = categories.filter(c => c.admin_only)
+          const regularCats = categories.filter(c => !c.admin_only)
+          return (
+            <section>
+              <h2 className="mb-4 text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--tx3)' }}>קטגוריות</h2>
+
+              {/* Special full-width cards for admin_only categories */}
+              {adminCats.map(cat => (
+                <Link
+                  key={cat.id}
+                  href={`/forum/${cat.id}`}
+                  className="group relative mb-4 flex overflow-hidden rounded-3xl transition-all duration-300 hover:-translate-y-1.5 hover:scale-[1.01]"
+                  style={{
+                    background: 'linear-gradient(135deg,#92400e 0%,#b45309 30%,#d97706 60%,#f59e0b 100%)',
+                    boxShadow: '0 8px 32px rgba(217,119,6,.35)',
+                    minHeight: '140px',
+                  }}
+                >
+                  {/* Background orbs */}
+                  <div className="pointer-events-none absolute -end-10 -top-10 h-48 w-48 rounded-full opacity-20" style={{ background: 'radial-gradient(circle,#fbbf24,transparent 70%)' }} />
+                  <div className="pointer-events-none absolute -bottom-8 -start-8 h-36 w-36 rounded-full opacity-15" style={{ background: 'radial-gradient(circle,#fde68a,transparent 70%)' }} />
+                  <div className="pointer-events-none absolute inset-0" style={{ background: 'repeating-linear-gradient(45deg,transparent,transparent 20px,rgba(255,255,255,.03) 20px,rgba(255,255,255,.03) 21px)' }} />
+
+                  <div className="relative flex w-full items-center gap-6 px-7 py-6">
+                    {/* Big icon */}
+                    <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl text-5xl transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3"
+                      style={{ background: 'rgba(255,255,255,.18)', backdropFilter: 'blur(8px)', boxShadow: '0 4px 16px rgba(0,0,0,.15)', border: '1px solid rgba(255,255,255,.25)' }}>
+                      {cat.icon ?? '🎯'}
+                    </div>
+
+                    {/* Content */}
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-2 flex flex-wrap items-center gap-2">
+                        <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-black tracking-wide uppercase"
+                          style={{ background: 'rgba(255,255,255,.95)', color: '#b45309', boxShadow: '0 2px 8px rgba(0,0,0,.12)' }}>
+                          🏆 אתגר שבועי
+                        </span>
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="font-bold text-base leading-snug text-white">{cat.name}</p>
-                          <ChevronLeft size={14} className="mt-0.5 shrink-0 opacity-60 transition-opacity group-hover:opacity-100" style={{ color: 'white' }} />
-                        </div>
-                        {cat.description && (
-                          <p className="mt-1 text-xs leading-relaxed line-clamp-2 opacity-80" style={{ color: 'rgba(255,255,255,.85)' }}>{cat.description}</p>
-                        )}
-                        <div className="mt-3 flex items-center gap-3">
-                          <span className="flex items-center gap-1 text-xs font-semibold" style={{ color: 'rgba(255,255,255,.9)' }}>
-                            <MessageSquare size={11} />
-                            {threadCounts[cat.id] ?? 0} נושאים
-                          </span>
-                          <span className="text-xs opacity-60" style={{ color: 'white' }}>·</span>
-                          <span className="text-xs opacity-75" style={{ color: 'rgba(255,255,255,.85)' }}>
-                            {replyCounts[cat.id] ?? 0} תגובות
-                          </span>
-                        </div>
+                      <p className="text-xl font-black leading-tight text-white drop-shadow-sm">{cat.name}</p>
+                      {cat.description && (
+                        <p className="mt-1.5 text-sm leading-relaxed opacity-85" style={{ color: 'rgba(255,255,255,.9)' }}>{cat.description}</p>
+                      )}
+                      <div className="mt-3 flex items-center gap-4">
+                        <span className="flex items-center gap-1.5 text-sm font-bold" style={{ color: 'rgba(255,255,255,.95)' }}>
+                          <MessageSquare size={13} />
+                          {threadCounts[cat.id] ?? 0} אתגרים
+                        </span>
+                        <span className="text-sm opacity-50 text-white">·</span>
+                        <span className="text-sm font-semibold opacity-80 text-white">
+                          {replyCounts[cat.id] ?? 0} השתתפויות
+                        </span>
                       </div>
                     </div>
-                  </Link>
-                )
-              })}
-            </div>
-          </section>
-        )}
+
+                    {/* Arrow CTA */}
+                    <div className="flex shrink-0 items-center gap-2 rounded-2xl px-5 py-2.5 text-sm font-black transition-all duration-200 group-hover:gap-3"
+                      style={{ background: 'rgba(255,255,255,.2)', backdropFilter: 'blur(4px)', color: 'white', border: '1px solid rgba(255,255,255,.3)' }}>
+                      <span>השתתף</span>
+                      <ChevronLeft size={16} className="transition-transform duration-200 group-hover:-translate-x-1" />
+                    </div>
+                  </div>
+                </Link>
+              ))}
+
+              {/* Regular categories grid */}
+              {regularCats.length > 0 && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {regularCats.map((cat, ci) => {
+                    const cardGrads = [
+                      'linear-gradient(135deg,#6B21A8,#4F46E5)',
+                      'linear-gradient(135deg,#7c3aed,#2563eb)',
+                      'linear-gradient(135deg,#9333ea,#0891b2)',
+                      'linear-gradient(135deg,#7c3aed,#db2777)',
+                    ]
+                    const cardGrad = cardGrads[ci % cardGrads.length]
+                    return (
+                      <Link
+                        key={cat.id}
+                        href={`/forum/${cat.id}`}
+                        className="group relative overflow-hidden rounded-2xl p-5 transition-all duration-200 hover:-translate-y-1"
+                        style={{ background: cardGrad, boxShadow: '0 4px 16px rgba(107,33,168,.25)', color: 'white' }}
+                      >
+                        <div className="pointer-events-none absolute -end-6 -top-6 h-28 w-28 rounded-full opacity-15" style={{ background: 'white' }} />
+                        <div className="pointer-events-none absolute -bottom-4 -start-4 h-20 w-20 rounded-full opacity-10" style={{ background: 'white' }} />
+                        <div className="relative flex items-start gap-4">
+                          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl text-4xl transition-transform duration-200 group-hover:scale-110"
+                            style={{ background: 'rgba(255,255,255,.18)', backdropFilter: 'blur(4px)' }}>
+                            {cat.icon ?? '💬'}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="font-bold text-base leading-snug text-white">{cat.name}</p>
+                              <ChevronLeft size={14} className="mt-0.5 shrink-0 opacity-60 transition-opacity group-hover:opacity-100" style={{ color: 'white' }} />
+                            </div>
+                            {cat.description && (
+                              <p className="mt-1 text-xs leading-relaxed line-clamp-2 opacity-80" style={{ color: 'rgba(255,255,255,.85)' }}>{cat.description}</p>
+                            )}
+                            <div className="mt-3 flex items-center gap-3">
+                              <span className="flex items-center gap-1 text-xs font-semibold" style={{ color: 'rgba(255,255,255,.9)' }}>
+                                <MessageSquare size={11} />
+                                {threadCounts[cat.id] ?? 0} נושאים
+                              </span>
+                              <span className="text-xs opacity-60" style={{ color: 'white' }}>·</span>
+                              <span className="text-xs opacity-75" style={{ color: 'rgba(255,255,255,.85)' }}>
+                                {replyCounts[cat.id] ?? 0} תגובות
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </Link>
+                    )
+                  })}
+                </div>
+              )}
+            </section>
+          )
+        })()}
 
         {/* Popular this week */}
         {popularThisWeek.length > 0 && (
