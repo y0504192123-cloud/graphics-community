@@ -20,11 +20,12 @@ export default async function ThreadPage({ params }: Props) {
 
   const admin = createAdminClient()
 
-  const [catRes, threadRes, repliesRes, profileRes] = await Promise.all([
+  const [catRes, threadRes, repliesRes, profileRes, viewCountRes] = await Promise.all([
     admin.from('forum_categories').select('*').eq('id', categoryId).single(),
     admin.from('forum_threads').select('*').eq('id', threadId).single(),
     admin.from('forum_replies').select('*').eq('thread_id', threadId).order('created_at', { ascending: true }),
     admin.from('profiles').select('role').eq('id', user.id).single(),
+    admin.from('thread_views').select('user_id', { count: 'exact', head: true }).eq('thread_id', threadId),
   ])
 
   if (!catRes.data) { console.error('[ThreadPage] catRes error:', catRes.error, 'categoryId:', categoryId); notFound() }
@@ -58,7 +59,7 @@ export default async function ThreadPage({ params }: Props) {
     }
   }
 
-  const thread = { ...threadRes.data, profiles: profilesMap[threadRes.data!.user_id] ?? null } as ForumThread & { profiles?: Profile }
+  const thread = { ...threadRes.data, views: viewCountRes.count ?? 0, profiles: profilesMap[threadRes.data!.user_id] ?? null } as ForumThread & { profiles?: Profile }
 
   // Fetch likes for current user
   const replyIds = repliesRaw.map(r => r.id)

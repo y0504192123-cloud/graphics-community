@@ -81,19 +81,23 @@ export default async function CategoryPage({ params, searchParams }: Props) {
 
   let threads = rawList.map(t => ({ ...t, profiles: authorsMap[t.user_id] ?? null })) as (ForumThread & { profiles?: Profile })[]
 
-  // Fetch reply counts and best-answer status in one query
+  // Fetch reply counts, best-answer status, and view counts in parallel
   const threadIds = threads.map(t => t.id)
   const replyCountMap: Record<string, number> = {}
   const bestAnswerSet = new Set<string>()
+  const viewCountMap: Record<string, number> = {}
 
   if (threadIds.length) {
-    const { data: repliesData } = await admin
-      .from('forum_replies')
-      .select('thread_id, is_best_answer')
-      .in('thread_id', threadIds)
-    for (const r of repliesData ?? []) {
+    const [repliesData, viewsData] = await Promise.all([
+      admin.from('forum_replies').select('thread_id, is_best_answer').in('thread_id', threadIds),
+      admin.from('thread_views').select('thread_id').in('thread_id', threadIds),
+    ])
+    for (const r of repliesData.data ?? []) {
       replyCountMap[r.thread_id] = (replyCountMap[r.thread_id] ?? 0) + 1
       if (r.is_best_answer) bestAnswerSet.add(r.thread_id)
+    }
+    for (const v of viewsData.data ?? []) {
+      viewCountMap[v.thread_id] = (viewCountMap[v.thread_id] ?? 0) + 1
     }
   }
 
@@ -270,7 +274,7 @@ export default async function CategoryPage({ params, searchParams }: Props) {
                       </span>
                       <span className="flex items-center gap-1">
                         <Eye size={11} />
-                        {thread.views ?? 0}
+                        {viewCountMap[thread.id] ?? 0}
                       </span>
                       {replies === 0 && (
                         <span className="rounded-md px-1.5 py-0.5 text-[10px] font-semibold" style={{ background: 'rgba(239,68,68,.08)', color: '#ef4444' }}>

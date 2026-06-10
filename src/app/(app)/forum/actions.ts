@@ -194,7 +194,13 @@ export async function markThreadNotificationsRead(threadId: string, categoryId: 
 
 export async function incrementViews(threadId: string) {
   try {
-    await createAdminClient().rpc('increment_thread_views', { thread_id: threadId })
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    await supabase.from('thread_views').upsert(
+      { user_id: user.id, thread_id: threadId },
+      { onConflict: 'user_id,thread_id', ignoreDuplicates: true },
+    )
   } catch {}
 }
 
