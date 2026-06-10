@@ -1,15 +1,17 @@
 'use client'
 
 import { useState, useTransition, useActionState, useRef } from 'react'
+import Link from 'next/link'
 import {
   ShieldCheck, Users, Clock, CheckCircle2, XCircle, Newspaper,
-  Hash, Plus, Trash2, ExternalLink, Phone, MapPin, Briefcase, Star, X, Palette, FolderOpen, ImageIcon, MessagesSquare, ScanText, Flag, FileText, Save,
+  Hash, Plus, Trash2, ExternalLink, Phone, MapPin, Briefcase, Star, X, Palette, FolderOpen, ImageIcon, MessagesSquare, ScanText, Flag, FileText, Save, Mail,
 } from 'lucide-react'
 import type { Profile, NewsItem, NewsCategory, ChatCategory, Specialization, InspirationCategory, JobCategory, AssetCategory, ForumCategory, Font, FontWeight, ContentReport, UserBadge } from '@/types'
 import FontsTab from './FontsTab'
 import BadgesTab, { type UserStats } from './BadgesTab'
+import EmailsTab from './EmailsTab'
 
-type Tab = 'pending' | 'users' | 'news' | 'categories' | 'specializations' | 'insp_cats' | 'job_cats' | 'asset_cats' | 'branding' | 'forum_cats' | 'fonts' | 'reports' | 'terms' | 'badges'
+type Tab = 'pending' | 'users' | 'news' | 'categories' | 'specializations' | 'insp_cats' | 'job_cats' | 'asset_cats' | 'branding' | 'forum_cats' | 'fonts' | 'reports' | 'terms' | 'badges' | 'emails'
 
 type Props = {
   pendingUsers:    Profile[]
@@ -99,6 +101,7 @@ const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'badges',          label: 'תגים וגרפיקאי השבוע', icon: <Star size={15} /> },
   { id: 'reports',         label: 'דיווחים',             icon: <Flag size={15} /> },
   { id: 'terms',           label: 'תנאים ומדיניות',     icon: <FileText size={15} /> },
+  { id: 'emails',          label: 'מיילים',              icon: <Mail size={15} /> },
 ]
 
 export default function AdminClient({
@@ -163,16 +166,26 @@ export default function AdminClient({
         <div className="pointer-events-none absolute -top-20 start-0 h-60 w-60 rounded-full opacity-20" style={{ background: 'radial-gradient(circle, rgba(236,72,153,.6) 0%, transparent 70%)', filter: 'blur(50px)' }} />
         <div className="grid-pattern absolute inset-0 opacity-40" />
         <div className="relative mx-auto max-w-5xl">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: 'linear-gradient(135deg, #ec4899, #be185d)' }}>
-              <ShieldCheck size={20} className="text-white" />
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: 'linear-gradient(135deg, #ec4899, #be185d)' }}>
+                <ShieldCheck size={20} className="text-white" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-white">פאנל ניהול</h1>
+                <p className="text-xs text-slate-400">
+                  {pendingUsers.length} ממתינים · {activeUsers.length} פעילים · {categories.length} קטגוריות
+                </p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-2xl font-bold text-white">פאנל ניהול</h1>
-              <p className="text-xs text-slate-400">
-                {pendingUsers.length} ממתינים · {activeUsers.length} פעילים · {categories.length} קטגוריות
-              </p>
-            </div>
+            <Link
+              href="/admin/email-preview"
+              className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition hover:opacity-90"
+              style={{ background: 'linear-gradient(135deg,#d97706,#b45309)', color: 'white', boxShadow: '0 4px 14px rgba(180,83,9,.35)' }}
+            >
+              <Mail size={15} />
+              תצוגה מקדימה של מיילים
+            </Link>
           </div>
         </div>
       </div>
@@ -1118,6 +1131,9 @@ export default function AdminClient({
             clearDesignerOfWeek={clearDesignerOfWeek}
           />
         )}
+
+        {/* ── Emails ── */}
+        {activeTab === 'emails' && <EmailsTab />}
 
         {/* ── Terms & Privacy ── */}
         {activeTab === 'terms' && (

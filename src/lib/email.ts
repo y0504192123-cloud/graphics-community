@@ -105,25 +105,14 @@ export async function sendChallengeEmail(opts: {
   })
 }
 
-export async function sendApprovalEmail(to: string, name: string | null, logoUrl?: string | null) {
-  const user = process.env.EMAIL_USER
-  const pass = process.env.EMAIL_PASS
-
-  console.log('[email] EMAIL_USER:', user ? '✓ set' : '✗ MISSING')
-  console.log('[email] EMAIL_PASS:', pass ? '✓ set' : '✗ MISSING')
-  console.log('[email] Sending approval email to:', to)
-
-  if (!user || !pass) {
-    throw new Error('EMAIL_USER or EMAIL_PASS env var is missing')
-  }
-
-  const transporter = makeTransporter()
-
-  const displayName = name ?? 'חבר יקר'
+export function buildApprovalEmailHtml(opts: {
+  name: string | null
+  logoUrl?: string | null
+}): string {
+  const displayName = opts.name ?? 'חבר יקר'
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
-
-  const logoHtml = logoUrl
-    ? `<img src="${logoUrl}" alt="Grafi" style="max-height:56px;max-width:180px;object-fit:contain;display:block;margin:0 auto 16px;" />`
+  const logoHtml = opts.logoUrl
+    ? `<img src="${opts.logoUrl}" alt="Grafi" style="max-height:56px;max-width:180px;object-fit:contain;display:block;margin:0 auto 16px;" />`
     : `<div style="display:inline-block;background:linear-gradient(135deg,#7c3aed,#a855f7);border-radius:12px;width:52px;height:52px;line-height:52px;text-align:center;margin-bottom:16px;">
         <svg viewBox="0 0 32 32" width="28" height="28" fill="none" style="vertical-align:middle;">
           <path d="M7 25 L16 7 L25 25" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -131,12 +120,7 @@ export async function sendApprovalEmail(to: string, name: string | null, logoUrl
         </svg>
       </div>`
 
-  const info = await transporter.sendMail({
-    from: `"Grafi" <${process.env.EMAIL_FROM ?? user}>`,
-    to,
-    subject: 'ברוך הבא ל-Grafi! הבקשה אושרה ✅',
-    html: `
-<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html dir="rtl" lang="he">
 <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width,initial-scale=1.0" /></head>
 <body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;direction:rtl;">
@@ -176,7 +160,24 @@ export async function sendApprovalEmail(to: string, name: string | null, logoUrl
     </td></tr>
   </table>
 </body>
-</html>`,
+</html>`
+}
+
+export async function sendApprovalEmail(to: string, name: string | null, logoUrl?: string | null) {
+  const user = process.env.EMAIL_USER
+  const pass = process.env.EMAIL_PASS
+
+  console.log('[email] EMAIL_USER:', user ? '✓ set' : '✗ MISSING')
+  console.log('[email] EMAIL_PASS:', pass ? '✓ set' : '✗ MISSING')
+  console.log('[email] Sending approval email to:', to)
+
+  if (!user || !pass) throw new Error('EMAIL_USER or EMAIL_PASS env var is missing')
+
+  const info = await makeTransporter().sendMail({
+    from: `"Grafi" <${process.env.EMAIL_FROM ?? user}>`,
+    to,
+    subject: 'ברוך הבא ל-Grafi! הבקשה אושרה ✅',
+    html: buildApprovalEmailHtml({ name, logoUrl }),
   })
 
   console.log('[email] Sent successfully, messageId:', info.messageId)
