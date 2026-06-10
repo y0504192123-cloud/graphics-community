@@ -607,100 +607,6 @@ export default function ChatClient({
     })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Realtime: reactions ──
-  useEffect(() => {
-    let active = true
-    const ch = supabase.channel('rt-reactions')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_reactions' }, async (payload) => {
-        const msgId = (payload.new as { message_id?: string })?.message_id
-        if (!msgId || !active) return
-        const { data } = await supabase.from('message_reactions').select('emoji, user_id').eq('message_id', msgId)
-        if (active) setReactionsMap(prev => ({ ...prev, [msgId]: groupReactions(data ?? [], currentUserId) }))
-      })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'message_reactions' }, async (payload) => {
-        const msgId = (payload.new as { message_id?: string })?.message_id
-        if (!msgId || !active) return
-        const { data } = await supabase.from('message_reactions').select('emoji, user_id').eq('message_id', msgId)
-        if (active) setReactionsMap(prev => ({ ...prev, [msgId]: groupReactions(data ?? [], currentUserId) }))
-      })
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'message_reactions' }, async (payload) => {
-        // DELETE payload.old may be empty without REPLICA IDENTITY FULL — fall back to reloading current conversation
-        const msgId = (payload.old as { message_id?: string })?.message_id
-        if (!active) return
-        if (msgId) {
-          const { data } = await supabase.from('message_reactions').select('emoji, user_id').eq('message_id', msgId)
-          if (active) setReactionsMap(prev => ({ ...prev, [msgId]: groupReactions(data ?? [], currentUserId) }))
-        } else {
-          // Reload reactions for entire current conversation
-          const partner = selectedPartnerRef.current
-          if (!partner) return
-          const ids = privateMsgsRef.current
-            .filter(m => !String(m.id).startsWith('temp-') && (
-              (m.sender_id === currentUserId && m.receiver_id === partner) ||
-              (m.sender_id === partner && m.receiver_id === currentUserId)
-            ))
-            .map(m => m.id)
-          if (!ids.length) return
-          const { data } = await supabase.from('message_reactions').select('message_id, emoji, user_id').in('message_id', ids)
-          if (!active || !data) return
-          const patch: ReactionsMap = {}
-          for (const id of ids) {
-            patch[id] = groupReactions(data.filter(r => r.message_id === id), currentUserId)
-          }
-          setReactionsMap(prev => ({ ...prev, ...patch }))
-        }
-      })
-      .subscribe()
-    return () => { active = false; supabase.removeChannel(ch) }
-  }, [supabase, currentUserId])
-
-  // ── Online presence ──
-  useEffect(() => {
-    const ch = supabase.channel('online-users')
-      .on('presence', { event: 'sync' }, () => {
-        const state = ch.presenceState<{ userId: string }>()
-        const ids = new Set<string>()
-        Object.values(state).flat().forEach((p: any) => ids.add(p.userId))
-        setOnlineUsers(ids)
-      })
-      .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') await ch.track({ userId: currentUserId })
-      })
-    return () => { supabase.removeChannel(ch) }
-  }, [currentUserId, supabase])
-
-  // ── Typing + per-conversation broadcast (delete / edit) ──
-  useEffect(() => {
-    if (!selectedPartner) { setPartnerTyping(false); return }
-    const key = [currentUserId, selectedPartner].sort().join('_')
-    const ch = supabase.channel(`conv-${key}`)
-      .on('broadcast', { event: 'typing' }, ({ payload }) => {
-        if (payload?.userId === selectedPartner) {
-          setPartnerTyping(true)
-          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
-          typingTimeoutRef.current = setTimeout(() => setPartnerTyping(false), 3000)
-        }
-      })
-      .on('broadcast', { event: 'msg_delete' }, ({ payload }) => {
-        if (!payload?.msgId) return
-        setPrivateMsgs(prev => prev.map(m =>
-          m.id === payload.msgId ? { ...m, deleted_for_all: true, content: null, attachment_url: null } : m
-        ))
-      })
-      .on('broadcast', { event: 'msg_edit' }, ({ payload }) => {
-        if (!payload?.msgId) return
-        setPrivateMsgs(prev => prev.map(m =>
-          m.id === payload.msgId ? { ...m, content: payload.content, edited_at: payload.editedAt } : m
-        ))
-      })
-      .subscribe()
-    typingChannelRef.current = ch
-    return () => {
-      supabase.removeChannel(ch)
-      typingChannelRef.current = null
-      if (typingTimeoutRef.current) { clearTimeout(typingTimeoutRef.current); typingTimeoutRef.current = null }
-    }
-  }, [selectedPartner, currentUserId, supabase])
 
   const broadcastTyping = useCallback(() => {
     typingChannelRef.current?.send({ type: 'broadcast', event: 'typing', payload: { userId: currentUserId } })
@@ -797,26 +703,6 @@ export default function ChatClient({
     }
   }, [generalTopicId, supabase, rtRetry]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Realtime: community reactions ──
-  useEffect(() => {
-    if (!generalTopicId) return
-    let active = true
-    const reload = async (msgId: string) => {
-      const { data } = await supabase.from('community_reactions').select('emoji, user_id').eq('message_id', msgId)
-      if (active) setCommunityReactionsMap(prev => ({ ...prev, [msgId]: groupReactions(data ?? [], currentUserId) }))
-    }
-    const ch = supabase.channel('rt-community-reactions')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'community_reactions' }, (p) => { const id = (p.new as any)?.message_id; if (id && active) reload(id) })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'community_reactions' }, (p) => { const id = (p.new as any)?.message_id; if (id && active) reload(id) })
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'community_reactions' }, (p) => {
-        const id = (p.old as any)?.message_id
-        if (!active) return
-        if (id) reload(id)
-      })
-      .subscribe()
-    return () => { active = false; supabase.removeChannel(ch) }
-  }, [generalTopicId, supabase, currentUserId])
-
   // ── Realtime: private messages ──
   useEffect(() => {
     let pvCh: ReturnType<typeof supabase.channel> | null = null
@@ -860,6 +746,9 @@ export default function ChatClient({
           }
           if (m.sender_id !== currentUserId && m.receiver_id === currentUserId) {
             if (!isMutedRef.current) playSound(soundPrefsRef.current[m.sender_id] ?? 'message')
+            window.dispatchEvent(new CustomEvent('new-pm', { detail: {
+              id: m.id, sender_id: m.sender_id, receiver_id: m.receiver_id, content: m.content,
+            }}))
             if (selectedPartnerRef.current !== m.sender_id || document.visibilityState !== 'visible') {
               const senderName = (m as any).sender?.full_name ?? (m as any).sender?.username ?? '—'
               const body = m.attachment_url ? '📎' : (m.content ?? '')

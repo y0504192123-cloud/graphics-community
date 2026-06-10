@@ -64,42 +64,11 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
     }
     fetchCount()
 
-    let pmCh: ReturnType<typeof supabase.channel> | null = null
-    let pmReconnect: ReturnType<typeof setTimeout> | null = null
-    let cancelled = false
-
-    function connectPm() {
-      if (cancelled) return
-      if (pmCh) supabase.removeChannel(pmCh)
-      pmCh = supabase
-        .channel(`sidebar-pm-${currentUserId}`)
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'private_messages' }, (payload) => {
-          console.log('[Sidebar] PM INSERT event', payload.new)
-          window.dispatchEvent(new CustomEvent('new-pm', { detail: payload.new }))
-          fetchCount()
-        })
-        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'private_messages' }, (payload) => {
-          console.log('[Sidebar] PM UPDATE event', payload.new)
-          fetchCount()
-        })
-        .subscribe((status, err) => {
-          console.log('[Sidebar] PM channel status:', status, err ?? '')
-          if (!cancelled && (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT')) {
-            console.log('[Sidebar] PM reconnecting in 5s...')
-            pmReconnect = setTimeout(connectPm, 5_000)
-          }
-        })
-    }
-    connectPm()
-
-    const onRead = () => { console.log('[Sidebar] pm-read event → refetch'); fetchCount() }
+    const onRead = () => fetchCount()
     window.addEventListener('pm-read', onRead)
     const poll = setInterval(fetchCount, 30_000)
 
     return () => {
-      cancelled = true
-      if (pmReconnect) clearTimeout(pmReconnect)
-      if (pmCh) supabase.removeChannel(pmCh)
       window.removeEventListener('pm-read', onRead)
       clearInterval(poll)
     }
@@ -122,45 +91,8 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
     }
     fetchForumCount()
 
-    let forumCh: ReturnType<typeof supabase.channel> | null = null
-    let forumReconnect: ReturnType<typeof setTimeout> | null = null
-    let cancelled = false
-
-    function connectForum() {
-      if (cancelled) return
-      if (forumCh) supabase.removeChannel(forumCh)
-      forumCh = supabase
-        .channel(`sidebar-forum-${currentUserId}`)
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, (payload) => {
-          console.log('[Sidebar] notifications INSERT event', payload.new)
-          const row = (payload.new) as any
-          if (row?.user_id === currentUserId) {
-            window.dispatchEvent(new CustomEvent('new-forum-notification', { detail: payload.new }))
-            fetchForumCount()
-          }
-        })
-        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'notifications' }, (payload) => {
-          console.log('[Sidebar] notifications UPDATE event', payload.new)
-          const row = (payload.new) as any
-          if (row?.user_id === currentUserId) fetchForumCount()
-        })
-        .subscribe((status, err) => {
-          console.log('[Sidebar] Forum channel status:', status, err ?? '')
-          if (!cancelled && (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT')) {
-            console.log('[Sidebar] Forum reconnecting in 5s...')
-            forumReconnect = setTimeout(connectForum, 5_000)
-          }
-        })
-    }
-    connectForum()
-
     const poll = setInterval(fetchForumCount, 30_000)
-    return () => {
-      cancelled = true
-      if (forumReconnect) clearTimeout(forumReconnect)
-      if (forumCh) supabase.removeChannel(forumCh)
-      clearInterval(poll)
-    }
+    return () => clearInterval(poll)
   }, [currentUserId, supabase])
 
   useEffect(() => {
@@ -174,10 +106,8 @@ export default function Sidebar({ profile, email, currentUserId, logoUrl }: Prop
       setNewsUnreadCount(count ?? 0)
     }
     fetchNewsCount()
-    const ch = supabase.channel('sidebar-news-count')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'news' }, fetchNewsCount)
-      .subscribe()
-    return () => { supabase.removeChannel(ch) }
+    const poll = setInterval(fetchNewsCount, 60_000)
+    return () => clearInterval(poll)
   }, [currentUserId, supabase])
 
   useEffect(() => {
