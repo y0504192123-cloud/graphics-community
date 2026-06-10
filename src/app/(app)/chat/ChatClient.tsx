@@ -732,56 +732,68 @@ export default function ChatClient({
   useEffect(() => {
     if (!generalTopicId) return
     setRtStatus('connecting')
-    const ch = supabase.channel(`rt-msgs-${generalTopicId}-${rtRetry}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `channel_id=eq.${generalTopicId}` }, async (payload) => {
-        const m = payload.new as Message
-        const { data: prof } = await supabase.from('profiles').select('id,full_name,username,avatar_url').eq('id', m.user_id).single()
-        setCommunityMsgs(prev => {
-          const deduped = prev.filter(x => !(String(x.id).startsWith('temp-') && x.user_id === m.user_id && x.content === m.content))
-          if (deduped.some(x => String(x.id) === String(m.id))) return deduped
-          return [...deduped, { ...m, profiles: prof as Profile | undefined ?? undefined }]
-        })
-        if (m.user_id !== currentUserId) {
-          if (!isMutedRef.current) playSound(soundPrefsRef.current['community'] ?? 'message')
-          const senderName = (prof as any)?.full_name ?? (prof as any)?.username ?? '—'
-          const body = m.attachment_url ? '📎' : (m.content ?? '')
-          // Relay to FloatingNotifications + Sidebar badge counter
-          window.dispatchEvent(new CustomEvent('new-pm', { detail: {
-            id: m.id, sender_id: m.user_id, receiver_id: currentUserId,
-            content: body, is_community: true, sender_name: senderName,
-          }}))
-          window.dispatchEvent(new CustomEvent('new-community-msg'))
-          if (activeSideRef.current !== 'community' || document.visibilityState !== 'visible') {
-            sendDesktopNotif(senderName, body)
+
+    let rtCh: ReturnType<typeof supabase.channel> | null = null
+    let rtTimer: ReturnType<typeof setTimeout> | null = null
+    let cancelled = false
+    let attempt = 0
+
+    function connectCommunity() {
+      if (cancelled) return
+      if (rtCh) supabase.removeChannel(rtCh)
+      attempt++
+
+      rtCh = supabase.channel(`rt-msgs-${generalTopicId}-${attempt}`)
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `channel_id=eq.${generalTopicId}` }, async (payload) => {
+          const m = payload.new as Message
+          const { data: prof } = await supabase.from('profiles').select('id,full_name,username,avatar_url').eq('id', m.user_id).single()
+          setCommunityMsgs(prev => {
+            const deduped = prev.filter(x => !(String(x.id).startsWith('temp-') && x.user_id === m.user_id && x.content === m.content))
+            if (deduped.some(x => String(x.id) === String(m.id))) return deduped
+            return [...deduped, { ...m, profiles: prof as Profile | undefined ?? undefined }]
+          })
+          if (m.user_id !== currentUserId) {
+            if (!isMutedRef.current) playSound(soundPrefsRef.current['community'] ?? 'message')
+            const senderName = (prof as any)?.full_name ?? (prof as any)?.username ?? '—'
+            const body = m.attachment_url ? '📎' : (m.content ?? '')
+            window.dispatchEvent(new CustomEvent('new-pm', { detail: {
+              id: m.id, sender_id: m.user_id, receiver_id: currentUserId,
+              content: body, is_community: true, sender_name: senderName,
+            }}))
+            window.dispatchEvent(new CustomEvent('new-community-msg'))
+            if (activeSideRef.current !== 'community' || document.visibilityState !== 'visible') {
+              sendDesktopNotif(senderName, body)
+            }
           }
-        }
-      })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages', filter: `channel_id=eq.${generalTopicId}` }, (payload) => {
-        const u = payload.new as Message
-        setCommunityMsgs(prev => prev.map(m => m.id === u.id ? { ...m, content: u.content, edited_at: u.edited_at } : m))
-      })
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages', filter: `channel_id=eq.${generalTopicId}` }, (payload) => {
-        const old = payload.old as { id: string }
-        setCommunityMsgs(prev => prev.filter(m => m.id !== old.id))
-      })
-      .subscribe((status, err) => {
-        console.log('[rt-community] status:', status, err ?? '')
-        if (status === 'SUBSCRIBED') {
-          setRtStatus('ok')
-          if (rtRetryTimerRef.current) { clearTimeout(rtRetryTimerRef.current); rtRetryTimerRef.current = null }
-        }
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          setRtStatus('error')
-          // Auto-reconnect with 4-second delay; capped at 10 retries to avoid thundering herd
-          if (rtRetryTimerRef.current) clearTimeout(rtRetryTimerRef.current)
-          rtRetryTimerRef.current = setTimeout(() => {
-            setRtRetry(n => (n < 10 ? n + 1 : n))
-          }, 4000)
-        }
-      })
+        })
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages', filter: `channel_id=eq.${generalTopicId}` }, (payload) => {
+          const u = payload.new as Message
+          setCommunityMsgs(prev => prev.map(m => m.id === u.id ? { ...m, content: u.content, edited_at: u.edited_at } : m))
+        })
+        .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages', filter: `channel_id=eq.${generalTopicId}` }, (payload) => {
+          const old = payload.old as { id: string }
+          setCommunityMsgs(prev => prev.filter(m => m.id !== old.id))
+        })
+        .subscribe((status, err) => {
+          console.log('[rt-community] status:', status, err ?? '')
+          if (status === 'SUBSCRIBED') {
+            setRtStatus('ok')
+          }
+          if (!cancelled && (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT')) {
+            setRtStatus('error')
+            console.log('[rt-community] reconnecting...')
+            if (rtTimer) clearTimeout(rtTimer)
+            rtTimer = setTimeout(connectCommunity, 3000)
+          }
+        })
+    }
+
+    connectCommunity()
+
     return () => {
-      if (rtRetryTimerRef.current) { clearTimeout(rtRetryTimerRef.current); rtRetryTimerRef.current = null }
-      supabase.removeChannel(ch)
+      cancelled = true
+      if (rtTimer) clearTimeout(rtTimer)
+      if (rtCh) supabase.removeChannel(rtCh)
     }
   }, [generalTopicId, supabase, rtRetry]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -807,52 +819,71 @@ export default function ChatClient({
 
   // ── Realtime: private messages ──
   useEffect(() => {
-    let active = true
-    // Use user-scoped channel name to avoid collisions when multiple tabs open
-    const ch = supabase.channel(`rt-private-${currentUserId}`)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'private_messages' }, (payload) => {
-        if (!active) return
-        const u = payload.new as PrivateMessage
-        setPrivateMsgs(prev => prev.map(m => m.id === u.id ? { ...m, ...u } : m))
-      })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'private_messages' }, async (payload) => {
-        const m = payload.new as PrivateMessage
-        if (m.sender_id !== currentUserId && m.receiver_id !== currentUserId) return
-        const [{ data: sp }, { data: rp }] = await Promise.all([
-          supabase.from('profiles').select('id,full_name,username,avatar_url').eq('id', m.sender_id).single(),
-          supabase.from('profiles').select('id,full_name,username,avatar_url').eq('id', m.receiver_id).single(),
-        ])
-        if (!active) return
-        setPrivateMsgs(prev => {
-          const replyToMsg = m.reply_to_id ? (prev.find(x => x.id === m.reply_to_id) ?? null) : null
-          const full: PrivateMessage = { ...m, sender: sp as Profile | undefined ?? undefined, receiver: rp as Profile | undefined ?? undefined, reply_to: replyToMsg }
-          if (prev.some(x => String(x.id) === String(m.id))) return prev
-          if (m.sender_id === currentUserId) {
-            const deduped = prev.filter(x => !(String(x.id).startsWith('temp-') && x.sender_id === currentUserId && x.receiver_id === m.receiver_id && x.content === m.content))
-            return [...deduped, full]
-          }
-          return [...prev, full]
+    let pvCh: ReturnType<typeof supabase.channel> | null = null
+    let pvTimer: ReturnType<typeof setTimeout> | null = null
+    let cancelled = false
+    let attempt = 0
+
+    function connectPrivate() {
+      if (cancelled) return
+      if (pvCh) supabase.removeChannel(pvCh)
+      attempt++
+
+      pvCh = supabase.channel(`rt-private-${currentUserId}-${attempt}`)
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'private_messages' }, (payload) => {
+          const u = payload.new as PrivateMessage
+          setPrivateMsgs(prev => prev.map(m => m.id === u.id ? { ...m, ...u } : m))
         })
-        if (m.receiver_id === currentUserId && selectedPartnerRef.current === m.sender_id) {
-          markReadRef.current(m.sender_id)
-          setPrivateMsgs(prev => prev.map(x => x.sender_id === m.sender_id && x.receiver_id === currentUserId && !x.is_read ? { ...x, is_read: true } : x))
-          window.dispatchEvent(new CustomEvent('pm-read'))
-        }
-        if (m.sender_id !== currentUserId && m.receiver_id === currentUserId) {
-          if (!isMutedRef.current) playSound(soundPrefsRef.current[m.sender_id] ?? 'message')
-          // Desktop notification when not viewing that conversation
-          if (selectedPartnerRef.current !== m.sender_id || document.visibilityState !== 'visible') {
-            const senderName = (m as any).sender?.full_name ?? (m as any).sender?.username ?? '—'
-            const body = m.attachment_url ? '📎' : (m.content ?? '')
-            sendDesktopNotif(senderName, body)
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'private_messages' }, async (payload) => {
+          if (cancelled) return
+          const m = payload.new as PrivateMessage
+          if (m.sender_id !== currentUserId && m.receiver_id !== currentUserId) return
+          const [{ data: sp }, { data: rp }] = await Promise.all([
+            supabase.from('profiles').select('id,full_name,username,avatar_url').eq('id', m.sender_id).single(),
+            supabase.from('profiles').select('id,full_name,username,avatar_url').eq('id', m.receiver_id).single(),
+          ])
+          if (cancelled) return
+          setPrivateMsgs(prev => {
+            const replyToMsg = m.reply_to_id ? (prev.find(x => x.id === m.reply_to_id) ?? null) : null
+            const full: PrivateMessage = { ...m, sender: sp as Profile | undefined ?? undefined, receiver: rp as Profile | undefined ?? undefined, reply_to: replyToMsg }
+            if (prev.some(x => String(x.id) === String(m.id))) return prev
+            if (m.sender_id === currentUserId) {
+              const deduped = prev.filter(x => !(String(x.id).startsWith('temp-') && x.sender_id === currentUserId && x.receiver_id === m.receiver_id && x.content === m.content))
+              return [...deduped, full]
+            }
+            return [...prev, full]
+          })
+          if (m.receiver_id === currentUserId && selectedPartnerRef.current === m.sender_id) {
+            markReadRef.current(m.sender_id)
+            setPrivateMsgs(prev => prev.map(x => x.sender_id === m.sender_id && x.receiver_id === currentUserId && !x.is_read ? { ...x, is_read: true } : x))
+            window.dispatchEvent(new CustomEvent('pm-read'))
           }
-        }
-      })
-      .subscribe((status, err) => {
-        if (err) console.error('[rt-private] error:', err)
-        else console.log('[rt-private] status:', status)
-      })
-    return () => { active = false; supabase.removeChannel(ch) }
+          if (m.sender_id !== currentUserId && m.receiver_id === currentUserId) {
+            if (!isMutedRef.current) playSound(soundPrefsRef.current[m.sender_id] ?? 'message')
+            if (selectedPartnerRef.current !== m.sender_id || document.visibilityState !== 'visible') {
+              const senderName = (m as any).sender?.full_name ?? (m as any).sender?.username ?? '—'
+              const body = m.attachment_url ? '📎' : (m.content ?? '')
+              sendDesktopNotif(senderName, body)
+            }
+          }
+        })
+        .subscribe((status, err) => {
+          console.log('[rt-private] status:', status, err ?? '')
+          if (!cancelled && (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT')) {
+            console.log('[rt-private] reconnecting...')
+            if (pvTimer) clearTimeout(pvTimer)
+            pvTimer = setTimeout(connectPrivate, 3000)
+          }
+        })
+    }
+
+    connectPrivate()
+
+    return () => {
+      cancelled = true
+      if (pvTimer) clearTimeout(pvTimer)
+      if (pvCh) supabase.removeChannel(pvCh)
+    }
   }, [supabase, currentUserId])
 
   // ── Auto-scroll ──

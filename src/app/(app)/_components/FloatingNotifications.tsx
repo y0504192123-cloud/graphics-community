@@ -45,8 +45,13 @@ export default function FloatingNotifications({ currentUserId }: { currentUserId
   const addNotif = useCallback((item: NotifItem) => {
     console.log('[FloatingNotif] addNotif called', item)
     setNotifs(prev => {
-      if (prev.some(n => n.id === item.id)) return prev
-      return [item, ...prev].slice(0, 3)
+      if (prev.some(n => n.id === item.id)) {
+        console.log('[FloatingNotif] duplicate, skipping')
+        return prev
+      }
+      const next = [item, ...prev].slice(0, 3)
+      console.log('[FloatingNotif] notifs updated, count:', next.length)
+      return next
     })
     playPing()
     timersRef.current[item.id] = setTimeout(() => {
@@ -137,7 +142,7 @@ export default function FloatingNotifications({ currentUserId }: { currentUserId
   if (notifs.length === 0) return null
 
   return (
-    <div className="fixed z-[200] flex flex-col-reverse gap-2" style={{ bottom: 20, left: 20 }}>
+    <div className="fixed flex flex-col-reverse gap-2" style={{ bottom: 20, left: 20, zIndex: 9999 }}>
       {notifs.map((n) => (
         <div
           key={n.id}
