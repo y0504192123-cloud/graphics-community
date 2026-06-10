@@ -57,7 +57,7 @@ export async function sendMessage(
   const { error: insertError } = await admin.from('messages').insert({
     channel_id: topicId,
     user_id: user.id,
-    content: content || null,
+    content: content,
     attachment_url: attachmentUrl ?? null,
     attachment_type: attachmentType ?? null,
     attachment_name: attachmentName ?? null,
@@ -135,7 +135,7 @@ export async function sendPrivateMessage(
   const { error: insertError } = await admin.from('private_messages').insert({
     sender_id: user.id,
     receiver_id: receiverId,
-    content: content || null,
+    content: content,
     job_id: null,
     is_read: false,
     attachment_url: attachmentUrl ?? null,
