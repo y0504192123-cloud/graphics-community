@@ -656,15 +656,21 @@ export default function ChatClient({
       rtCommunityChRef.current = supabase.channel(`rt-msgs-${generalTopicId}-${rtCommunityAttemptRef.current}`)
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `channel_id=eq.${generalTopicId}` }, async (payload) => {
           const m = payload.new as Message
-          const { data: prof } = await supabase.from('profiles').select('id,full_name,username,avatar_url').eq('id', m.user_id).single()
+          const [profRes, replyRes] = await Promise.all([
+            supabase.from('profiles').select('id,full_name,username,avatar_url').eq('id', m.user_id).single(),
+            m.reply_to_id
+              ? supabase.from('messages').select('id,content,user_id').eq('id', m.reply_to_id).single()
+              : Promise.resolve({ data: null }),
+          ])
+          const replyTo = replyRes.data as { id: string; content: string | null; user_id: string } | null
           setCommunityMsgs(prev => {
             const deduped = prev.filter(x => !(String(x.id).startsWith('temp-') && x.user_id === m.user_id && x.content === m.content))
             if (deduped.some(x => String(x.id) === String(m.id))) return deduped
-            return [...deduped, { ...m, profiles: prof as Profile | undefined ?? undefined }]
+            return [...deduped, { ...m, profiles: profRes.data as Profile | undefined ?? undefined, reply_to: replyTo ?? null }]
           })
           if (m.user_id !== currentUserId) {
             if (!isMutedRef.current) playPing()
-            const senderName = (prof as any)?.full_name ?? (prof as any)?.username ?? '—'
+            const senderName = (profRes.data as any)?.full_name ?? (profRes.data as any)?.username ?? '—'
             const body = m.attachment_url ? '📎' : (m.content ?? '')
             console.log('[ChatClient] dispatching new-pm community event', m.id)
             window.dispatchEvent(new CustomEvent('new-pm', { detail: {
