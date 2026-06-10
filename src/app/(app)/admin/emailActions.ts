@@ -95,3 +95,36 @@ export async function sendAdminTestChallengeEmail(threadId: string, categoryId: 
     return { error: e instanceof Error ? e.message : 'שגיאה בשליחה' }
   }
 }
+
+export type MailingUser = {
+  id: string
+  full_name: string | null
+  username: string | null
+  email: string | null
+  unsubscribed_emails: boolean
+}
+
+export async function getMailingListUsers(): Promise<MailingUser[]> {
+  const admin = await requireAdmin()
+  if (!admin) return []
+  const { data } = await admin
+    .from('profiles')
+    .select('id, full_name, username, email, unsubscribed_emails')
+    .eq('status', 'active')
+    .order('full_name', { ascending: true })
+  return ((data ?? []) as MailingUser[]).map(u => ({
+    ...u,
+    unsubscribed_emails: u.unsubscribed_emails ?? false,
+  }))
+}
+
+export async function toggleUserSubscription(userId: string, unsubscribed: boolean): Promise<{ error?: string }> {
+  const admin = await requireAdmin()
+  if (!admin) return { error: 'אין הרשאה' }
+  const { error } = await admin
+    .from('profiles')
+    .update({ unsubscribed_emails: unsubscribed })
+    .eq('id', userId)
+  if (error) return { error: error.message }
+  return {}
+}

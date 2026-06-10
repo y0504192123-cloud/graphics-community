@@ -10,8 +10,9 @@ import type { Profile, NewsItem, NewsCategory, ChatCategory, Specialization, Ins
 import FontsTab from './FontsTab'
 import BadgesTab, { type UserStats } from './BadgesTab'
 import EmailsTab from './EmailsTab'
+import MailingListTab from './MailingListTab'
 
-type Tab = 'pending' | 'users' | 'news' | 'categories' | 'specializations' | 'insp_cats' | 'job_cats' | 'asset_cats' | 'branding' | 'forum_cats' | 'fonts' | 'reports' | 'terms' | 'badges' | 'emails'
+type Tab = 'pending' | 'users' | 'news' | 'categories' | 'specializations' | 'insp_cats' | 'job_cats' | 'asset_cats' | 'branding' | 'forum_cats' | 'fonts' | 'reports' | 'terms' | 'badges' | 'emails' | 'mailing'
 
 type Props = {
   pendingUsers:    Profile[]
@@ -102,6 +103,7 @@ const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'reports',         label: 'דיווחים',             icon: <Flag size={15} /> },
   { id: 'terms',           label: 'תנאים ומדיניות',     icon: <FileText size={15} /> },
   { id: 'emails',          label: 'מיילים',              icon: <Mail size={15} /> },
+  { id: 'mailing',         label: 'רשימת תפוצה',         icon: <Mail size={15} /> },
 ]
 
 export default function AdminClient({
@@ -1134,6 +1136,7 @@ export default function AdminClient({
 
         {/* ── Emails ── */}
         {activeTab === 'emails' && <EmailsTab />}
+        {activeTab === 'mailing' && <MailingListTab />}
 
         {/* ── Terms & Privacy ── */}
         {activeTab === 'terms' && (
