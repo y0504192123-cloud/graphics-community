@@ -139,6 +139,7 @@ export default function FloatingNotifications({ currentUserId }: { currentUserId
     }
   }, [currentUserId, supabase, addNotif])
 
+  console.log('[FloatingNotif] render, notifs.length:', notifs.length)
   if (notifs.length === 0) return null
 
   return (

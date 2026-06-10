@@ -8,6 +8,7 @@ import {
   Bell, BellOff, Volume2,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { playPing } from '@/lib/sound'
 import { useT } from '@/components/LanguageProvider'
 import type { Message, Profile, PrivateMessage, UserBadge } from '@/types'
 import ReportButton from '@/components/ReportButton'
@@ -659,14 +660,14 @@ export default function ChatClient({
             return [...deduped, { ...m, profiles: prof as Profile | undefined ?? undefined }]
           })
           if (m.user_id !== currentUserId) {
-            if (!isMutedRef.current) playSound(soundPrefsRef.current['community'] ?? 'message')
+            if (!isMutedRef.current) playPing()
             const senderName = (prof as any)?.full_name ?? (prof as any)?.username ?? '—'
             const body = m.attachment_url ? '📎' : (m.content ?? '')
             window.dispatchEvent(new CustomEvent('new-pm', { detail: {
               id: m.id, sender_id: m.user_id, receiver_id: currentUserId,
               content: body, is_community: true, sender_name: senderName,
             }}))
-            window.dispatchEvent(new CustomEvent('new-community-msg'))
+            window.dispatchEvent(new CustomEvent('new-community-msg', { detail: m }))
             if (activeSideRef.current !== 'community' || document.visibilityState !== 'visible') {
               sendDesktopNotif(senderName, body)
             }
