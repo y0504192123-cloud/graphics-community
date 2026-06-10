@@ -143,7 +143,7 @@ export default async function CategoryPage({ params, searchParams }: Props) {
 
       <div className="mx-auto max-w-4xl px-4 py-5 space-y-4">
 
-        {showNewForm && (!category.admin_only || isAdmin) && <NewThreadForm categoryId={categoryId} />}
+        {showNewForm && (!category.admin_only || isAdmin) && <NewThreadForm categoryId={categoryId} isAdminOnly={category.admin_only} />}
 
         {/* Sort + Search */}
         <div className="flex flex-wrap items-center gap-3">

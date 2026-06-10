@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { sendForumReplyEmail } from '@/lib/email'
+import { sendForumReplyEmail, sendChallengeEmail, buildChallengeEmailHtml } from '@/lib/email'
 
 export async function createThread(categoryId: string, title: string, content: string, imageUrls?: string[], tags?: string[]): Promise<{ threadId?: string; error?: string }> {
   const supabase = await createClient()
@@ -196,6 +196,119 @@ export async function incrementViews(threadId: string) {
   try {
     await createAdminClient().rpc('increment_thread_views', { thread_id: threadId })
   } catch {}
+}
+
+export async function sendChallengeEmailToAll(
+  threadId: string,
+  categoryId: string,
+): Promise<{ sent: number; error?: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { sent: 0, error: 'לא מחובר' }
+  const { data: prof } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+  if (prof?.role !== 'admin') return { sent: 0, error: 'אין הרשאה' }
+
+  const admin = createAdminClient()
+  const [threadRes, logoRes] = await Promise.all([
+    admin.from('forum_threads').select('title, images, image_url').eq('id', threadId).single(),
+    admin.from('site_settings').select('value').eq('key', 'logo_url').single(),
+  ])
+  if (!threadRes.data) return { sent: 0, error: 'נושא לא נמצא' }
+
+  const thread = threadRes.data as { title: string; images: string[] | null; image_url: string | null }
+  const logoUrl: string | null = logoRes.data?.value ?? null
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
+  const threadUrl = `${appUrl}/forum/${categoryId}/${threadId}`
+  const imageUrl = ((thread.images ?? []) as string[])[0] ?? thread.image_url ?? null
+
+  const { data: recipients } = await admin
+    .from('profiles')
+    .select('id, email, full_name')
+    .eq('status', 'active')
+    .or('unsubscribed_emails.is.null,unsubscribed_emails.eq.false')
+    .not('email', 'is', null)
+
+  let sent = 0
+  for (const r of (recipients ?? []) as { id: string; email: string; full_name: string | null }[]) {
+    if (!r.email) continue
+    try {
+      await sendChallengeEmail({
+        to: r.email,
+        recipientName: r.full_name,
+        threadTitle: thread.title,
+        threadUrl,
+        imageUrl,
+        unsubscribeUrl: `${appUrl}/api/unsubscribe?uid=${r.id}`,
+        logoUrl,
+      })
+      sent++
+    } catch (e) {
+      console.error('[sendChallengeEmailToAll] failed for', r.email, e)
+    }
+  }
+  return { sent }
+}
+
+export async function getChallengeEmailHtml(threadId: string, categoryId: string): Promise<string> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return ''
+  const { data: prof } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+  if (prof?.role !== 'admin') return ''
+
+  const admin = createAdminClient()
+  const [threadRes, logoRes] = await Promise.all([
+    admin.from('forum_threads').select('title, images, image_url').eq('id', threadId).single(),
+    admin.from('site_settings').select('value').eq('key', 'logo_url').single(),
+  ])
+  if (!threadRes.data) return ''
+
+  const thread = threadRes.data as { title: string; images: string[] | null; image_url: string | null }
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
+  const imageUrl = ((thread.images ?? []) as string[])[0] ?? thread.image_url ?? null
+
+  return buildChallengeEmailHtml({
+    recipientName: 'חבר יקר',
+    threadTitle: thread.title,
+    threadUrl: `${appUrl}/forum/${categoryId}/${threadId}`,
+    imageUrl,
+    unsubscribeUrl: `${appUrl}/api/unsubscribe?uid=PREVIEW`,
+    logoUrl: logoRes.data?.value ?? null,
+  })
+}
+
+export async function sendTestChallengeEmail(threadId: string, categoryId: string): Promise<{ error?: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'לא מחובר' }
+  const { data: prof } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+  if (prof?.role !== 'admin') return { error: 'אין הרשאה' }
+
+  const admin = createAdminClient()
+  const [threadRes, logoRes] = await Promise.all([
+    admin.from('forum_threads').select('title, images, image_url').eq('id', threadId).single(),
+    admin.from('site_settings').select('value').eq('key', 'logo_url').single(),
+  ])
+  if (!threadRes.data) return { error: 'נושא לא נמצא' }
+
+  const thread = threadRes.data as { title: string; images: string[] | null; image_url: string | null }
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
+  const imageUrl = ((thread.images ?? []) as string[])[0] ?? thread.image_url ?? null
+
+  try {
+    await sendChallengeEmail({
+      to: 'y0504192123@gmail.com',
+      recipientName: 'מנהל',
+      threadTitle: thread.title,
+      threadUrl: `${appUrl}/forum/${categoryId}/${threadId}`,
+      imageUrl,
+      unsubscribeUrl: `${appUrl}/api/unsubscribe?uid=test`,
+      logoUrl: logoRes.data?.value ?? null,
+    })
+    return {}
+  } catch (e: unknown) {
+    return { error: e instanceof Error ? e.message : 'שגיאה בשליחה' }
+  }
 }
 
 // Admin: manage forum categories

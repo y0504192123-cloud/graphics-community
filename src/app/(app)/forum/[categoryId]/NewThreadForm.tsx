@@ -3,8 +3,8 @@
 import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ImageIcon, X, Bold, Italic, List, Quote, Tag, AlertCircle } from 'lucide-react'
-import { createThread, getForumImageUploadUrl } from '../actions'
+import { ImageIcon, X, Bold, Italic, List, Quote, Tag, AlertCircle, Mail } from 'lucide-react'
+import { createThread, getForumImageUploadUrl, sendChallengeEmailToAll } from '../actions'
 
 function TagsInput({ tags, onChange }: { tags: string[]; onChange: (t: string[]) => void }) {
   const [input, setInput] = useState('')
@@ -44,7 +44,7 @@ function TagsInput({ tags, onChange }: { tags: string[]; onChange: (t: string[])
 
 const DRAFT_PREFIX = 'forumNewThreadDraft_'
 
-export default function NewThreadForm({ categoryId }: { categoryId: string }) {
+export default function NewThreadForm({ categoryId, isAdminOnly }: { categoryId: string; isAdminOnly?: boolean }) {
   const router = useRouter()
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
@@ -53,6 +53,8 @@ export default function NewThreadForm({ categoryId }: { categoryId: string }) {
   const [imagePreviews, setImagePreviews] = useState<string[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const [sendEmail, setSendEmail] = useState(false)
+  const [emailStatus, setEmailStatus] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -143,6 +145,12 @@ export default function NewThreadForm({ categoryId }: { categoryId: string }) {
         setIsSubmitting(false)
       } else if (result.threadId) {
         try { localStorage.removeItem(DRAFT_PREFIX + categoryId) } catch {}
+        if (sendEmail) {
+          setEmailStatus('שולח מיילים לחברים...')
+          const emailResult = await sendChallengeEmailToAll(result.threadId, categoryId)
+          setEmailStatus(emailResult.error ? `שגיאה: ${emailResult.error}` : `נשלח ל-${emailResult.sent} חברים ✓`)
+          await new Promise(r => setTimeout(r, 1800))
+        }
         router.push(`/forum/${categoryId}/${result.threadId}`)
       }
     } catch { setIsSubmitting(false) }
@@ -224,10 +232,31 @@ export default function NewThreadForm({ categoryId }: { categoryId: string }) {
           </div>
         )}
 
+        {isAdminOnly && (
+          <label className="flex cursor-pointer items-center gap-3 rounded-xl px-4 py-3 transition"
+            style={{ background: 'rgba(217,119,6,.06)', border: '1px solid rgba(217,119,6,.2)' }}>
+            <input
+              type="checkbox"
+              checked={sendEmail}
+              onChange={e => setSendEmail(e.target.checked)}
+              className="h-4 w-4 cursor-pointer rounded accent-amber-600"
+            />
+            <Mail size={14} style={{ color: '#b45309' }} />
+            <span className="text-sm font-semibold" style={{ color: '#92400e' }}>שלח מייל לכל החברים על האתגר החדש</span>
+          </label>
+        )}
+
         {submitError && (
           <div className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs"
             style={{ background: 'rgba(239,68,68,.08)', border: '1px solid rgba(239,68,68,.2)', color: '#ef4444' }}>
             <AlertCircle size={13} /> {submitError}
+          </div>
+        )}
+
+        {emailStatus && (
+          <div className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold"
+            style={{ background: 'rgba(217,119,6,.08)', border: '1px solid rgba(217,119,6,.2)', color: '#b45309' }}>
+            <Mail size={13} /> {emailStatus}
           </div>
         )}
 
@@ -238,7 +267,7 @@ export default function NewThreadForm({ categoryId }: { categoryId: string }) {
             className="rounded-xl px-6 py-2.5 text-sm font-bold text-white transition hover:opacity-90 disabled:opacity-40"
             style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)', boxShadow: '0 4px 14px rgba(124,58,237,.3)' }}
           >
-            {isSubmitting ? 'מפרסם...' : 'פרסם נושא'}
+            {isSubmitting ? (emailStatus ? emailStatus : 'מפרסם...') : 'פרסם נושא'}
           </button>
           <Link href={`/forum/${categoryId}`}
             className="rounded-xl px-4 py-2.5 text-sm font-medium transition hover:opacity-80"

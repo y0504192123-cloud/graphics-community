@@ -1,5 +1,110 @@
 import nodemailer from 'nodemailer'
 
+function makeTransporter() {
+  return nodemailer.createTransport({
+    host: process.env.EMAIL_HOST ?? 'smtp.gmail.com',
+    port: Number(process.env.EMAIL_PORT ?? 587),
+    secure: process.env.EMAIL_PORT === '465',
+    auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+    tls: { rejectUnauthorized: false },
+  })
+}
+
+export function buildChallengeEmailHtml(opts: {
+  recipientName: string | null
+  threadTitle: string
+  threadUrl: string
+  imageUrl: string | null
+  unsubscribeUrl: string
+  logoUrl?: string | null
+}): string {
+  const { recipientName, threadTitle, threadUrl, imageUrl, unsubscribeUrl, logoUrl } = opts
+  const displayName = recipientName ?? 'חבר יקר'
+
+  const logoHtml = logoUrl
+    ? `<img src="${logoUrl}" alt="Grafi" style="max-height:52px;max-width:160px;object-fit:contain;display:block;margin:0 auto 14px;" />`
+    : `<div style="display:inline-block;background:rgba(255,255,255,.2);border-radius:14px;width:54px;height:54px;line-height:54px;text-align:center;margin-bottom:14px;font-size:30px;">🎯</div>`
+
+  const imageHtml = imageUrl
+    ? `<div style="margin:24px 0;border-radius:14px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.12);">
+        <img src="${imageUrl}" alt="${threadTitle}" style="width:100%;max-height:300px;object-fit:cover;display:block;" />
+      </div>`
+    : ''
+
+  return `<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width,initial-scale=1.0" /></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;direction:rtl;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:40px 20px;">
+    <tr><td align="center">
+      <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:20px;overflow:hidden;max-width:100%;box-shadow:0 8px 32px rgba(0,0,0,.1);">
+        <tr>
+          <td style="background:linear-gradient(135deg,#92400e 0%,#b45309 35%,#d97706 65%,#f59e0b 100%);padding:36px 40px;text-align:center;">
+            ${logoHtml}
+            <div style="display:inline-block;background:rgba(255,255,255,.2);border-radius:100px;padding:5px 16px;margin-bottom:14px;">
+              <span style="color:rgba(255,255,255,.95);font-size:11px;font-weight:700;letter-spacing:1px;">🏆 אתגר שבועי</span>
+            </div>
+            <h1 style="color:#fff;margin:0;font-size:24px;font-weight:800;text-shadow:0 2px 8px rgba(0,0,0,.2);">🎯 אתגר שבועי חדש!</h1>
+            <p style="color:rgba(255,255,255,.75);margin:8px 0 0;font-size:13px;">Grafi — קהילת הגרפיקאים החרדים</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:36px 40px;">
+            <h2 style="color:#1e293b;font-size:18px;margin:0 0 14px;font-weight:700;">שלום, ${displayName}!</h2>
+            <p style="color:#475569;font-size:15px;line-height:1.7;margin:0 0 4px;">
+              אתגר עיצוב שבועי חדש עלה לפורום!<br/>
+              בוא תצתף, תנחש ותוכיח מי הגרפיקאי הכי חד בקהילה 🔥
+            </p>
+            ${imageHtml}
+            <div style="margin:24px 0;padding:20px 24px;background:linear-gradient(135deg,#fef3c7,#fde68a);border-radius:14px;border-right:5px solid #d97706;">
+              <p style="margin:0 0 5px;font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:0.5px;">האתגר הוא:</p>
+              <p style="margin:0;font-size:17px;font-weight:800;color:#1e293b;">${threadTitle}</p>
+            </div>
+            <div style="text-align:center;margin:32px 0;">
+              <a href="${threadUrl}"
+                 style="display:inline-block;background:linear-gradient(135deg,#d97706,#b45309);color:#fff;text-decoration:none;padding:15px 44px;border-radius:14px;font-size:16px;font-weight:800;box-shadow:0 6px 20px rgba(180,83,9,.35);">
+                השתתף עכשיו &larr;
+              </a>
+            </div>
+            <p style="color:#94a3b8;font-size:13px;text-align:center;margin:0;">פגשנו אותך בקהילה — בוא נראה מה אתה שווה! 💪</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:18px 40px;border-top:1px solid #e2e8f0;text-align:center;">
+            <p style="color:#94a3b8;font-size:12px;margin:0 0 6px;">Grafi — קהילת הגרפיקאים החרדים</p>
+            <p style="color:#cbd5e1;font-size:11px;margin:0;">
+              קיבלת מייל זה כי אתה חלק מהקהילה.&nbsp;
+              <a href="${unsubscribeUrl}" style="color:#94a3b8;text-decoration:underline;">הסר אותי מרשימת התפוצה</a>
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`
+}
+
+export async function sendChallengeEmail(opts: {
+  to: string
+  recipientName: string | null
+  threadTitle: string
+  threadUrl: string
+  imageUrl: string | null
+  unsubscribeUrl: string
+  logoUrl?: string | null
+}): Promise<void> {
+  const user = process.env.EMAIL_USER
+  const pass = process.env.EMAIL_PASS
+  if (!user || !pass) throw new Error('EMAIL credentials missing')
+  await makeTransporter().sendMail({
+    from: `"Grafi" <${process.env.EMAIL_FROM ?? user}>`,
+    to: opts.to,
+    subject: `🎯 אתגר שבועי חדש! ${opts.threadTitle}`,
+    html: buildChallengeEmailHtml(opts),
+  })
+}
+
 export async function sendApprovalEmail(to: string, name: string | null, logoUrl?: string | null) {
   const user = process.env.EMAIL_USER
   const pass = process.env.EMAIL_PASS
@@ -12,13 +117,7 @@ export async function sendApprovalEmail(to: string, name: string | null, logoUrl
     throw new Error('EMAIL_USER or EMAIL_PASS env var is missing')
   }
 
-  const transporter = nodemailer.createTransport({
-    host: process.env.EMAIL_HOST ?? 'smtp.gmail.com',
-    port: Number(process.env.EMAIL_PORT ?? 587),
-    secure: process.env.EMAIL_PORT === '465',
-    auth: { user, pass },
-    tls: { rejectUnauthorized: false },
-  })
+  const transporter = makeTransporter()
 
   const displayName = name ?? 'חבר יקר'
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
@@ -95,13 +194,7 @@ export async function sendForumReplyEmail(
   const pass = process.env.EMAIL_PASS
   if (!user || !pass) return
 
-  const transporter = nodemailer.createTransport({
-    host: process.env.EMAIL_HOST ?? 'smtp.gmail.com',
-    port: Number(process.env.EMAIL_PORT ?? 587),
-    secure: process.env.EMAIL_PORT === '465',
-    auth: { user, pass },
-    tls: { rejectUnauthorized: false },
-  })
+  const transporter = makeTransporter()
 
   const displayName = recipientName ?? 'חבר יקר'
   const replier = replierName ?? 'מישהו'
