@@ -27,12 +27,12 @@ type Props = {
   currentProfile: Profile | null
   isAdmin: boolean
   activeUsers: Profile[]
-  sendMessage: (topicId: string, content: string, attUrl?: string, attType?: string, attName?: string, replyToId?: string) => Promise<void>
+  sendMessage: (topicId: string, content: string, attUrl?: string, attType?: string, attName?: string, replyToId?: string) => Promise<{ error?: string }>
   editMessage: (id: string, content: string) => Promise<void>
   deleteMessage: (id: string) => Promise<void>
   toggleCommunityReaction: (messageId: string, emoji: string) => Promise<void>
   initialPrivateMessages: PrivateMessage[]
-  sendPrivateMessage: (receiverId: string, content: string, attUrl?: string, attType?: string, attName?: string, replyToId?: string) => Promise<void>
+  sendPrivateMessage: (receiverId: string, content: string, attUrl?: string, attType?: string, attName?: string, replyToId?: string) => Promise<{ error?: string }>
   deletePrivateMessage: (id: string) => Promise<{ error?: string }>
   editPrivateMessage: (id: string, content: string) => Promise<{ error?: string }>
   toggleReaction: (messageId: string, emoji: string) => Promise<void>
@@ -900,11 +900,13 @@ export default function ChatClient({
             console.error('[handleCommunitySend] getChatUploadUrl failed for', file.name, ':', error)
             failedFiles.push(file.name); continue
           }
+          console.log('[handleCommunitySend] step1 signed URL OK — publicUrl:', publicUrl)
           const uploadRes = await fetch(signedUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } })
           if (!uploadRes.ok) {
-            console.error('[handleCommunitySend] PUT upload failed for', file.name, ':', uploadRes.status, uploadRes.statusText)
+            console.error('[handleCommunitySend] step2 PUT upload failed for', file.name, ':', uploadRes.status, uploadRes.statusText)
             failedFiles.push(file.name); continue
           }
+          console.log('[handleCommunitySend] step2 PUT upload OK — status:', uploadRes.status)
           urls.push(publicUrl)
         }
         if (failedFiles.length > 0) showChatError(`שגיאה בהעלאת: ${failedFiles.join(', ')}`)
@@ -913,8 +915,10 @@ export default function ChatClient({
         const attUrl = urls.length === 1 ? urls[0] : JSON.stringify(urls)
         const attType = !allImages ? 'file' : urls.length === 1 ? 'image' : 'images'
         const attName = attachFiles.length === 1 ? attachFiles[0].name : `${attachFiles.length} תמונות`
+        console.log('[handleCommunitySend] step3 saving to DB — attUrl:', attUrl, '| attType:', attType)
+        const tempId = `temp-c-${Date.now()}`
         setCommunityMsgs(prev => [...prev, {
-          id: `temp-${Date.now()}`, channel_id: generalTopicId, user_id: currentUserId,
+          id: tempId, channel_id: generalTopicId, user_id: currentUserId,
           content: content || null, created_at: new Date().toISOString(),
           attachment_url: attUrl, attachment_type: attType, attachment_name: attName,
           reply_to_id: currentReplyTo?.id ?? null, reply_to: currentReplyTo ? { id: currentReplyTo.id, content: currentReplyTo.content, user_id: currentReplyTo.user_id } : null,
@@ -922,7 +926,14 @@ export default function ChatClient({
         }])
         setCommunityText('')
         if (communityTextRef.current) communityTextRef.current.style.height = 'auto'
-        await sendMessage(generalTopicId, content, attUrl, attType, attName, currentReplyTo?.id)
+        const { error: dbErr } = await sendMessage(generalTopicId, content, attUrl, attType, attName, currentReplyTo?.id)
+        if (dbErr) {
+          console.error('[handleCommunitySend] step3 DB save failed:', dbErr)
+          setCommunityMsgs(prev => prev.filter(m => m.id !== tempId))
+          showChatError(`שגיאת DB: ${dbErr}`)
+        } else {
+          console.log('[handleCommunitySend] step3 DB save OK')
+        }
       } catch (e: unknown) {
         console.error('[handleCommunitySend] unexpected upload error:', e)
         showChatError('שגיאה בהעלאת הקובץ')
@@ -969,11 +980,13 @@ export default function ChatClient({
             console.error('[handlePrivateSend] getChatUploadUrl failed for', file.name, ':', error)
             failedFiles.push(file.name); continue
           }
+          console.log('[handlePrivateSend] step1 signed URL OK — publicUrl:', publicUrl)
           const uploadRes = await fetch(signedUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } })
           if (!uploadRes.ok) {
-            console.error('[handlePrivateSend] PUT upload failed for', file.name, ':', uploadRes.status, uploadRes.statusText)
+            console.error('[handlePrivateSend] step2 PUT upload failed for', file.name, ':', uploadRes.status, uploadRes.statusText)
             failedFiles.push(file.name); continue
           }
+          console.log('[handlePrivateSend] step2 PUT upload OK — status:', uploadRes.status)
           urls.push(publicUrl)
         }
         if (failedFiles.length > 0) showChatError(`שגיאה בהעלאת: ${failedFiles.join(', ')}`)
@@ -982,14 +995,23 @@ export default function ChatClient({
         const attUrl = urls.length === 1 ? urls[0] : JSON.stringify(urls)
         const attType = !allImages ? 'file' : urls.length === 1 ? 'image' : 'images'
         const attName = attachFiles.length === 1 ? attachFiles[0].name : `${attachFiles.length} תמונות`
+        console.log('[handlePrivateSend] step3 saving to DB — attUrl:', attUrl, '| attType:', attType)
+        const tempPId = `temp-p-${Date.now()}`
         setPrivateMsgs(prev => [...prev, {
-          id: `temp-${Date.now()}`, sender_id: currentUserId, receiver_id: selectedPartner,
+          id: tempPId, sender_id: currentUserId, receiver_id: selectedPartner,
           content: content || null, job_id: null, is_read: false, created_at: new Date().toISOString(),
           attachment_url: attUrl, attachment_type: attType, attachment_name: attName,
           reply_to_id: currentReplyTo?.id ?? null, reply_to: currentReplyTo ? { id: currentReplyTo.id, content: currentReplyTo.content, sender_id: currentReplyTo.sender_id } : null,
           sender: currentProfile ?? undefined,
         }])
-        await sendPrivateMessage(selectedPartner, content, attUrl, attType, attName, currentReplyTo?.id)
+        const { error: dbErr } = await sendPrivateMessage(selectedPartner, content, attUrl, attType, attName, currentReplyTo?.id)
+        if (dbErr) {
+          console.error('[handlePrivateSend] step3 DB save failed:', dbErr)
+          setPrivateMsgs(prev => prev.filter(m => m.id !== tempPId))
+          showChatError(`שגיאת DB: ${dbErr}`)
+        } else {
+          console.log('[handlePrivateSend] step3 DB save OK')
+        }
       } catch (e: unknown) {
         console.error('[handlePrivateSend] unexpected upload error:', e)
         showChatError('שגיאה בהעלאת הקובץ')

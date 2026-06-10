@@ -48,12 +48,13 @@ export async function sendMessage(
   attachmentType?: string,
   attachmentName?: string,
   replyToId?: string,
-) {
+): Promise<{ error?: string }> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
   const admin = createAdminClient()
-  await admin.from('messages').insert({
+  console.log('[sendMessage] inserting — channel_id:', topicId, '| attachment_url:', attachmentUrl ?? null, '| attachment_type:', attachmentType ?? null)
+  const { error: insertError } = await admin.from('messages').insert({
     channel_id: topicId,
     user_id: user.id,
     content: content || null,
@@ -62,11 +63,17 @@ export async function sendMessage(
     attachment_name: attachmentName ?? null,
     reply_to_id: replyToId ?? null,
   })
+  if (insertError) {
+    console.error('[sendMessage] DB insert error:', insertError.message, '| code:', insertError.code, '| details:', insertError.details)
+    return { error: insertError.message }
+  }
+  console.log('[sendMessage] insert OK')
   if (content) {
     const { data: prof } = await admin.from('profiles').select('full_name, username').eq('id', user.id).single()
     const senderName = prof?.full_name ?? prof?.username ?? 'משתמש'
     await createMentionNotifications(admin, content, senderName, user.id, '/chat')
   }
+  return {}
 }
 
 export async function editMessage(messageId: string, content: string) {
@@ -119,12 +126,13 @@ export async function sendPrivateMessage(
   attachmentType?: string,
   attachmentName?: string,
   replyToId?: string,
-) {
+): Promise<{ error?: string }> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
   const admin = createAdminClient()
-  await admin.from('private_messages').insert({
+  console.log('[sendPrivateMessage] inserting — receiver:', receiverId, '| attachment_url:', attachmentUrl ?? null, '| attachment_type:', attachmentType ?? null)
+  const { error: insertError } = await admin.from('private_messages').insert({
     sender_id: user.id,
     receiver_id: receiverId,
     content: content || null,
@@ -135,11 +143,17 @@ export async function sendPrivateMessage(
     attachment_name: attachmentName ?? null,
     reply_to_id: replyToId ?? null,
   })
+  if (insertError) {
+    console.error('[sendPrivateMessage] DB insert error:', insertError.message, '| code:', insertError.code, '| details:', insertError.details)
+    return { error: insertError.message }
+  }
+  console.log('[sendPrivateMessage] insert OK')
   if (content) {
     const { data: prof } = await admin.from('profiles').select('full_name, username').eq('id', user.id).single()
     const senderName = prof?.full_name ?? prof?.username ?? 'משתמש'
     await createMentionNotifications(admin, content, senderName, user.id, '/chat')
   }
+  return {}
 }
 
 export async function deletePrivateMessage(messageId: string): Promise<{ error?: string }> {
