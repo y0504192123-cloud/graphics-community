@@ -81,6 +81,22 @@ export default async function DashboardPage() {
   const profile = profileRes.data as Profile | null
   const displayName = profile?.full_name ?? profile?.username ?? user?.email?.split('@')[0] ?? 'גרפיקאי'
 
+  // Fetch latest "crack the design" challenge thread
+  let weekChallenge: { id: string; title: string; category_id: string; image_url: string | null; images: string[] | null; replyCount: number } | null = null
+  const { data: challengeCat } = await admin.from('forum_categories').select('id').eq('name', 'פצחו את העיצוב').single()
+  if (challengeCat?.id) {
+    const { data: challengeThread } = await admin.from('forum_threads')
+      .select('id, title, category_id, image_url, images')
+      .eq('category_id', challengeCat.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single()
+    if (challengeThread) {
+      const { count: rc } = await admin.from('forum_replies').select('id', { count: 'exact', head: true }).eq('thread_id', challengeThread.id)
+      weekChallenge = { ...(challengeThread as any), replyCount: rc ?? 0 }
+    }
+  }
+
   let designerOfWeek: { userId: string; name: string; profile?: any } | null = null
   const dotWRaw = dotWRes.data?.value
   if (dotWRaw) {
@@ -106,6 +122,7 @@ export default async function DashboardPage() {
       initialOpenJobs={(openJobsRes.data ?? []) as any[]}
       onlineDesigners={(onlineDesignersRes.data ?? []) as any[]}
       designerOfWeek={designerOfWeek}
+      weekChallenge={weekChallenge}
     />
   )
 }

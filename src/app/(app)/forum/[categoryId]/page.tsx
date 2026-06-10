@@ -50,9 +50,13 @@ export default async function CategoryPage({ params, searchParams }: Props) {
 
   const admin = createAdminClient()
 
-  const { data: catData } = await admin.from('forum_categories').select('*').eq('id', categoryId).single()
+  const [{ data: catData }, { data: userProfileData }] = await Promise.all([
+    admin.from('forum_categories').select('*').eq('id', categoryId).single(),
+    supabase.from('profiles').select('role').eq('id', user.id).single(),
+  ])
   if (!catData) notFound()
   const category = catData as ForumCategory
+  const isAdmin = (userProfileData as any)?.role === 'admin'
 
   let query = admin
     .from('forum_threads')
@@ -123,21 +127,23 @@ export default async function CategoryPage({ params, searchParams }: Props) {
                 {category.description && <p className="text-sm" style={{ color: 'var(--tx3)' }}>{category.description}</p>}
               </div>
             </div>
-            <Link
-              href={`/forum/${categoryId}?new=1`}
-              className="flex shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-white transition hover:opacity-90 hover:scale-[1.02]"
-              style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)', boxShadow: '0 4px 14px rgba(124,58,237,.35)' }}
-            >
-              <Plus size={15} />
-              נושא חדש
-            </Link>
+            {(!category.admin_only || isAdmin) && (
+              <Link
+                href={`/forum/${categoryId}?new=1`}
+                className="flex shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-white transition hover:opacity-90 hover:scale-[1.02]"
+                style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)', boxShadow: '0 4px 14px rgba(124,58,237,.35)' }}
+              >
+                <Plus size={15} />
+                נושא חדש
+              </Link>
+            )}
           </div>
         </div>
       </div>
 
       <div className="mx-auto max-w-4xl px-4 py-5 space-y-4">
 
-        {showNewForm && <NewThreadForm categoryId={categoryId} />}
+        {showNewForm && (!category.admin_only || isAdmin) && <NewThreadForm categoryId={categoryId} />}
 
         {/* Sort + Search */}
         <div className="flex flex-wrap items-center gap-3">
@@ -182,7 +188,7 @@ export default async function CategoryPage({ params, searchParams }: Props) {
             <p className="text-sm font-semibold" style={{ color: 'var(--tx2)' }}>
               {q ? 'לא נמצאו נושאים תואמים' : sort === 'unanswered' ? 'כל הנושאים קיבלו מענה 🎉' : 'אין נושאים עדיין'}
             </p>
-            {!q && sort === 'new' && (
+            {!q && sort === 'new' && (!category.admin_only || isAdmin) && (
               <Link href={`/forum/${categoryId}?new=1`} className="mt-1 text-xs font-bold text-purple-600 hover:text-purple-700 transition">
                 פתח את הנושא הראשון ←
               </Link>
@@ -215,6 +221,11 @@ export default async function CategoryPage({ params, searchParams }: Props) {
                   <div className="min-w-0 flex-1">
                     {/* Title row */}
                     <div className="flex flex-wrap items-start gap-1.5">
+                      {category.admin_only && i === 0 && (
+                        <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold" style={{ background: 'rgba(234,88,12,.12)', color: '#ea580c' }}>
+                          🎯 אתגר פעיל
+                        </span>
+                      )}
                       {thread.is_pinned && (
                         <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold" style={{ background: 'rgba(234,179,8,.12)', color: '#b45309' }}>
                           <Pin size={9} /> מוצמד
@@ -230,7 +241,7 @@ export default async function CategoryPage({ params, searchParams }: Props) {
                           <CheckCircle2 size={9} /> נפתר
                         </span>
                       )}
-                      {threadIsNew && !thread.is_pinned && (
+                      {threadIsNew && !thread.is_pinned && !(category.admin_only && i === 0) && (
                         <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold" style={{ background: 'rgba(124,58,237,.1)', color: '#7c3aed' }}>
                           <Sparkles size={9} /> חדש
                         </span>

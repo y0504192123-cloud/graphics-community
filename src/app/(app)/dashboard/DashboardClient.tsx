@@ -19,6 +19,7 @@ type DashboardProps = {
   initialOpenJobs: any[]
   onlineDesigners: any[]
   designerOfWeek: { userId: string; name: string; profile?: any } | null
+  weekChallenge: { id: string; title: string; category_id: string; image_url: string | null; images: string[] | null; replyCount: number } | null
 }
 
 export default function DashboardClient({
@@ -27,7 +28,7 @@ export default function DashboardClient({
   initialUnreadMessages, initialRecentForum,
   recentInspiration, popularThreads,
   initialOpenJobs, onlineDesigners,
-  designerOfWeek,
+  designerOfWeek, weekChallenge,
 }: DashboardProps) {
   const t = useT()
   const { lang } = useLanguage()
@@ -175,6 +176,52 @@ export default function DashboardClient({
 
           {/* Community activity */}
           <div className="space-y-8">
+
+            {/* Week's challenge card */}
+            {weekChallenge && (() => {
+              const img = weekChallenge.image_url ?? weekChallenge.images?.[0] ?? null
+              return (
+                <section>
+                  <div className="relative overflow-hidden rounded-2xl"
+                    style={{ background: 'linear-gradient(135deg,#92400e 0%,#b45309 40%,#d97706 100%)', boxShadow: '0 8px 32px rgba(180,83,9,.35)' }}>
+                    <div className="pointer-events-none absolute -end-12 -top-12 h-48 w-48 rounded-full opacity-20" style={{ background: 'white' }} />
+                    <div className="pointer-events-none absolute -bottom-8 -start-8 h-36 w-36 rounded-full opacity-10" style={{ background: 'white' }} />
+                    <div className="relative flex items-center gap-5 p-5">
+                      {img ? (
+                        <img src={img} alt={weekChallenge.title}
+                          className="h-20 w-20 shrink-0 rounded-xl object-cover shadow-lg ring-2 ring-white/30" />
+                      ) : (
+                        <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-xl text-5xl shadow-lg"
+                          style={{ background: 'rgba(255,255,255,.15)', backdropFilter: 'blur(4px)' }}>
+                          🎯
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-1 flex items-center gap-2">
+                          <span className="rounded-full px-2 py-0.5 text-[10px] font-bold"
+                            style={{ background: 'rgba(255,255,255,.2)', color: 'white' }}>
+                            🎯 אתגר השבוע
+                          </span>
+                          <span className="text-[11px]" style={{ color: 'rgba(255,255,255,.75)' }}>
+                            {weekChallenge.replyCount} משתתפים
+                          </span>
+                        </div>
+                        <p className="line-clamp-2 font-bold leading-snug" style={{ color: 'white', fontSize: '15px' }}>
+                          {weekChallenge.title}
+                        </p>
+                      </div>
+                      <Link
+                        href={`/forum/${weekChallenge.category_id}/${weekChallenge.id}`}
+                        className="shrink-0 rounded-xl px-4 py-2.5 text-sm font-bold transition hover:opacity-90 hover:scale-105"
+                        style={{ background: 'white', color: '#92400e', boxShadow: '0 4px 12px rgba(0,0,0,.2)' }}
+                      >
+                        השתתף עכשיו
+                      </Link>
+                    </div>
+                  </div>
+                </section>
+              )
+            })()}
 
             {/* Recent forum posts */}
             <section>

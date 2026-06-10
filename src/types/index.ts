@@ -216,6 +216,7 @@ export type ForumCategory = {
   description: string | null
   icon: string | null
   sort_order: number
+  admin_only: boolean
   created_at: string
   thread_count?: number
 }
