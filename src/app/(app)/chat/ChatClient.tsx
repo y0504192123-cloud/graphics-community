@@ -896,9 +896,15 @@ export default function ChatClient({
         const failedFiles: string[] = []
         for (const file of attachFiles) {
           const { signedUrl, publicUrl, error } = await getChatUploadUrl(file.type)
-          if (error || !signedUrl || !publicUrl) { failedFiles.push(file.name); continue }
+          if (error || !signedUrl || !publicUrl) {
+            console.error('[handleCommunitySend] getChatUploadUrl failed for', file.name, ':', error)
+            failedFiles.push(file.name); continue
+          }
           const uploadRes = await fetch(signedUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } })
-          if (!uploadRes.ok) { failedFiles.push(file.name); continue }
+          if (!uploadRes.ok) {
+            console.error('[handleCommunitySend] PUT upload failed for', file.name, ':', uploadRes.status, uploadRes.statusText)
+            failedFiles.push(file.name); continue
+          }
           urls.push(publicUrl)
         }
         if (failedFiles.length > 0) showChatError(`שגיאה בהעלאת: ${failedFiles.join(', ')}`)
@@ -917,6 +923,9 @@ export default function ChatClient({
         setCommunityText('')
         if (communityTextRef.current) communityTextRef.current.style.height = 'auto'
         await sendMessage(generalTopicId, content, attUrl, attType, attName, currentReplyTo?.id)
+      } catch (e: unknown) {
+        console.error('[handleCommunitySend] unexpected upload error:', e)
+        showChatError('שגיאה בהעלאת הקובץ')
       } finally {
         setIsUploading(false)
         setAttachFiles([])
@@ -956,9 +965,15 @@ export default function ChatClient({
         const failedFiles: string[] = []
         for (const file of attachFiles) {
           const { signedUrl, publicUrl, error } = await getChatUploadUrl(file.type)
-          if (error || !signedUrl || !publicUrl) { failedFiles.push(file.name); continue }
+          if (error || !signedUrl || !publicUrl) {
+            console.error('[handlePrivateSend] getChatUploadUrl failed for', file.name, ':', error)
+            failedFiles.push(file.name); continue
+          }
           const uploadRes = await fetch(signedUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } })
-          if (!uploadRes.ok) { failedFiles.push(file.name); continue }
+          if (!uploadRes.ok) {
+            console.error('[handlePrivateSend] PUT upload failed for', file.name, ':', uploadRes.status, uploadRes.statusText)
+            failedFiles.push(file.name); continue
+          }
           urls.push(publicUrl)
         }
         if (failedFiles.length > 0) showChatError(`שגיאה בהעלאת: ${failedFiles.join(', ')}`)
@@ -975,6 +990,9 @@ export default function ChatClient({
           sender: currentProfile ?? undefined,
         }])
         await sendPrivateMessage(selectedPartner, content, attUrl, attType, attName, currentReplyTo?.id)
+      } catch (e: unknown) {
+        console.error('[handlePrivateSend] unexpected upload error:', e)
+        showChatError('שגיאה בהעלאת הקובץ')
       } finally {
         setIsUploading(false)
         setAttachFiles([])

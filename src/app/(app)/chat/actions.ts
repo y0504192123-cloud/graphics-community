@@ -216,10 +216,21 @@ export async function getChatUploadUrl(mimeType?: string): Promise<{ signedUrl?:
   if (!user) return { error: 'לא מחובר' }
   const admin = createAdminClient()
   const path = `${user.id}/${Date.now()}`
-  const { data, error } = await admin.storage.from('chat-attachments').createSignedUploadUrl(path)
-  if (error) return { error: error.message }
-  const { data: { publicUrl } } = admin.storage.from('chat-attachments').getPublicUrl(path)
-  return { signedUrl: data.signedUrl, publicUrl }
+  console.log('[getChatUploadUrl] bucket=chat-attachments path=%s mimeType=%s', path, mimeType ?? 'unknown')
+  try {
+    const { data, error } = await admin.storage.from('chat-attachments').createSignedUploadUrl(path)
+    if (error) {
+      console.error('[getChatUploadUrl] storage error:', error.message, '| code:', (error as any).statusCode ?? (error as any).status)
+      return { error: `שגיאת Storage: ${error.message}` }
+    }
+    const { data: { publicUrl } } = admin.storage.from('chat-attachments').getPublicUrl(path)
+    console.log('[getChatUploadUrl] signed URL created OK, publicUrl:', publicUrl)
+    return { signedUrl: data.signedUrl, publicUrl }
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    console.error('[getChatUploadUrl] unexpected throw:', msg)
+    return { error: `שגיאה פנימית: ${msg}` }
+  }
 }
 
 // kept for compatibility (still used in admin panel but not in ChatClient)
