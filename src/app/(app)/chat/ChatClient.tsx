@@ -590,6 +590,12 @@ export default function ChatClient({
   markReadRef.current = markMessagesRead
   const typingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const rtCommunityChRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
+  const rtCommunityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const rtCommunityAttemptRef = useRef(0)
+  const rtPrivateChRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
+  const rtPrivateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const rtPrivateAttemptRef = useRef(0)
 
   const supabase = useMemo(() => createClient(), [])
 
@@ -640,17 +646,14 @@ export default function ChatClient({
     if (!generalTopicId) return
     setRtStatus('connecting')
 
-    let rtCh: ReturnType<typeof supabase.channel> | null = null
-    let rtTimer: ReturnType<typeof setTimeout> | null = null
     let cancelled = false
-    let attempt = 0
 
     function connectCommunity() {
       if (cancelled) return
-      if (rtCh) supabase.removeChannel(rtCh)
-      attempt++
+      if (rtCommunityChRef.current) supabase.removeChannel(rtCommunityChRef.current)
+      rtCommunityAttemptRef.current++
 
-      rtCh = supabase.channel(`rt-msgs-${generalTopicId}-${attempt}`)
+      rtCommunityChRef.current = supabase.channel(`rt-msgs-${generalTopicId}-${rtCommunityAttemptRef.current}`)
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `channel_id=eq.${generalTopicId}` }, async (payload) => {
           const m = payload.new as Message
           const { data: prof } = await supabase.from('profiles').select('id,full_name,username,avatar_url').eq('id', m.user_id).single()
@@ -663,6 +666,7 @@ export default function ChatClient({
             if (!isMutedRef.current) playPing()
             const senderName = (prof as any)?.full_name ?? (prof as any)?.username ?? '—'
             const body = m.attachment_url ? '📎' : (m.content ?? '')
+            console.log('[ChatClient] dispatching new-pm community event', m.id)
             window.dispatchEvent(new CustomEvent('new-pm', { detail: {
               id: m.id, sender_id: m.user_id, receiver_id: currentUserId,
               content: body, is_community: true, sender_name: senderName,
@@ -689,8 +693,8 @@ export default function ChatClient({
           if (!cancelled && (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT')) {
             setRtStatus('error')
             console.log('[rt-community] reconnecting...')
-            if (rtTimer) clearTimeout(rtTimer)
-            rtTimer = setTimeout(connectCommunity, 3000)
+            if (rtCommunityTimerRef.current) clearTimeout(rtCommunityTimerRef.current)
+            rtCommunityTimerRef.current = setTimeout(connectCommunity, 3000)
           }
         })
     }
@@ -699,24 +703,21 @@ export default function ChatClient({
 
     return () => {
       cancelled = true
-      if (rtTimer) clearTimeout(rtTimer)
-      if (rtCh) supabase.removeChannel(rtCh)
+      if (rtCommunityTimerRef.current) { clearTimeout(rtCommunityTimerRef.current); rtCommunityTimerRef.current = null }
+      if (rtCommunityChRef.current) { supabase.removeChannel(rtCommunityChRef.current); rtCommunityChRef.current = null }
     }
   }, [generalTopicId, supabase, rtRetry]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Realtime: private messages ──
   useEffect(() => {
-    let pvCh: ReturnType<typeof supabase.channel> | null = null
-    let pvTimer: ReturnType<typeof setTimeout> | null = null
     let cancelled = false
-    let attempt = 0
 
     function connectPrivate() {
       if (cancelled) return
-      if (pvCh) supabase.removeChannel(pvCh)
-      attempt++
+      if (rtPrivateChRef.current) supabase.removeChannel(rtPrivateChRef.current)
+      rtPrivateAttemptRef.current++
 
-      pvCh = supabase.channel(`rt-private-${currentUserId}-${attempt}`)
+      rtPrivateChRef.current = supabase.channel(`rt-private-${currentUserId}-${rtPrivateAttemptRef.current}`)
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'private_messages' }, (payload) => {
           const u = payload.new as PrivateMessage
           setPrivateMsgs(prev => prev.map(m => m.id === u.id ? { ...m, ...u } : m))
@@ -747,6 +748,7 @@ export default function ChatClient({
           }
           if (m.sender_id !== currentUserId && m.receiver_id === currentUserId) {
             if (!isMutedRef.current) playSound(soundPrefsRef.current[m.sender_id] ?? 'message')
+            console.log('[ChatClient] dispatching new-pm private event', m.id, '→ receiver:', m.receiver_id)
             window.dispatchEvent(new CustomEvent('new-pm', { detail: {
               id: m.id, sender_id: m.sender_id, receiver_id: m.receiver_id, content: m.content,
             }}))
@@ -761,8 +763,8 @@ export default function ChatClient({
           console.log('[rt-private] status:', status, err ?? '')
           if (!cancelled && (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT')) {
             console.log('[rt-private] reconnecting...')
-            if (pvTimer) clearTimeout(pvTimer)
-            pvTimer = setTimeout(connectPrivate, 3000)
+            if (rtPrivateTimerRef.current) clearTimeout(rtPrivateTimerRef.current)
+            rtPrivateTimerRef.current = setTimeout(connectPrivate, 3000)
           }
         })
     }
@@ -771,8 +773,8 @@ export default function ChatClient({
 
     return () => {
       cancelled = true
-      if (pvTimer) clearTimeout(pvTimer)
-      if (pvCh) supabase.removeChannel(pvCh)
+      if (rtPrivateTimerRef.current) { clearTimeout(rtPrivateTimerRef.current); rtPrivateTimerRef.current = null }
+      if (rtPrivateChRef.current) { supabase.removeChannel(rtPrivateChRef.current); rtPrivateChRef.current = null }
     }
   }, [supabase, currentUserId])
 
