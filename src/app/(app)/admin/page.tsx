@@ -151,7 +151,10 @@ export default async function AdminPage() {
 
   async function rejectUser(userId: string) {
     'use server'
-    await createAdminClient().from('profiles').update({ status: 'rejected' }).eq('id', userId)
+    const admin = createAdminClient()
+    // Delete from auth.users first (cascades to profiles via FK), then profiles as fallback
+    await admin.auth.admin.deleteUser(userId)
+    await admin.from('profiles').delete().eq('id', userId)
     revalidatePath('/admin')
   }
 
