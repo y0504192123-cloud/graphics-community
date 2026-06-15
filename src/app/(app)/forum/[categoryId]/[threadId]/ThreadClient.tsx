@@ -56,10 +56,18 @@ function esc(s: string) {
 }
 
 function inline(text: string): string {
-  return esc(text)
-    .replace(/\*\*(.+?)\*\*/g, '<strong style="font-weight:700">$1</strong>')
-    .replace(/\*([^*\n]+)\*/g, '<em>$1</em>')
-    .replace(/`([^`\n]+)`/g, '<code style="background:rgba(124,58,237,.12);color:#7c3aed;padding:1px 6px;border-radius:4px;font-size:11.5px;font-family:monospace">$1</code>')
+  const FORUM_URL_RE = /(https?:\/\/[^\s<>'"]+)/g
+  const segments = text.split(FORUM_URL_RE)
+  return segments.map((seg, i) => {
+    if (i % 2 === 1) {
+      const href = esc(seg)
+      return `<a href="${href}" target="_blank" rel="noopener noreferrer" style="color:#7c3aed;text-decoration:underline;word-break:break-all">${href}</a>`
+    }
+    return esc(seg)
+      .replace(/\*\*(.+?)\*\*/g, '<strong style="font-weight:700">$1</strong>')
+      .replace(/\*([^*\n]+)\*/g, '<em>$1</em>')
+      .replace(/`([^`\n]+)`/g, '<code style="background:rgba(124,58,237,.12);color:#7c3aed;padding:1px 6px;border-radius:4px;font-size:11.5px;font-family:monospace">$1</code>')
+  }).join('')
 }
 
 function buildHtml(content: string): string {

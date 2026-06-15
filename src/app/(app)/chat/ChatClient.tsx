@@ -5,7 +5,7 @@ import {
   Send, ArrowRight, X, Lock, Trash2,
   Search, UserPlus, Pin, Paperclip, Check, CheckCheck,
   MessageSquare, File as FileIcon, Edit2, CornerUpLeft, Smile, Users,
-  Bell, BellOff, Volume2,
+  Bell, BellOff, Volume2, ChevronLeft, ChevronRight,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { playPing } from '@/lib/sound'
@@ -130,12 +130,65 @@ function groupReactions(rxns: { emoji: string; user_id: string }[], uid: string)
   return Object.values(m)
 }
 
+const CHAT_TOKEN_RE = /(https?:\/\/[^\s<>'"]+|@[^\s@]+)/g
+
 function renderContent(content: string): React.ReactNode {
-  const parts = content.split(/(@[^\s@]+)/g)
-  return parts.map((part, i) =>
-    part.startsWith('@')
-      ? <span key={i} className="font-bold text-purple-400">{part}</span>
-      : part
+  const parts = content.split(CHAT_TOKEN_RE)
+  return parts.map((part, i) => {
+    if (/^https?:\/\//.test(part)) {
+      return (
+        <a key={i} href={part} target="_blank" rel="noopener noreferrer"
+          className="break-all underline" style={{ color: '#60a5fa' }}
+          onClick={e => e.stopPropagation()}>
+          {part}
+        </a>
+      )
+    }
+    if (part.startsWith('@')) {
+      return <span key={i} className="font-bold text-purple-400">{part}</span>
+    }
+    return part
+  })
+}
+
+function ChatLightbox({ images, startIdx, onClose }: { images: string[]; startIdx: number; onClose: () => void }) {
+  const [idx, setIdx] = useState(startIdx)
+  useEffect(() => {
+    const fn = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+      if (e.key === 'ArrowLeft') setIdx(i => (i - 1 + images.length) % images.length)
+      if (e.key === 'ArrowRight') setIdx(i => (i + 1) % images.length)
+    }
+    window.addEventListener('keydown', fn)
+    return () => window.removeEventListener('keydown', fn)
+  }, [images.length, onClose])
+  return (
+    <div className="fixed inset-0 z-[400] flex items-center justify-center"
+      style={{ background: 'rgba(0,0,0,.93)', backdropFilter: 'blur(12px)' }}
+      onClick={onClose}>
+      <button onClick={onClose}
+        className="absolute end-5 top-5 z-10 flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-white/15"
+        style={{ color: 'rgba(255,255,255,.8)' }}>
+        <X size={18} />
+      </button>
+      <div onClick={e => e.stopPropagation()} className="flex flex-col items-center gap-5 px-6">
+        <img src={images[idx]} alt=""
+          style={{ maxWidth: '90vw', maxHeight: '78vh', objectFit: 'contain', borderRadius: '14px', boxShadow: '0 32px 100px rgba(0,0,0,.7)' }} />
+        {images.length > 1 && (
+          <div className="flex items-center gap-3">
+            <button onClick={() => setIdx(i => (i - 1 + images.length) % images.length)}
+              className="flex h-8 w-8 items-center justify-center rounded-full text-white/70 transition hover:bg-white/15 hover:text-white">
+              <ChevronRight size={16} />
+            </button>
+            <span className="min-w-[44px] text-center text-xs" style={{ color: 'rgba(255,255,255,.5)' }}>{idx + 1} / {images.length}</span>
+            <button onClick={() => setIdx(i => (i + 1) % images.length)}
+              className="flex h-8 w-8 items-center justify-center rounded-full text-white/70 transition hover:bg-white/15 hover:text-white">
+              <ChevronLeft size={16} />
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -526,6 +579,7 @@ export default function ChatClient({
 
   // ── Error toast ──
   const [chatError, setChatError] = useState<string | null>(null)
+  const [chatLightbox, setChatLightbox] = useState<{ images: string[]; idx: number } | null>(null)
   const chatErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const showChatError = (msg: string) => {
     setChatError(msg)
@@ -1498,9 +1552,9 @@ export default function ChatClient({
                       {msg.attachment_url && (
                         <div className="mb-1">
                           {msg.attachment_type === 'image' && (
-                            <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer">
-                              <img src={msg.attachment_url} alt="" className="max-h-48 max-w-[220px] rounded-xl object-cover cursor-pointer hover:opacity-90 transition" />
-                            </a>
+                            <div className="cursor-zoom-in" onClick={() => setChatLightbox({ images: [msg.attachment_url!], idx: 0 })}>
+                              <img src={msg.attachment_url!} alt="" className="max-h-48 max-w-[220px] rounded-xl object-cover hover:opacity-90 transition" />
+                            </div>
                           )}
                           {msg.attachment_type === 'images' && (() => {
                             let urls: string[] = []
@@ -1508,9 +1562,9 @@ export default function ChatClient({
                             return (
                               <div className="grid gap-1" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', maxWidth: '260px' }}>
                                 {urls.map((url, i) => (
-                                  <a key={i} href={url} target="_blank" rel="noopener noreferrer">
-                                    <img src={url} alt="" className="w-full rounded-lg cursor-pointer hover:opacity-90 transition" style={{ aspectRatio: '1', objectFit: 'cover' }} />
-                                  </a>
+                                  <div key={i} className="cursor-zoom-in" onClick={() => setChatLightbox({ images: urls, idx: i })}>
+                                    <img src={url} alt="" className="w-full rounded-lg hover:opacity-90 transition" style={{ aspectRatio: '1', objectFit: 'cover' }} />
+                                  </div>
                                 ))}
                               </div>
                             )
@@ -1775,9 +1829,9 @@ export default function ChatClient({
                           {msg.attachment_url && (
                             <div className="mb-1">
                               {msg.attachment_type === 'image' && (
-                                <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer">
-                                  <img src={msg.attachment_url} alt="" className="max-h-48 max-w-[220px] rounded-xl object-cover cursor-pointer hover:opacity-90 transition" />
-                                </a>
+                                <div className="cursor-zoom-in" onClick={() => setChatLightbox({ images: [msg.attachment_url!], idx: 0 })}>
+                                  <img src={msg.attachment_url!} alt="" className="max-h-48 max-w-[220px] rounded-xl object-cover hover:opacity-90 transition" />
+                                </div>
                               )}
                               {msg.attachment_type === 'images' && (() => {
                                 let urls: string[] = []
@@ -1785,9 +1839,9 @@ export default function ChatClient({
                                 return (
                                   <div className="grid gap-1" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', maxWidth: '260px' }}>
                                     {urls.map((url, i) => (
-                                      <a key={i} href={url} target="_blank" rel="noopener noreferrer">
-                                        <img src={url} alt="" className="w-full rounded-lg cursor-pointer hover:opacity-90 transition" style={{ aspectRatio: '1', objectFit: 'cover' }} />
-                                      </a>
+                                      <div key={i} className="cursor-zoom-in" onClick={() => setChatLightbox({ images: urls, idx: i })}>
+                                        <img src={url} alt="" className="w-full rounded-lg hover:opacity-90 transition" style={{ aspectRatio: '1', objectFit: 'cover' }} />
+                                      </div>
                                     ))}
                                   </div>
                                 )
@@ -1978,6 +2032,15 @@ export default function ChatClient({
       <div className={`${mobileShowChat ? 'flex' : 'hidden'} lg:flex flex-1 flex-col overflow-hidden`}>
         {rightContent}
       </div>
+
+      {/* Image lightbox */}
+      {chatLightbox && (
+        <ChatLightbox
+          images={chatLightbox.images}
+          startIdx={chatLightbox.idx}
+          onClose={() => setChatLightbox(null)}
+        />
+      )}
 
       {/* Error toast */}
       {chatError && (
