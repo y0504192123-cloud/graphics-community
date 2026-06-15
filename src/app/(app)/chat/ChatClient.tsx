@@ -786,14 +786,17 @@ export default function ChatClient({
           if (cancelled) return
           const m = payload.new as PrivateMessage
           if (m.sender_id !== currentUserId && m.receiver_id !== currentUserId) return
-          const [{ data: sp }, { data: rp }] = await Promise.all([
+          const [{ data: sp }, { data: rp }, replyRes] = await Promise.all([
             supabase.from('profiles').select('id,full_name,username,avatar_url').eq('id', m.sender_id).single(),
             supabase.from('profiles').select('id,full_name,username,avatar_url').eq('id', m.receiver_id).single(),
+            m.reply_to_id
+              ? supabase.from('private_messages').select('id,content,sender_id').eq('id', m.reply_to_id).single()
+              : Promise.resolve({ data: null }),
           ])
           if (cancelled) return
+          const replyTo = replyRes.data as { id: string; content: string | null; sender_id: string } | null
           setPrivateMsgs(prev => {
-            const replyToMsg = m.reply_to_id ? (prev.find(x => x.id === m.reply_to_id) ?? null) : null
-            const full: PrivateMessage = { ...m, sender: sp as Profile | undefined ?? undefined, receiver: rp as Profile | undefined ?? undefined, reply_to: replyToMsg }
+            const full: PrivateMessage = { ...m, sender: sp as Profile | undefined ?? undefined, receiver: rp as Profile | undefined ?? undefined, reply_to: replyTo }
             if (prev.some(x => String(x.id) === String(m.id))) return prev
             if (m.sender_id === currentUserId) {
               const deduped = prev.filter(x => !(String(x.id).startsWith('temp-') && x.sender_id === currentUserId && x.receiver_id === m.receiver_id && x.content === m.content))
