@@ -136,12 +136,12 @@ export default async function ForumPage() {
               {adminCats.map(cat => {
                 const isBenefit = cat.icon === '🎁'
                 const cardBg = isBenefit
-                  ? 'linear-gradient(135deg,#4c1d95 0%,#6d28d9 40%,#7c3aed 70%,#8b5cf6 100%)'
+                  ? 'linear-gradient(135deg,#064e3b 0%,#065f46 30%,#059669 65%,#10b981 100%)'
                   : 'linear-gradient(135deg,#92400e 0%,#b45309 30%,#d97706 60%,#f59e0b 100%)'
-                const cardShadow = isBenefit ? '0 8px 32px rgba(109,40,217,.35)' : '0 8px 32px rgba(217,119,6,.35)'
-                const orb1 = isBenefit ? '#a78bfa' : '#fbbf24'
-                const orb2 = isBenefit ? '#c4b5fd' : '#fde68a'
-                const badgeColor = isBenefit ? '#6d28d9' : '#b45309'
+                const cardShadow = isBenefit ? '0 8px 32px rgba(16,185,129,.35)' : '0 8px 32px rgba(217,119,6,.35)'
+                const orb1 = isBenefit ? '#6ee7b7' : '#fbbf24'
+                const orb2 = isBenefit ? '#a7f3d0' : '#fde68a'
+                const badgeColor = isBenefit ? '#064e3b' : '#b45309'
                 const badgeLabel = isBenefit ? '🎁 הטבות בלעדיות' : '🏆 אתגר שבועי'
                 const defaultIcon = isBenefit ? '🎁' : '🎯'
                 const threadLabel = isBenefit ? 'הטבות' : 'אתגרים'

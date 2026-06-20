@@ -263,9 +263,10 @@ type EditorProps = {
   onSubmit: () => void; isSubmitting: boolean
   uploadError: string | null
   fileRef: React.RefObject<HTMLInputElement | null>
+  simple?: boolean
 }
 
-function ReplyEditor({ value, onChange, quotedText, onClearQuote, imageFiles, imagePreviews, onAddImage, onRemoveImage, onSubmit, isSubmitting, uploadError, fileRef }: EditorProps) {
+function ReplyEditor({ value, onChange, quotedText, onClearQuote, imageFiles, imagePreviews, onAddImage, onRemoveImage, onSubmit, isSubmitting, uploadError, fileRef, simple }: EditorProps) {
   const taRef = useRef<HTMLTextAreaElement>(null)
 
   const insertFormat = (prefix: string, suffix = prefix, placeholder = 'טקסט') => {
@@ -292,37 +293,39 @@ function ReplyEditor({ value, onChange, quotedText, onClearQuote, imageFiles, im
     Array.from(e.clipboardData.items).filter(i => i.type.startsWith('image/')).forEach(i => { const f = i.getAsFile(); if (f) onAddImage(f) })
   }
 
-  const canSend = (value.trim() || quotedText || imageFiles.length > 0) && !isSubmitting
+  const canSend = (value.trim() || (!simple && quotedText) || imageFiles.length > 0) && !isSubmitting
 
   return (
     <div className="overflow-hidden rounded-2xl" style={{ background: 'var(--s1)', border: '1px solid var(--bd)', boxShadow: '0 2px 12px rgba(0,0,0,.04)' }}>
       <div className="flex items-center gap-2 border-b px-4 py-2.5" style={{ borderColor: 'var(--bd)', background: 'var(--inp)' }}>
         <span className="text-xs font-bold" style={{ color: 'var(--tx)' }}>הוסף תגובה</span>
       </div>
-      <div className="flex items-center gap-0.5 border-b px-3 py-1.5" style={{ borderColor: 'var(--bd)', background: 'var(--inp)' }}>
-        {([
-          { icon: <Bold size={12} strokeWidth={2.5} />, fn: () => insertFormat('**', '**', 'מודגש'), title: 'מודגש' },
-          { icon: <Italic size={12} />, fn: () => insertFormat('*', '*', 'נטוי'), title: 'נטוי' },
-          { icon: <List size={12} />, fn: () => insertLinePrefix('- '), title: 'רשימה' },
-          { icon: <Quote size={12} />, fn: () => insertLinePrefix('> '), title: 'ציטוט' },
-        ] as const).map((btn, i) => (
-          <button key={i} type="button" onClick={btn.fn} title={btn.title}
-            className="flex h-7 w-7 items-center justify-center rounded-lg transition hover:bg-purple-100 hover:text-purple-600"
-            style={{ color: 'var(--tx3)' }}>{btn.icon}</button>
-        ))}
-        <div className="mx-1.5 h-3.5 w-px" style={{ background: 'var(--bd)' }} />
-        <button type="button" onClick={() => fileRef.current?.click()}
-          className="flex h-7 items-center gap-1.5 rounded-lg px-2 text-[11px] transition hover:bg-purple-100 hover:text-purple-600"
-          style={{ color: 'var(--tx3)' }}>
-          <ImageIcon size={12} /> תמונות
-        </button>
-        <input ref={fileRef} type="file" accept="image/*" multiple className="hidden"
-          onChange={e => { Array.from(e.target.files ?? []).forEach(onAddImage); if (fileRef.current) fileRef.current.value = '' }} />
-        <span className="ms-auto text-[10px]" style={{ color: 'var(--tx3)' }}>Ctrl+Enter לשליחה</span>
-      </div>
+      {!simple && (
+        <div className="flex items-center gap-0.5 border-b px-3 py-1.5" style={{ borderColor: 'var(--bd)', background: 'var(--inp)' }}>
+          {([
+            { icon: <Bold size={12} strokeWidth={2.5} />, fn: () => insertFormat('**', '**', 'מודגש'), title: 'מודגש' },
+            { icon: <Italic size={12} />, fn: () => insertFormat('*', '*', 'נטוי'), title: 'נטוי' },
+            { icon: <List size={12} />, fn: () => insertLinePrefix('- '), title: 'רשימה' },
+            { icon: <Quote size={12} />, fn: () => insertLinePrefix('> '), title: 'ציטוט' },
+          ] as const).map((btn, i) => (
+            <button key={i} type="button" onClick={btn.fn} title={btn.title}
+              className="flex h-7 w-7 items-center justify-center rounded-lg transition hover:bg-purple-100 hover:text-purple-600"
+              style={{ color: 'var(--tx3)' }}>{btn.icon}</button>
+          ))}
+          <div className="mx-1.5 h-3.5 w-px" style={{ background: 'var(--bd)' }} />
+          <button type="button" onClick={() => fileRef.current?.click()}
+            className="flex h-7 items-center gap-1.5 rounded-lg px-2 text-[11px] transition hover:bg-purple-100 hover:text-purple-600"
+            style={{ color: 'var(--tx3)' }}>
+            <ImageIcon size={12} /> תמונות
+          </button>
+          <input ref={fileRef} type="file" accept="image/*" multiple className="hidden"
+            onChange={e => { Array.from(e.target.files ?? []).forEach(onAddImage); if (fileRef.current) fileRef.current.value = '' }} />
+          <span className="ms-auto text-[10px]" style={{ color: 'var(--tx3)' }}>Ctrl+Enter לשליחה</span>
+        </div>
+      )}
 
       <div className="p-4 space-y-3" onPaste={handlePaste}>
-        {quotedText && (
+        {!simple && quotedText && (
           <div className="flex items-start gap-2 rounded-xl border-s-[3px] border-purple-400 px-3 py-2" style={{ background: 'rgba(124,58,237,.05)' }}>
             <CornerUpLeft size={12} className="mt-0.5 shrink-0 text-purple-500" />
             <p className="flex-1 truncate text-xs italic" style={{ color: 'var(--tx3)' }}>
@@ -333,7 +336,7 @@ function ReplyEditor({ value, onChange, quotedText, onClearQuote, imageFiles, im
         )}
         <textarea ref={taRef} value={value} onChange={e => onChange(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && e.ctrlKey && canSend) { e.preventDefault(); onSubmit() } }}
-          rows={5} placeholder={'כתוב תגובה...\n\n**מודגש** · *נטוי* · - רשימה · > ציטוט'}
+          rows={simple ? 4 : 5} placeholder={simple ? 'כתוב תגובה...' : 'כתוב תגובה...\n\n**מודגש** · *נטוי* · - רשימה · > ציטוט'}
           className="w-full resize-none rounded-xl px-4 py-3 text-sm outline-none transition placeholder:text-slate-400"
           style={{ background: 'var(--inp)', border: '1px solid var(--bd)', color: 'var(--tx)', lineHeight: '1.75' }} />
 
@@ -499,6 +502,7 @@ type Props = {
   isAdmin: boolean
   categoryId: string
   categoryAdminOnly: boolean
+  isBenefitCategory: boolean
   isThreadAuthor: boolean
   badgesMap?: Record<string, UserBadge[]>
 }
@@ -509,7 +513,7 @@ const REPLY_DRAFT_KEY_PREFIX = 'replyDraft_'
 // ── Main ──────────────────────────────────────────────────
 
 export default function ThreadClient({
-  thread, replies: initialReplies, currentUserId, currentProfile, isAdmin, categoryId, categoryAdminOnly, isThreadAuthor,
+  thread, replies: initialReplies, currentUserId, currentProfile, isAdmin, categoryId, categoryAdminOnly, isBenefitCategory, isThreadAuthor,
   badgesMap = {},
 }: Props) {
   const router = useRouter()
@@ -899,7 +903,7 @@ export default function ThreadClient({
                     className="w-full resize-none rounded-xl px-4 py-3 text-sm outline-none"
                     style={{ background: 'var(--inp)', border: '2px solid #7c3aed', color: 'var(--tx)', lineHeight: '1.7' }}
                   />
-                  <TagsInput tags={editTags} onChange={setEditTags} />
+                  {!isBenefitCategory && <TagsInput tags={editTags} onChange={setEditTags} />}
                   <div className="flex gap-2">
                     <button onClick={handleEditThread} disabled={isSavingThread}
                       className="rounded-xl px-5 py-2 text-sm font-bold text-white disabled:opacity-40"
@@ -1110,11 +1114,13 @@ export default function ThreadClient({
                         {(reply.like_count ?? 0) > 0 ? reply.like_count : ''}
                       </button>
 
-                      <button onClick={() => handleQuote(reply)}
-                        className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs transition hover:bg-purple-50 hover:text-purple-600"
-                        style={{ color: 'var(--tx3)', border: '1px solid var(--bd)' }}>
-                        <CornerUpLeft size={11} /> ציטוט
-                      </button>
+                      {!isBenefitCategory && (
+                        <button onClick={() => handleQuote(reply)}
+                          className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs transition hover:bg-purple-50 hover:text-purple-600"
+                          style={{ color: 'var(--tx3)', border: '1px solid var(--bd)' }}>
+                          <CornerUpLeft size={11} /> ציטוט
+                        </button>
+                      )}
 
                       <button onClick={() => copyReplyLink(reply.id)}
                         className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs transition"
@@ -1200,6 +1206,7 @@ export default function ThreadClient({
             onAddImage={addReplyImage} onRemoveImage={removeReplyImage}
             onSubmit={handleReply} isSubmitting={isSubmitting}
             uploadError={uploadError} fileRef={replyFileRef}
+            simple={isBenefitCategory}
           />
         </div>
       )}

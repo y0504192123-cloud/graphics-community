@@ -226,13 +226,14 @@ export function buildBenefitEmailHtml(opts: {
     <tr><td align="center">
       <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:20px;overflow:hidden;max-width:100%;box-shadow:0 8px 32px rgba(0,0,0,.1);">
         <tr>
-          <td style="background:linear-gradient(135deg,#4c1d95 0%,#6d28d9 50%,#7c3aed 100%);padding:36px 40px;text-align:center;">
+          <td style="background:linear-gradient(135deg,#064e3b 0%,#065f46 35%,#059669 70%,#10b981 100%);padding:36px 40px;text-align:center;">
             ${logoHtml}
-            <div style="display:inline-block;background:rgba(255,255,255,.2);border-radius:100px;padding:5px 16px;margin-bottom:14px;">
-              <span style="color:rgba(255,255,255,.95);font-size:11px;font-weight:700;letter-spacing:1px;">🎁 הטבה בלעדית לחברי הקהילה</span>
+            <div style="display:inline-block;background:rgba(255,255,255,.2);border-radius:100px;padding:5px 18px;margin-bottom:16px;">
+              <span style="color:rgba(255,255,255,.95);font-size:11px;font-weight:700;letter-spacing:1px;">🎁 הטבה בלעדית</span>
             </div>
-            <h1 style="color:#fff;margin:0;font-size:22px;font-weight:800;text-shadow:0 2px 8px rgba(0,0,0,.2);">${escHtml(threadTitle)}</h1>
-            <p style="color:rgba(255,255,255,.75);margin:8px 0 0;font-size:13px;">Grafi — קהילת הגרפיקאים החרדים</p>
+            <h1 style="color:#fff;margin:0 0 6px;font-size:24px;font-weight:900;text-shadow:0 2px 8px rgba(0,0,0,.2);">🎁 הטבה בלעדית לחברי Grafi!</h1>
+            <p style="color:rgba(255,255,255,.85);margin:0 0 4px;font-size:16px;font-weight:700;">${escHtml(threadTitle)}</p>
+            <p style="color:rgba(255,255,255,.6);margin:0;font-size:12px;">Grafi — קהילת הגרפיקאים החרדים</p>
           </td>
         </tr>
         <tr>
@@ -242,7 +243,7 @@ export function buildBenefitEmailHtml(opts: {
             ${imageHtml}
             <div style="text-align:center;margin:28px 0 32px;">
               <a href="${threadUrl}"
-                 style="display:inline-block;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;text-decoration:none;padding:15px 44px;border-radius:14px;font-size:16px;font-weight:800;box-shadow:0 6px 20px rgba(109,40,217,.35);">
+                 style="display:inline-block;background:linear-gradient(135deg,#059669,#065f46);color:#fff;text-decoration:none;padding:15px 44px;border-radius:14px;font-size:16px;font-weight:800;box-shadow:0 6px 20px rgba(5,150,105,.4);">
                 לפרטים נוספים &larr;
               </a>
             </div>

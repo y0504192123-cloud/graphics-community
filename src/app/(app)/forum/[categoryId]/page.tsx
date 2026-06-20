@@ -228,7 +228,7 @@ export default async function CategoryPage({ params, searchParams }: Props) {
                       {category.admin_only && i === 0 && (
                         <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold"
                           style={category.icon === '🎁'
-                            ? { background: 'rgba(109,40,217,.12)', color: '#6d28d9' }
+                            ? { background: 'rgba(16,185,129,.12)', color: '#059669' }
                             : { background: 'rgba(234,88,12,.12)', color: '#ea580c' }}>
                           {category.icon === '🎁' ? '🎁 הטבה חדשה' : '🎯 אתגר פעיל'}
                         </span>
