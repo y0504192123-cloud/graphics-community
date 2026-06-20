@@ -133,62 +133,69 @@ export default async function ForumPage() {
               <h2 className="mb-4 text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--tx3)' }}>קטגוריות</h2>
 
               {/* Special full-width cards for admin_only categories */}
-              {adminCats.map(cat => (
-                <Link
-                  key={cat.id}
-                  href={`/forum/${cat.id}`}
-                  className="group relative mb-4 flex overflow-hidden rounded-3xl transition-all duration-300 hover:-translate-y-1.5 hover:scale-[1.01]"
-                  style={{
-                    background: 'linear-gradient(135deg,#92400e 0%,#b45309 30%,#d97706 60%,#f59e0b 100%)',
-                    boxShadow: '0 8px 32px rgba(217,119,6,.35)',
-                    minHeight: '140px',
-                  }}
-                >
-                  {/* Background orbs */}
-                  <div className="pointer-events-none absolute -end-10 -top-10 h-48 w-48 rounded-full opacity-20" style={{ background: 'radial-gradient(circle,#fbbf24,transparent 70%)' }} />
-                  <div className="pointer-events-none absolute -bottom-8 -start-8 h-36 w-36 rounded-full opacity-15" style={{ background: 'radial-gradient(circle,#fde68a,transparent 70%)' }} />
-                  <div className="pointer-events-none absolute inset-0" style={{ background: 'repeating-linear-gradient(45deg,transparent,transparent 20px,rgba(255,255,255,.03) 20px,rgba(255,255,255,.03) 21px)' }} />
+              {adminCats.map(cat => {
+                const isBenefit = cat.icon === '🎁'
+                const cardBg = isBenefit
+                  ? 'linear-gradient(135deg,#4c1d95 0%,#6d28d9 40%,#7c3aed 70%,#8b5cf6 100%)'
+                  : 'linear-gradient(135deg,#92400e 0%,#b45309 30%,#d97706 60%,#f59e0b 100%)'
+                const cardShadow = isBenefit ? '0 8px 32px rgba(109,40,217,.35)' : '0 8px 32px rgba(217,119,6,.35)'
+                const orb1 = isBenefit ? '#a78bfa' : '#fbbf24'
+                const orb2 = isBenefit ? '#c4b5fd' : '#fde68a'
+                const badgeColor = isBenefit ? '#6d28d9' : '#b45309'
+                const badgeLabel = isBenefit ? '🎁 הטבות בלעדיות' : '🏆 אתגר שבועי'
+                const defaultIcon = isBenefit ? '🎁' : '🎯'
+                const threadLabel = isBenefit ? 'הטבות' : 'אתגרים'
+                const replyLabel = isBenefit ? 'תגובות' : 'השתתפויות'
+                const ctaLabel = isBenefit ? 'לצפייה' : 'השתתף'
+                return (
+                  <Link
+                    key={cat.id}
+                    href={`/forum/${cat.id}`}
+                    className="group relative mb-4 flex overflow-hidden rounded-3xl transition-all duration-300 hover:-translate-y-1.5 hover:scale-[1.01]"
+                    style={{ background: cardBg, boxShadow: cardShadow, minHeight: '140px' }}
+                  >
+                    <div className="pointer-events-none absolute -end-10 -top-10 h-48 w-48 rounded-full opacity-20" style={{ background: `radial-gradient(circle,${orb1},transparent 70%)` }} />
+                    <div className="pointer-events-none absolute -bottom-8 -start-8 h-36 w-36 rounded-full opacity-15" style={{ background: `radial-gradient(circle,${orb2},transparent 70%)` }} />
+                    <div className="pointer-events-none absolute inset-0" style={{ background: 'repeating-linear-gradient(45deg,transparent,transparent 20px,rgba(255,255,255,.03) 20px,rgba(255,255,255,.03) 21px)' }} />
 
-                  <div className="relative flex w-full items-center gap-6 px-7 py-6">
-                    {/* Big icon */}
-                    <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl text-5xl transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3"
-                      style={{ background: 'rgba(255,255,255,.18)', backdropFilter: 'blur(8px)', boxShadow: '0 4px 16px rgba(0,0,0,.15)', border: '1px solid rgba(255,255,255,.25)' }}>
-                      {cat.icon ?? '🎯'}
-                    </div>
-
-                    {/* Content */}
-                    <div className="min-w-0 flex-1">
-                      <div className="mb-2 flex flex-wrap items-center gap-2">
-                        <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-black tracking-wide uppercase"
-                          style={{ background: 'rgba(255,255,255,.95)', color: '#b45309', boxShadow: '0 2px 8px rgba(0,0,0,.12)' }}>
-                          🏆 אתגר שבועי
-                        </span>
+                    <div className="relative flex w-full items-center gap-6 px-7 py-6">
+                      <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl text-5xl transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3"
+                        style={{ background: 'rgba(255,255,255,.18)', backdropFilter: 'blur(8px)', boxShadow: '0 4px 16px rgba(0,0,0,.15)', border: '1px solid rgba(255,255,255,.25)' }}>
+                        {cat.icon ?? defaultIcon}
                       </div>
-                      <p className="text-xl font-black leading-tight text-white drop-shadow-sm">{cat.name}</p>
-                      {cat.description && (
-                        <p className="mt-1.5 text-sm leading-relaxed opacity-85" style={{ color: 'rgba(255,255,255,.9)' }}>{cat.description}</p>
-                      )}
-                      <div className="mt-3 flex items-center gap-4">
-                        <span className="flex items-center gap-1.5 text-sm font-bold" style={{ color: 'rgba(255,255,255,.95)' }}>
-                          <MessageSquare size={13} />
-                          {threadCounts[cat.id] ?? 0} אתגרים
-                        </span>
-                        <span className="text-sm opacity-50 text-white">·</span>
-                        <span className="text-sm font-semibold opacity-80 text-white">
-                          {replyCounts[cat.id] ?? 0} השתתפויות
-                        </span>
+
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-2 flex flex-wrap items-center gap-2">
+                          <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-black tracking-wide uppercase"
+                            style={{ background: 'rgba(255,255,255,.95)', color: badgeColor, boxShadow: '0 2px 8px rgba(0,0,0,.12)' }}>
+                            {badgeLabel}
+                          </span>
+                        </div>
+                        <p className="text-xl font-black leading-tight text-white drop-shadow-sm">{cat.name}</p>
+                        {cat.description && (
+                          <p className="mt-1.5 text-sm leading-relaxed opacity-85" style={{ color: 'rgba(255,255,255,.9)' }}>{cat.description}</p>
+                        )}
+                        <div className="mt-3 flex items-center gap-4">
+                          <span className="flex items-center gap-1.5 text-sm font-bold" style={{ color: 'rgba(255,255,255,.95)' }}>
+                            <MessageSquare size={13} />
+                            {threadCounts[cat.id] ?? 0} {threadLabel}
+                          </span>
+                          <span className="text-sm opacity-50 text-white">·</span>
+                          <span className="text-sm font-semibold opacity-80 text-white">
+                            {replyCounts[cat.id] ?? 0} {replyLabel}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex shrink-0 items-center gap-2 rounded-2xl px-5 py-2.5 text-sm font-black transition-all duration-200 group-hover:gap-3"
+                        style={{ background: 'rgba(255,255,255,.2)', backdropFilter: 'blur(4px)', color: 'white', border: '1px solid rgba(255,255,255,.3)' }}>
+                        <span>{ctaLabel}</span>
+                        <ChevronLeft size={16} className="transition-transform duration-200 group-hover:-translate-x-1" />
                       </div>
                     </div>
-
-                    {/* Arrow CTA */}
-                    <div className="flex shrink-0 items-center gap-2 rounded-2xl px-5 py-2.5 text-sm font-black transition-all duration-200 group-hover:gap-3"
-                      style={{ background: 'rgba(255,255,255,.2)', backdropFilter: 'blur(4px)', color: 'white', border: '1px solid rgba(255,255,255,.3)' }}>
-                      <span>השתתף</span>
-                      <ChevronLeft size={16} className="transition-transform duration-200 group-hover:-translate-x-1" />
-                    </div>
-                  </div>
-                </Link>
-              ))}
+                  </Link>
+                )
+              })}
 
               {/* Regular categories grid */}
               {regularCats.length > 0 && (

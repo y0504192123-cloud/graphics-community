@@ -226,8 +226,11 @@ export default async function CategoryPage({ params, searchParams }: Props) {
                     {/* Title row */}
                     <div className="flex flex-wrap items-start gap-1.5">
                       {category.admin_only && i === 0 && (
-                        <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold" style={{ background: 'rgba(234,88,12,.12)', color: '#ea580c' }}>
-                          🎯 אתגר פעיל
+                        <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold"
+                          style={category.icon === '🎁'
+                            ? { background: 'rgba(109,40,217,.12)', color: '#6d28d9' }
+                            : { background: 'rgba(234,88,12,.12)', color: '#ea580c' }}>
+                          {category.icon === '🎁' ? '🎁 הטבה חדשה' : '🎯 אתגר פעיל'}
                         </span>
                       )}
                       {thread.is_pinned && (
