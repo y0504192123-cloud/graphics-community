@@ -117,6 +117,7 @@ export default async function ThreadPage({ params }: Props) {
         currentProfile={myProfile}
         isAdmin={isAdmin}
         categoryId={categoryId}
+        categoryAdminOnly={category.admin_only}
         isThreadAuthor={isThreadAuthor}
         badgesMap={badgesMap}
       />

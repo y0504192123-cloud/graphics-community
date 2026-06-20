@@ -188,6 +188,104 @@ export async function sendApprovalEmail(to: string, name: string | null, logoUrl
   console.log('[email] Sent successfully, messageId:', info.messageId)
 }
 
+export function buildBenefitEmailHtml(opts: {
+  recipientName: string | null
+  threadTitle: string
+  threadContent: string
+  threadUrl: string
+  imageUrl: string | null
+  unsubscribeUrl: string
+  logoUrl?: string | null
+}): string {
+  const { recipientName, threadTitle, threadContent, threadUrl, imageUrl, unsubscribeUrl, logoUrl } = opts
+  const displayName = recipientName ?? 'חבר יקר'
+
+  const logoHtml = logoUrl
+    ? `<img src="${logoUrl}" alt="Grafi" style="max-height:52px;max-width:160px;object-fit:contain;display:block;margin:0 auto 14px;" />`
+    : `<div style="display:inline-block;background:rgba(255,255,255,.2);border-radius:14px;width:54px;height:54px;line-height:54px;text-align:center;margin-bottom:14px;font-size:30px;">🎁</div>`
+
+  const escHtml = (s: string) =>
+    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
+  const contentHtml = escHtml(threadContent)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*([^*\n]+)\*/g, '<em>$1</em>')
+    .replace(/\n/g, '<br />')
+
+  const imageHtml = imageUrl
+    ? `<div style="margin:24px 0;border-radius:14px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.12);">
+        <img src="${imageUrl}" alt="${escHtml(threadTitle)}" style="width:100%;max-height:300px;object-fit:cover;display:block;" />
+      </div>`
+    : ''
+
+  return `<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width,initial-scale=1.0" /></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;direction:rtl;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:40px 20px;">
+    <tr><td align="center">
+      <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:20px;overflow:hidden;max-width:100%;box-shadow:0 8px 32px rgba(0,0,0,.1);">
+        <tr>
+          <td style="background:linear-gradient(135deg,#4c1d95 0%,#6d28d9 50%,#7c3aed 100%);padding:36px 40px;text-align:center;">
+            ${logoHtml}
+            <div style="display:inline-block;background:rgba(255,255,255,.2);border-radius:100px;padding:5px 16px;margin-bottom:14px;">
+              <span style="color:rgba(255,255,255,.95);font-size:11px;font-weight:700;letter-spacing:1px;">🎁 הטבה בלעדית לחברי הקהילה</span>
+            </div>
+            <h1 style="color:#fff;margin:0;font-size:22px;font-weight:800;text-shadow:0 2px 8px rgba(0,0,0,.2);">${escHtml(threadTitle)}</h1>
+            <p style="color:rgba(255,255,255,.75);margin:8px 0 0;font-size:13px;">Grafi — קהילת הגרפיקאים החרדים</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:36px 40px;">
+            <h2 style="color:#1e293b;font-size:18px;margin:0 0 14px;font-weight:700;">שלום, ${displayName}!</h2>
+            <div style="color:#475569;font-size:15px;line-height:1.8;margin:0 0 20px;">${contentHtml}</div>
+            ${imageHtml}
+            <div style="text-align:center;margin:28px 0 32px;">
+              <a href="${threadUrl}"
+                 style="display:inline-block;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;text-decoration:none;padding:15px 44px;border-radius:14px;font-size:16px;font-weight:800;box-shadow:0 6px 20px rgba(109,40,217,.35);">
+                לפרטים נוספים &larr;
+              </a>
+            </div>
+            <p style="color:#94a3b8;font-size:13px;text-align:center;margin:0;">בברכה,<br/>צוות Grafi</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:18px 40px;border-top:1px solid #e2e8f0;text-align:center;">
+            <p style="color:#94a3b8;font-size:12px;margin:0 0 6px;">Grafi — קהילת הגרפיקאים החרדים</p>
+            <p style="color:#cbd5e1;font-size:11px;margin:0;">
+              קיבלת מייל זה כי אתה חלק מהקהילה.&nbsp;
+              <a href="${unsubscribeUrl}" style="color:#94a3b8;text-decoration:underline;">הסר אותי מרשימת התפוצה</a>
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`
+}
+
+export async function sendBenefitEmail(opts: {
+  to: string
+  recipientName: string | null
+  threadTitle: string
+  threadContent: string
+  threadUrl: string
+  imageUrl: string | null
+  unsubscribeUrl: string
+  logoUrl?: string | null
+}): Promise<void> {
+  const user = process.env.EMAIL_USER
+  const pass = process.env.EMAIL_PASS
+  if (!user || !pass) throw new Error('EMAIL credentials missing')
+  await makeTransporter().sendMail({
+    from: `"Grafi" <${process.env.EMAIL_FROM ?? user}>`,
+    to: opts.to,
+    subject: `🎁 הטבה בלעדית! ${opts.threadTitle}`,
+    html: buildBenefitEmailHtml(opts),
+  })
+}
+
 export async function sendForumReplyEmail(
   to: string,
   recipientName: string | null,

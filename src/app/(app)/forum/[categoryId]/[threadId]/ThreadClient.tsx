@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import {
   Heart, Trash2, Edit2, CornerUpLeft, CheckCircle2, ChevronLeft,
   ImageIcon, X, Bold, Italic, List, Quote, ZoomIn, ChevronRight,
-  AlertCircle, Bell, BellRing, Link2, Check, Tag, Volume2,
+  AlertCircle, Bell, BellRing, Link2, Check, Tag, Volume2, Mail, Send,
 } from 'lucide-react'
 import type { ForumThread, ForumReply, Profile, UserBadge } from '@/types'
 import ReportButton from '@/components/ReportButton'
@@ -14,6 +14,7 @@ import {
   createReply, editReply, deleteReply, deleteThread,
   toggleLike, markBestAnswer, getForumImageUploadUrl,
   editThread, toggleFollowThread, markThreadNotificationsRead,
+  sendTestBenefitEmail, sendBenefitEmailToAll,
 } from '../../actions'
 
 // ── Helpers ───────────────────────────────────────────────
@@ -497,6 +498,7 @@ type Props = {
   currentProfile: Profile | null
   isAdmin: boolean
   categoryId: string
+  categoryAdminOnly: boolean
   isThreadAuthor: boolean
   badgesMap?: Record<string, UserBadge[]>
 }
@@ -507,7 +509,7 @@ const REPLY_DRAFT_KEY_PREFIX = 'replyDraft_'
 // ── Main ──────────────────────────────────────────────────
 
 export default function ThreadClient({
-  thread, replies: initialReplies, currentUserId, currentProfile, isAdmin, categoryId, isThreadAuthor,
+  thread, replies: initialReplies, currentUserId, currentProfile, isAdmin, categoryId, categoryAdminOnly, isThreadAuthor,
   badgesMap = {},
 }: Props) {
   const router = useRouter()
@@ -552,6 +554,11 @@ export default function ThreadClient({
   isFollowingRef.current = isFollowing
   const prevReplyCountRef = useRef(-1)
   const hasInitializedRef = useRef(false)
+
+  // Benefit email state
+  const [benefitTestSending, setBenefitTestSending] = useState(false)
+  const [benefitAllSending, setBenefitAllSending] = useState(false)
+  const [benefitMsg, setBenefitMsg] = useState<{ ok: boolean; text: string } | null>(null)
 
   // Last read banner
   const [lastReadReplyId, setLastReadReplyId] = useState<string | null>(null)
@@ -760,6 +767,23 @@ export default function ThreadClient({
     await deleteThread(thread.id, categoryId)
   }
 
+  const handleBenefitTestEmail = async () => {
+    setBenefitTestSending(true)
+    setBenefitMsg(null)
+    const result = await sendTestBenefitEmail(thread.id, categoryId)
+    setBenefitTestSending(false)
+    setBenefitMsg(result.error ? { ok: false, text: result.error } : { ok: true, text: 'מייל ניסיון נשלח בהצלחה!' })
+  }
+
+  const handleBenefitSendAll = async () => {
+    if (!confirm('לשלוח מייל הטבה לכל חברי הקהילה הפעילים?')) return
+    setBenefitAllSending(true)
+    setBenefitMsg(null)
+    const result = await sendBenefitEmailToAll(thread.id, categoryId)
+    setBenefitAllSending(false)
+    setBenefitMsg(result.error ? { ok: false, text: result.error } : { ok: true, text: `נשלח בהצלחה ל-${result.sent} חברים` })
+  }
+
   const bestAnswer = replies.find(r => r.is_best_answer)
   const threadImages = getPostImages(thread)
   const threadTags = (thread.tags ?? []) as string[]
@@ -791,6 +815,43 @@ export default function ThreadClient({
             קפוץ לאחרון
           </button>
           <button onClick={() => setShowLastReadBanner(false)} className="p-1 hover:opacity-70"><X size={14} /></button>
+        </div>
+      )}
+
+      {/* Admin benefit email panel */}
+      {isAdmin && categoryAdminOnly && (
+        <div className="overflow-hidden rounded-2xl" style={{ background: 'rgba(109,40,217,.06)', border: '1px solid rgba(109,40,217,.25)' }}>
+          <div className="flex flex-wrap items-center gap-3 px-5 py-3.5">
+            <span className="text-sm font-bold" style={{ color: '#6d28d9' }}>🎁 שליחת הטבה למנויים</span>
+            <div className="ms-auto flex flex-wrap items-center gap-2">
+              <button
+                onClick={handleBenefitTestEmail}
+                disabled={benefitTestSending || benefitAllSending}
+                className="flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold transition hover:opacity-90 disabled:opacity-50"
+                style={{ background: 'rgba(109,40,217,.12)', color: '#6d28d9', border: '1px solid rgba(109,40,217,.3)' }}>
+                <Mail size={13} />
+                {benefitTestSending ? 'שולח...' : 'שלח לי ניסיון'}
+              </button>
+              <button
+                onClick={handleBenefitSendAll}
+                disabled={benefitTestSending || benefitAllSending}
+                className="flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-50"
+                style={{ background: 'linear-gradient(135deg,#6d28d9,#7c3aed)', boxShadow: '0 4px 12px rgba(109,40,217,.3)' }}>
+                <Send size={13} />
+                {benefitAllSending ? 'שולח...' : 'שלח לכולם'}
+              </button>
+            </div>
+          </div>
+          {benefitMsg && (
+            <div className="border-t px-5 py-2.5 text-xs font-semibold"
+              style={{
+                borderColor: 'rgba(109,40,217,.2)',
+                color: benefitMsg.ok ? '#059669' : '#ef4444',
+                background: benefitMsg.ok ? 'rgba(5,150,105,.06)' : 'rgba(239,68,68,.06)',
+              }}>
+              {benefitMsg.ok ? '✓ ' : '✗ '}{benefitMsg.text}
+            </div>
+          )}
         </div>
       )}
 
